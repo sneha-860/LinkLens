@@ -8,6 +8,7 @@ describe("defaultConfig", () => {
       crawlDelayMs: 500,
       userAgent: "LinkLensBot/0.1 (+contact URL)",
       epsilon: 0.2,
+      refExplainTerms: 10,
       alpha: 0.1,
       frequentNgramDropPct: 0.07,
       frequentNgramMinDf: 2,
@@ -97,6 +98,7 @@ describe("makeConfig", () => {
     [{ frequentNgramMinDf: 0 }],
     [{ textMinTokenLength: 0 }],
     [{ textMaxNgram: 1.5 }],
+    [{ refExplainTerms: 0 }],
   ])("rejects invalid override %o", (overrides) => {
     expect(() => makeConfig(overrides)).toThrow(RangeError);
   });

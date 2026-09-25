@@ -6,6 +6,7 @@ import {
   audit as a,
   db as q,
   discovery as d,
+  semantic as sem,
   text as t,
   type LinkLensConfig,
 } from "@linklens/core";
@@ -356,6 +357,29 @@ describe("discovery on the fixture site", () => {
 
       const stored = await q.listArtefacts(db, runId, { kind: "text-representation" });
       expect((stored[0]?.payload as unknown as t.TextModel).stats).toEqual(model.stats);
+    });
+
+    it("computes the REF matrix from the run's text representation", async () => {
+      const text = await t.loadTextModel(db, runId, "P0");
+      for (const variant of ["weighted", "unweighted"] as const) {
+        const m = await sem.buildRefRun(db, runId, "P0", variant);
+        expect(m.artefact).toMatchObject({ runId, policyVersion: "P0@1.0.0", kind: "ref-matrix" });
+        expect(m).toMatchObject({ variant, epsilon: 0.2, textVersion: "text@1.0.0" });
+        expect(m.nodes).toEqual(text.model.documents.map((x) => x.node));
+        expect(m.stats.kept).toBeGreaterThan(0);
+        const sums = new Map<number, number>();
+        for (const e of m.entries) {
+          expect(e.ref).toBeGreaterThanOrEqual(0.2);
+          expect(e.matched.length).toBeGreaterThan(0);
+          sums.set(e.source, (sums.get(e.source) ?? 0) + e.rho);
+        }
+        for (const sum of sums.values()) expect(sum).toBeCloseTo(1, 12);
+      }
+      const stored = await q.listArtefacts(db, runId, { kind: "ref-matrix" });
+      expect(stored.map((x) => (x.payload as unknown as sem.RefMatrix).variant).sort()).toEqual([
+        "unweighted",
+        "weighted",
+      ]);
     });
 
     it("works under a coarser policy (P3 nodes)", async () => {

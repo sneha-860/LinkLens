@@ -27,7 +27,9 @@ PageRank, BFS depth, strongly connected components (SCC), betweenness, and in/ou
 
 Adapted from patent **US 11,586,824 B2** (Belezko & McGoey, 2023).
 
-- Directional containment: `REF(A,B) = |S_A ∩ S_B| / |S_B|`
+- Directional containment, weighted by the target's TF-IDF weights (reduces the patent's
+  short-target bias): `REF(A,B) = Σ_{t ∈ S_A ∩ S_B} w_B(t) / Σ_{t ∈ S_B} w_B(t)`. The patent's
+  unweighted `|S_A ∩ S_B| / |S_B|` is kept as a variant for the σ ablation (E7).
   - `S_A = Links(A) ∪ Body(A)`
   - `S_B = Title(B) ∪ Body(B)`
 - Computed over **field-aware, site-specific TF-IDF token sets**, with an **ε cutoff** and
@@ -287,6 +289,26 @@ whenever the output can change.**
 - TF-IDF per field: tf is the raw count; idf = `ln((1+N)/(1+df)) + 1`.
 - Views: donor `S_A = Links ∪ Body` and target `S_B = Title ∪ Body` (B's own anchors are
   excluded). Each is stored as a sorted term set. `viewWeights` sums the field weights.
+
+### REF matrix (packages/core/src/semantic)
+
+- `buildRefRun(db, runId, policyId, variant)` builds the text model in memory (`loadTextModel`,
+  with the run's stored config) and appends a `ref-matrix` artefact. The pure core is `refMatrix`.
+  `REF_VERSION` (`ref@1.0.0`) and the text version are stored in the payload. **Bump it whenever
+  the output can change.**
+- Variants: `weighted` (default; `w_B` = the target view's summed field TF-IDF weights) and
+  `unweighted`. `ref()` computes one pair.
+- All ordered pairs u ≠ v, computed exactly but through an inverted index (CSR postings over
+  interned term ids), so a donor only touches targets it shares a term with.
+- ε cutoff: REF below `config.epsilon` is set to 0 and not stored (REF = ε is kept). The matrix
+  is sparse (COO, node indices, sorted by source then target); self-pairs are never stored.
+- Per-node normalisation: `ρ(u,v) = REF(u,v) / Σ_w REF(u,w)` over u's stored entries, so each
+  source's ρ sums to 1.
+- Each stored pair keeps `matchedCount` and its `refExplainTerms` matched n-grams with the
+  largest contribution (`w_B(t) / Σ w_B`, or `1/|S_B|` unweighted; ties by term), for explanations.
+- Runtime at 500 pages (249,500 pairs): see `src/semantic/ref.bench.ts`. It is under 1 s even
+  when every pair shares terms. A very low ε on a dense site stores every pair with an
+  explanation (hundreds of MB), which is why ε matters.
 
 ### Database
 

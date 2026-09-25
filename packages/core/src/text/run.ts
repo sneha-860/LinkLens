@@ -1,4 +1,5 @@
 import { POLICIES, type PolicyId } from "../canonicalise/index.js";
+import type { LinkLensConfig } from "../config.js";
 import { insertArtefact, listLinkObservations, listPages } from "../db/queries.js";
 import type { ArtefactRow, Json, LinkObservationRow, PageRow, Queryable } from "../db/types.js";
 import { buildLinkGraph } from "../graph/build.js";
@@ -47,17 +48,22 @@ export interface PersistedTextModel extends TextModel {
   readonly artefact: ArtefactRow;
 }
 
+export interface LoadedTextModel {
+  readonly model: TextModel;
+  /** The run's stored config (used to build the model). */
+  readonly config: Readonly<LinkLensConfig>;
+}
+
 /**
- * Build the text representation of a run under `policyId` and append it as a
- * `text-representation` artefact. Documents are the policy's crawled nodes; a node that merges
- * several pages is represented by the same page as in the link graph (the earliest fetch).
- * Uses the run's stored config.
+ * The text representation of a run under `policyId`, built in memory (nothing is written).
+ * Documents are the policy's crawled nodes; a node that merges several pages is represented by
+ * the same page as in the link graph (the earliest fetch). Uses the run's stored config.
  */
-export async function buildTextRun(
+export async function loadTextModel(
   db: Queryable,
   runId: number,
   policyId: PolicyId,
-): Promise<PersistedTextModel> {
+): Promise<LoadedTextModel> {
   const { observations, context, config } = await loadRunGraphInputs(db, runId);
   const policy = POLICIES[policyId];
   const { graph } = buildLinkGraph({
@@ -86,10 +92,22 @@ export async function buildTextRun(
     }
   });
 
-  const model = buildTextModel({ runId, policyVersion: policy.version, documents }, config);
+  return {
+    model: buildTextModel({ runId, policyVersion: policy.version, documents }, config),
+    config,
+  };
+}
+
+/** loadTextModel, appended as a `text-representation` artefact. */
+export async function buildTextRun(
+  db: Queryable,
+  runId: number,
+  policyId: PolicyId,
+): Promise<PersistedTextModel> {
+  const { model } = await loadTextModel(db, runId, policyId);
   const artefact = await insertArtefact(db, {
     runId,
-    policyVersion: policy.version,
+    policyVersion: model.policyVersion,
     kind: TEXT_ARTEFACT,
     payload: model as unknown as Json,
   });

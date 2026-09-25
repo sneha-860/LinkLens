@@ -174,7 +174,8 @@ export function buildTextModel(
   const drop = new Set(dropped.map((d) => d.term));
   const n = docs.length;
   const idf = new Map<string, number>();
-  for (const [t, d] of byKey(df)) if (!drop.has(t)) idf.set(t, idfOf(n, d));
+  // df's order is already deterministic (documents sorted by node, terms in text order).
+  for (const [t, d] of df) if (!drop.has(t)) idf.set(t, idfOf(n, d));
 
   const documents = docs.map(({ raw, counts }): TextDocument => {
     const fields = {} as Record<Field, Weights>;

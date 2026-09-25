@@ -12,8 +12,13 @@ export interface LinkLensConfig {
   readonly crawlDelayMs: number;
   /** User-Agent sent with every request and matched against robots.txt groups (RFC 9309). */
   readonly userAgent: string;
-  /** REF cutoff ε: σ_hybrid(u,v) = cosine(u,v) if REF(u,v) > ε, else 0. */
+  /**
+   * REF cutoff ε: REF(u,v) scores below ε are set to 0 in the REF matrix, and
+   * σ_hybrid(u,v) = cosine(u,v) only where REF survives.
+   */
   readonly epsilon: number;
+  /** Matched n-grams kept per REF pair as its explanation (highest target weight first). */
+  readonly refExplainTerms: number;
   /** Semantic/structural blend weight α. Exact role TBD. */
   readonly alpha: number;
   /**
@@ -119,6 +124,7 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   crawlDelayMs: 500,
   userAgent: "LinkLensBot/0.1 (+contact URL)",
   epsilon: 0.2,
+  refExplainTerms: 10,
   alpha: 0.1,
   frequentNgramDropPct: 0.07,
   frequentNgramMinDf: 2,
@@ -239,6 +245,7 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   assertUnitInterval("epsilon", cfg.epsilon);
   assertUnitInterval("alpha", cfg.alpha);
   assertUnitInterval("frequentNgramDropPct", cfg.frequentNgramDropPct);
+  assertPositiveInt("refExplainTerms", cfg.refExplainTerms);
   assertPositiveInt("frequentNgramMinDf", cfg.frequentNgramMinDf);
   assertPositiveInt("textMinTokenLength", cfg.textMinTokenLength);
   assertPositiveInt("textMaxNgram", cfg.textMaxNgram);
