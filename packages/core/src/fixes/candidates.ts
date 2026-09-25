@@ -5,7 +5,7 @@ import type { ArtefactRow, Json, Queryable } from "../db/types.js";
 import type { Issue } from "../audit/structural.js";
 import { loadAudit } from "../audit/structural.js";
 import { diagnose, type Diagnosis } from "../diagnosis/diagnose.js";
-import { loadProminence } from "../prominence/run.js";
+import { loadProminence, type RunProminence } from "../prominence/run.js";
 import type { ProminenceEdge } from "../prominence/weights.js";
 import { refMatrix, type RefMatrix, type RefVariant } from "../semantic/ref.js";
 import { loadTextModel } from "../text/run.js";
@@ -358,17 +358,24 @@ export interface PersistedCandidateList extends CandidateList {
   readonly artefact: ArtefactRow;
 }
 
+export interface LoadedCandidates {
+  readonly list: CandidateList;
+  /** The prominence the candidates were built from (existing links and their weights). */
+  readonly prominence: RunProminence;
+  readonly config: Readonly<LinkLensConfig>;
+}
+
 /**
  * Fix candidates for a run under `policyId`, with the run's stored config: targets from the
  * structural audit and the diagnosis, donors from the REF matrix (`variant`) and prominence,
- * all computed in memory. Appended as a `fix-candidates` artefact.
+ * all computed in memory. Nothing is written.
  */
-export async function buildCandidatesRun(
+export async function loadCandidates(
   db: Queryable,
   runId: number,
   policyId: PolicyId,
   variant: RefVariant = "weighted",
-): Promise<PersistedCandidateList> {
+): Promise<LoadedCandidates> {
   const [{ model, config }, prominence, audit] = await Promise.all([
     loadTextModel(db, runId, policyId),
     loadProminence(db, runId, policyId),
@@ -389,6 +396,17 @@ export async function buildCandidatesRun(
     runId,
     policyVersion: ref.policyVersion,
   };
+  return { list, prominence, config };
+}
+
+/** loadCandidates, appended as a `fix-candidates` artefact. */
+export async function buildCandidatesRun(
+  db: Queryable,
+  runId: number,
+  policyId: PolicyId,
+  variant: RefVariant = "weighted",
+): Promise<PersistedCandidateList> {
+  const { list } = await loadCandidates(db, runId, policyId, variant);
   const artefact = await insertArtefact(db, {
     runId,
     policyVersion: list.policyVersion,

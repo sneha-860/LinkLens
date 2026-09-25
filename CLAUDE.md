@@ -88,6 +88,7 @@ For each pair with REF > ε or a link, with threshold α (`config.alpha`):
   and integration tests against the docker-compose Postgres.
 - `packages/crawler`: fetching, robots.txt, raw observation storage.
 - `packages/embeddings`: sentence embeddings (transformers.js) in a worker thread, with a disk cache.
+- `packages/counterfactual`: fix simulation in parallel worker threads (pure engine in core).
 - `packages/api`: Express HTTP API.
 - `packages/web`: React + Vite UI.
 - `packages/eval`: experiments E1–E8.
@@ -419,6 +420,34 @@ The structural stand-in for the patent's session counts. Always call it **promin
 - **Limitation:** orphans are never crawled, so they have no text, REF is undefined for them, and
   they get no candidates (`hasText: false`). Rescue donors for orphans need their pages fetched
   first.
+
+### Counterfactual engine (core/src/fixes/counterfactual.ts, packages/counterfactual)
+
+- `buildCounterfactualRun(db, runId, policyId, { variant, workers })` loads the fix candidates and
+  a weighted link graph (`loadCounterfactualInputs`) and appends a `counterfactual` artefact
+  (`COUNTERFACTUAL_VERSION`).
+- Graph (`WeightedGraph`, compact CSR typed arrays): every node of the policy's link graph, links
+  weighted by **structural** prominence W(u,v). Analytics clicks are never used here, so every
+  row is in the same unit as the added body weight.
+- Per candidate (`simulate`): a copy of the graph with u→v set to the body weight
+  (`prominenceRegionWeights.body`). For make-visible the existing link is raised to it (never
+  lowered). Weighted PageRank is recomputed, warm-started from the baseline vector, with the same
+  damping, dangling rule, L1 tolerance and iteration cap as the graph metrics. It records
+  W before and after, PR(v) before and after, ΔPR_v, the site-wide Σ|ΔPR| (L1), and depth_v from
+  the home page before, after and Δ (null when unreachable), plus iterations and convergence.
+- Validation (`validateWarmStart`): `counterfactualValidationSample` candidates, drawn with
+  `randomSeed`, are re-run from a cold start. The L1 difference must be ≤ `pagerankTolerance`, and
+  the result is stored in the artefact.
+- Parallelism: `simulateInWorkers` hands out small chunks (about 4 per worker) to
+  `counterfactualWorkers` threads (0 = half the logical processors, at least 1). Results come back
+  in candidate order and do not depend on the worker count. Each worker reuses one `workspace`, so
+  nothing is allocated per candidate (per-candidate typed arrays contended on the process
+  allocator).
+- `runtimeMs` per candidate and a `runtime` summary (workers, wall time, mean/p50/p95/max) are
+  the only non-deterministic fields.
+- Measured (i5-12450HX; 500 nodes, 14.5k links, 5,000 candidates): about 0.8 ms per candidate on
+  one thread (4.2 s), and about 2.3 s with 6 workers. Past about 6 workers the performance cores
+  are saturated.
 
 ### Database
 

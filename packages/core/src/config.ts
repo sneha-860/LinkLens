@@ -173,6 +173,13 @@ export interface LinkLensConfig {
   readonly candidateSiblingSections: readonly (readonly string[])[];
   /** Top-level pages (home, /about) may donate to, and receive from, any section. */
   readonly candidateTopLevelIsSibling: boolean;
+  /**
+   * Counterfactual engine: worker threads that simulate candidates in parallel; 0 = half the
+   * logical processors (about the physical cores; at least 1). Results do not depend on it.
+   */
+  readonly counterfactualWorkers: number;
+  /** Candidates also re-run from a cold start to check the warm start (seeded by randomSeed). */
+  readonly counterfactualValidationSample: number;
   /** Audit: a crawled page deeper than this many clicks from the seed is a "deep page". */
   readonly auditDeepPageDepth: number;
   /** Audit: a deep page deeper than this is high severity (else medium). */
@@ -249,6 +256,8 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   candidateSectionBlocking: true,
   candidateSiblingSections: Object.freeze([]),
   candidateTopLevelIsSibling: true,
+  counterfactualWorkers: 0,
+  counterfactualValidationSample: 5,
   auditDeepPageDepth: 3,
   auditDeepPageHighDepth: 6,
   auditWeakAuthorityPercentile: 20,
@@ -322,6 +331,8 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   ) {
     throw new RangeError("config.candidateSiblingSections must be an array of section-name arrays");
   }
+  assertNonNegativeInt("counterfactualWorkers", cfg.counterfactualWorkers);
+  assertNonNegativeInt("counterfactualValidationSample", cfg.counterfactualValidationSample);
   assertNonNegativeInt("auditDeepPageDepth", cfg.auditDeepPageDepth);
   if (
     !Number.isInteger(cfg.auditDeepPageHighDepth) ||

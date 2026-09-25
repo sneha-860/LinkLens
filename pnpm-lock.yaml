@@ -80,6 +80,22 @@ importers:
         specifier: ^0.24.8
         version: 0.24.8
 
+  packages/counterfactual:
+    dependencies:
+      '@linklens/core':
+        specifier: workspace:*
+        version: link:../core
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.15
+    devDependencies:
+      '@linklens/db':
+        specifier: workspace:^
+        version: link:../db
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
+
   packages/crawler:
     dependencies:
       '@linklens/core':
@@ -131,7 +147,7 @@ importers:
     dependencies:
       '@huggingface/transformers':
         specifier: ^4.3.0
-        version: 4.3.0
+        version: 4.3.0(@types/node@22.20.4)
       '@linklens/core':
         specifier: workspace:*
         version: link:../core
@@ -3122,13 +3138,13 @@ snapshots:
 
   '@huggingface/tokenizers@0.2.0': {}
 
-  '@huggingface/transformers@4.3.0':
+  '@huggingface/transformers@4.3.0(@types/node@22.20.4)':
     dependencies:
       '@huggingface/jinja': 0.5.10
       '@huggingface/tokenizers': 0.2.0
       onnxruntime-node: 1.30.0
       onnxruntime-web: 1.31.0-dev.20260914-8d85527a0
-      sharp: 0.35.4
+      sharp: 0.35.4(@types/node@22.20.4)
     transitivePeerDependencies:
       - '@types/node'
 
@@ -4906,7 +4922,7 @@ snapshots:
 
   setprototypeof@1.2.0: {}
 
-  sharp@0.35.4:
+  sharp@0.35.4(@types/node@22.20.4):
     dependencies:
       '@img/colour': 1.1.0
       detect-libc: 2.1.2
@@ -4937,6 +4953,7 @@ snapshots:
       '@img/sharp-win32-arm64': 0.35.4
       '@img/sharp-win32-ia32': 0.35.4
       '@img/sharp-win32-x64': 0.35.4
+      '@types/node': 22.20.4
 
   shebang-command@2.0.0:
     dependencies:

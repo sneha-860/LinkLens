@@ -4,3 +4,5 @@
  * S(u→v) = ΔPR_v × σ_hybrid(u,v) / κ(u), with rule-based explanations and orphan rescue donors.
  */
 export * from "./candidates.js";
+export * from "./counterfactual.js";
+export * from "./counterfactual-inputs.js";
