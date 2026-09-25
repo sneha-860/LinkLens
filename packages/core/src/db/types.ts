@@ -68,6 +68,8 @@ export interface FetchRow {
   fetchedAt: Date;
   bytes: number | null;
   error: string | null;
+  /** 1 for the first try at this URL, 2+ for retries. */
+  attempt: number;
 }
 export interface NewFetch {
   runId: Id;
@@ -80,6 +82,26 @@ export interface NewFetch {
   fetchedAt?: Date;
   bytes?: number | null;
   error?: string | null;
+  attempt?: number;
+}
+
+// ---------- fetch_bodies (append-only) ----------
+export interface FetchBodyRow {
+  fetchId: Id;
+  runId: Id;
+  /** Raw response bytes as received (up to maxBodyBytes). */
+  body: Uint8Array;
+  truncated: boolean;
+  /** Lower-case hex SHA-256 of `body`. */
+  sha256: string;
+  createdAt: Date;
+}
+export interface NewFetchBody {
+  fetchId: Id;
+  runId: Id;
+  body: Uint8Array;
+  truncated: boolean;
+  sha256: string;
 }
 
 // ---------- pages ----------

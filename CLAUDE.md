@@ -98,10 +98,18 @@ Adapted from patent **US 11,586,824 B2** (Belezko & McGoey, 2023).
     is normalised before comparison, never on storage.
   - A 4xx response, or more than `robotsMaxRedirects` redirects, means allow all. A 5xx, network
     error or timeout means disallow all. `/robots.txt` itself is always allowed.
+  - 429 follows the RFC (allow all) unless `robotsTreat429AsUnreachable` is set.
+  - Unreachable for `robotsUnreachableGraceDays` (30), judged from earlier runs' robots.txt fetches:
+    allow all (§2.3.1.4).
+  - Cached per origin for at most `robotsCacheTtlMs` (24 h, §2.4). A failed load is never cached.
   - `Sitemap:` lines are collected raw with line numbers; they are a discovery channel.
-- Politeness: a per-host capacity-1 token bucket spaces requests
-  `max(config.crawlDelayMs, robots Crawl-delay)` apart. The robots.txt value can only slow us down.
-  `acquire()` also enforces that gap since the previous _actual_ dispatch, because timers fire late.
+- Politeness: consecutive dispatches to a host are at least `max(config.crawlDelayMs, robots Crawl-delay)`
+  apart, in real time, across every process and run. `RedisHostThrottle` has two phases:
+  `acquire()` takes the host's single slot, and `dispatched()` records the time after the request
+  is sent. The robots.txt Crawl-delay is stored per host (not per run). The in-process
+  `HostThrottle` is kept for single-process/offline use.
+- A host whose Crawl-delay exceeds `maxCrawlDelayMs` is not crawled at all. Its fetches are recorded
+  as blocked. We never go faster than a site asks.
 - `createRun` refuses a User-Agent without a product token, a version and a `(+https://…)` contact.
 
 ### Crawl orchestrator (packages/crawler/src/orchestrator.ts)
@@ -115,23 +123,34 @@ Adapted from patent **US 11,586,824 B2** (Belezko & McGoey, 2023).
 - Before every request, including each redirect hop: check scope, check robots.txt, wait on the
   per-host bucket. Redirects are followed manually and each hop is stored as
   `{url, statusCode, location}`.
-- Every attempt is a `fetches` row, including robots.txt fetches, retries and robots-blocked URLs
-  (the blocked ones have `status_code = null` and an error).
-- Only 2xx HTML is parsed, into `pages` and `link_observations`. A redirect target that is already
-  in the frontier is not re-extracted.
+- Every attempt is a `fetches` row, numbered by `attempt`. That includes robots.txt fetches,
+  retries and robots-blocked URLs (the blocked ones have `status_code = null` and an error).
+  Downstream code reads `final_fetches` / `listFinalFetches` for the outcome of each URL.
+- Only 2xx HTML is parsed, into `pages` and `link_observations`. Its raw bytes go into `fetch_bodies`
+  (when `storeRawHtml` is on) with a SHA-256, so extraction can be re-run offline. A redirect target
+  already in the frontier is not re-extracted.
+- `link_observations.template_signature` = region + DOM path without positions (a raw template hint).
+- nofollow: `followNofollow` (default true) enqueues rel=nofollow links and links on meta-nofollow
+  pages. Either way they are always recorded.
 - 5xx, network errors and timeouts are retried up to `fetchMaxRetries` times with exponential
   backoff. 4xx is never retried.
+- `pageCap` counts every admitted URL, whatever its outcome.
 - `cancel()` aborts the in-flight request, closes the worker, obliterates the queue, clears the
   frontier keys and sets the run to `cancelled`.
-- Events: `progress` (pagesFetched, queueSize, admitted, url, depth, outcome), `done`, `error`.
+- `detach()` / `CrawlOrchestrator.shutdown()` stop the worker but keep the Redis state; the run stays
+  `running`. `resume(runId)` continues it, and marks it `failed` if the Redis state is gone. Jobs
+  in flight in a crashed process are re-queued by BullMQ's stalled-job check.
+- Events: `progress` (pagesFetched, a Redis counter that survives restarts; queueSize, admitted,
+  url, depth, outcome), `done`, `error`.
 
 ### Database
 
 - Postgres 16 + Redis 7 via `docker-compose.yml` (Postgres on host port **5433**).
 - Schema changes are **new** SQL migrations only (`pnpm --filter @linklens/db migrate:create <name>`);
   never edit an applied migration.
-- `link_observations` and `discovery_observations` are **append-only**, enforced by triggers that
-  reject UPDATE, DELETE and TRUNCATE (SQLSTATE 23001). Core exposes only insert/list for them.
+- `link_observations`, `discovery_observations` and `fetch_bodies` are **append-only**, enforced by
+  triggers that reject UPDATE, DELETE and TRUNCATE (SQLSTATE 23001). Core exposes only insert/read
+  for them.
 - Every `artefacts` row has non-null `run_id` and `policy_version`.
 - Integration tests create a throwaway database per run and drop it afterwards.
 

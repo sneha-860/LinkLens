@@ -21,6 +21,7 @@ export class Frontier {
   private readonly seenKey: string;
   private readonly admittedKey: string;
   private readonly cancelKey: string;
+  private readonly finishedKey: string;
 
   constructor(
     private readonly redis: Redis,
@@ -30,6 +31,7 @@ export class Frontier {
     this.seenKey = `${keyBase}:seen`;
     this.admittedKey = `${keyBase}:admitted`;
     this.cancelKey = `${keyBase}:cancelled`;
+    this.finishedKey = `${keyBase}:finished`;
   }
 
   async admit(key: string): Promise<AdmitResult> {
@@ -53,6 +55,20 @@ export class Frontier {
     return Number((await this.redis.get(this.admittedKey)) ?? 0);
   }
 
+  /** Count one URL whose processing finished; returns the new total (survives worker restarts). */
+  async incrFinished(): Promise<number> {
+    return this.redis.incr(this.finishedKey);
+  }
+
+  async finishedCount(): Promise<number> {
+    return Number((await this.redis.get(this.finishedKey)) ?? 0);
+  }
+
+  /** False once the run's frontier state has been cleared (or was lost). */
+  async exists(): Promise<boolean> {
+    return (await this.redis.exists(this.admittedKey)) === 1;
+  }
+
   async requestCancel(): Promise<void> {
     await this.redis.set(this.cancelKey, "1");
   }
@@ -62,6 +78,6 @@ export class Frontier {
   }
 
   async clear(): Promise<void> {
-    await this.redis.del(this.seenKey, this.admittedKey, this.cancelKey);
+    await this.redis.del(this.seenKey, this.admittedKey, this.cancelKey, this.finishedKey);
   }
 }

@@ -6,4 +6,5 @@ export * from "./content.js";
 export * from "./extract.js";
 export * from "./fetcher.js";
 export * from "./frontier.js";
+export * from "./redis-throttle.js";
 export * from "./orchestrator.js";

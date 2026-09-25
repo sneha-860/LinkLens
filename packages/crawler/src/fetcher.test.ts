@@ -15,6 +15,7 @@ function harness(routes: Record<string, Route>, robotsTxt = "user-agent: *\ndisa
   const inits: (RequestInit | undefined)[] = [];
   const throttled: string[] = [];
   const robotsChecked: string[] = [];
+  const events: string[] = [];
   const policy = RobotsPolicy.fromText(robotsTxt, UA);
   const deps: PageFetchDeps = {
     config,
@@ -22,14 +23,19 @@ function harness(routes: Record<string, Route>, robotsTxt = "user-agent: *\ndisa
       const url = input instanceof Request ? input.url : input.toString();
       requested.push(url);
       inits.push(init);
+      events.push(`fetch ${url}`);
       const route = routes[url];
       if (route === undefined) return Promise.reject(new TypeError("fetch failed"));
       return Promise.resolve(route(init));
     }) as typeof fetch,
     throttle: {
-      acquire: (u: URL) => {
+      acquire: (u: string | URL) => {
         throttled.push(u.toString());
+        events.push(`acquire ${u.toString()}`);
         return Promise.resolve(0);
+      },
+      dispatched: (u: string | URL) => {
+        events.push(`dispatched ${u.toString()}`);
       },
     },
     robots: (u: URL) => {
@@ -38,7 +44,7 @@ function harness(routes: Record<string, Route>, robotsTxt = "user-agent: *\ndisa
     },
     inScope: makeScope(new URL(O), false),
   };
-  return { deps, requested, inits, throttled, robotsChecked };
+  return { deps, requested, inits, throttled, robotsChecked, events };
 }
 
 const html =
@@ -201,7 +207,61 @@ describe("fetchPage", () => {
     const o = await fetchPage(new URL(`${O}/big`), h.deps);
     expect(o.bytes).toBe(64);
     expect(o.html).toHaveLength(64);
+    expect(o.rawBody).toHaveLength(64);
+    expect(o.truncated).toBe(true);
     expect(o.error).toBe("body truncated at 64 bytes");
+  });
+
+  it("returns the raw bytes of 2xx HTML only", async () => {
+    const h = harness({
+      [`${O}/`]: html("<p>é</p>"),
+      [`${O}/404`]: html("<p>gone</p>", 404),
+      [`${O}/i.png`]: () =>
+        new Response(new Uint8Array([9, 9]), { headers: { "content-type": "image/png" } }),
+    });
+    const ok = await fetchPage(new URL(`${O}/`), h.deps);
+    expect(ok.rawBody).toEqual(new TextEncoder().encode("<p>é</p>"));
+    expect(ok.truncated).toBe(false);
+    expect((await fetchPage(new URL(`${O}/404`), h.deps)).rawBody).toBeNull();
+    expect((await fetchPage(new URL(`${O}/i.png`), h.deps)).rawBody).toBeNull();
+  });
+
+  it("marks each request dispatched right after issuing it, hop by hop", async () => {
+    const h = harness({ [`${O}/a`]: redirect("/b"), [`${O}/b`]: html("b") });
+    await fetchPage(new URL(`${O}/a`), h.deps);
+    expect(h.events).toEqual([
+      `acquire ${O}/a`,
+      `fetch ${O}/a`,
+      `dispatched ${O}/a`,
+      `acquire ${O}/b`,
+      `fetch ${O}/b`,
+      `dispatched ${O}/b`,
+    ]);
+  });
+
+  it("still marks the dispatch when the request fails", async () => {
+    const h = harness({});
+    await fetchPage(new URL(`${O}/nowhere`), h.deps);
+    expect(h.events).toEqual([
+      `acquire ${O}/nowhere`,
+      `fetch ${O}/nowhere`,
+      `dispatched ${O}/nowhere`,
+    ]);
+  });
+
+  it("does not crawl a host whose Crawl-delay exceeds maxCrawlDelayMs", async () => {
+    const h = harness({ [`${O}/`]: html("x") }, "user-agent: *\ncrawl-delay: 120");
+    const o = await fetchPage(new URL(`${O}/`), h.deps);
+    expect(o).toMatchObject({
+      kind: "blocked",
+      error: "host not crawled: robots.txt Crawl-delay 120000 ms exceeds maxCrawlDelayMs 60000",
+    });
+    expect(h.requested).toEqual([]);
+  });
+
+  it("crawls a host whose Crawl-delay is within the cap", async () => {
+    const h = harness({ [`${O}/`]: html("x") }, "user-agent: *\ncrawl-delay: 60");
+    expect((await fetchPage(new URL(`${O}/`), h.deps)).kind).toBe("ok");
   });
 
   it("returns cancelled without requesting when already aborted", async () => {

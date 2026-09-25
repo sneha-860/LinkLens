@@ -61,7 +61,9 @@ const REDIRECTS: Record<string, [number, string]> = {
  * redirects (above), /flaky (503 once, then 200), /always-500, /slow (responds after `slowMs`),
  * /image.png. Paths are matched exactly and case-sensitively; unknown paths are 404.
  */
-export async function startFixtureServer(opts: { slowMs?: number } = {}): Promise<FixtureServer> {
+export async function startFixtureServer(
+  opts: { slowMs?: number; robotsStatus?: number } = {},
+): Promise<FixtureServer> {
   const files = indexFiles(SITE_DIR);
   const requests: LoggedRequest[] = [];
   let flakyHits = 0;
@@ -83,6 +85,10 @@ export async function startFixtureServer(opts: { slowMs?: number } = {}): Promis
       at: Date.now(),
     });
 
+    if (path === "/robots.txt" && opts.robotsStatus !== undefined) {
+      send(res, opts.robotsStatus, "text/plain", "robots.txt unavailable");
+      return;
+    }
     const redirect = REDIRECTS[path];
     if (redirect !== undefined) {
       res.writeHead(redirect[0], { location: redirect[1] });

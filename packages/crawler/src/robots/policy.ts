@@ -147,6 +147,9 @@ export async function fetchRobots(
         const { text, truncated } = decodeRobots(bytes, config.robotsMaxBytes);
         return done({ kind: "parsed", robots: parseRobots(text, truncated) }, url, status, null);
       }
+      if (status === 429 && config.robotsTreat429AsUnreachable) {
+        return done({ kind: "unreachable", detail: "HTTP 429" }, url, status, null);
+      }
       if (status >= 400 && status < 500) {
         return done({ kind: "unavailable", detail: `HTTP ${status}` }, url, status, null);
       }

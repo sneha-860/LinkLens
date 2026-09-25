@@ -23,6 +23,12 @@ describe("defaultConfig", () => {
       retryBackoffMs: 1_000,
       crawlConcurrency: 1,
       includeSubdomains: false,
+      maxCrawlDelayMs: 60_000,
+      robotsCacheTtlMs: 86_400_000,
+      robotsUnreachableGraceDays: 30,
+      robotsTreat429AsUnreachable: false,
+      followNofollow: true,
+      storeRawHtml: true,
     });
   });
 
@@ -59,6 +65,10 @@ describe("makeConfig", () => {
     [{ fetchMaxRetries: 1.5 }],
     [{ crawlConcurrency: 0 }],
     [{ includeSubdomains: "yes" as unknown as boolean }],
+    [{ followNofollow: 1 as unknown as boolean }],
+    [{ maxCrawlDelayMs: 0 }],
+    [{ robotsCacheTtlMs: 25 * 60 * 60 * 1000 }],
+    [{ robotsUnreachableGraceDays: 0 }],
   ])("rejects invalid override %o", (overrides) => {
     expect(() => makeConfig(overrides)).toThrow(RangeError);
   });

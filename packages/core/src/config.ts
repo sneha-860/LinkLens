@@ -3,7 +3,10 @@
  * No other module may hard-code these values.
  */
 export interface LinkLensConfig {
-  /** Maximum number of pages fetched per crawl. */
+  /**
+   * Maximum URLs admitted to a crawl's frontier (the seed included). Every admitted URL counts,
+   * whatever its outcome (HTML, non-HTML, 404, robots-blocked), so the cap bounds requests.
+   */
   readonly pageCap: number;
   /** Minimum delay between requests to the same host, in ms (robots.txt Crawl-delay may raise it). */
   readonly crawlDelayMs: number;
@@ -41,6 +44,30 @@ export interface LinkLensConfig {
   readonly crawlConcurrency: number;
   /** Also crawl subdomains of the seed host (seed host minus a leading "www."). */
   readonly includeSubdomains: boolean;
+  /**
+   * Hosts whose robots.txt Crawl-delay exceeds this are not crawled at all (fetches are recorded
+   * as blocked). We never go faster than a site asks, so this bounds run time instead.
+   */
+  readonly maxCrawlDelayMs: number;
+  /** robots.txt is refetched once its copy is older than this. RFC 9309 §2.4: ≤ 24 hours. */
+  readonly robotsCacheTtlMs: number;
+  /**
+   * RFC 9309 §2.3.1.4: once robots.txt has been unreachable (5xx/network) for this many days,
+   * it MAY be treated as unavailable (allow all). Judged from earlier runs' robots.txt fetches.
+   */
+  readonly robotsUnreachableGraceDays: number;
+  /**
+   * HTTP 429 for robots.txt: false follows RFC 9309 (4xx = unavailable = allow all); true treats it
+   * as unreachable (disallow all), as Google does.
+   */
+  readonly robotsTreat429AsUnreachable: boolean;
+  /**
+   * Enqueue links with rel="nofollow" and links on pages with meta robots "nofollow". They are
+   * always recorded in link_observations either way; this only affects discovery.
+   */
+  readonly followNofollow: boolean;
+  /** Store raw bytes of 2xx HTML responses (fetch_bodies), so extraction can be re-run offline. */
+  readonly storeRawHtml: boolean;
 }
 
 export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
@@ -63,6 +90,12 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   retryBackoffMs: 1_000,
   crawlConcurrency: 1,
   includeSubdomains: false,
+  maxCrawlDelayMs: 60_000,
+  robotsCacheTtlMs: 24 * 60 * 60 * 1000,
+  robotsUnreachableGraceDays: 30,
+  robotsTreat429AsUnreachable: false,
+  followNofollow: true,
+  storeRawHtml: true,
 });
 
 function assertUnitInterval(name: keyof LinkLensConfig, value: number): void {
@@ -97,8 +130,19 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   assertNonNegativeInt("fetchMaxRetries", cfg.fetchMaxRetries);
   assertNonNegativeInt("retryBackoffMs", cfg.retryBackoffMs);
   assertPositiveInt("crawlConcurrency", cfg.crawlConcurrency);
-  if (typeof cfg.includeSubdomains !== "boolean") {
-    throw new RangeError("config.includeSubdomains must be a boolean");
+  assertPositiveInt("maxCrawlDelayMs", cfg.maxCrawlDelayMs);
+  assertPositiveInt("robotsCacheTtlMs", cfg.robotsCacheTtlMs);
+  if (cfg.robotsCacheTtlMs > 24 * 60 * 60 * 1000) {
+    throw new RangeError("config.robotsCacheTtlMs must be ≤ 24 hours (RFC 9309 §2.4)");
+  }
+  assertPositiveInt("robotsUnreachableGraceDays", cfg.robotsUnreachableGraceDays);
+  for (const flag of [
+    "includeSubdomains",
+    "robotsTreat429AsUnreachable",
+    "followNofollow",
+    "storeRawHtml",
+  ] as const) {
+    if (typeof cfg[flag] !== "boolean") throw new RangeError(`config.${flag} must be a boolean`);
   }
   if (!Number.isInteger(cfg.robotsMaxBytes) || cfg.robotsMaxBytes < 500 * 1024) {
     throw new RangeError(`config.robotsMaxBytes must be an integer ≥ 500 KiB (RFC 9309 §2.5)`);

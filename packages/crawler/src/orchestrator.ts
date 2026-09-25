@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { Queue, Worker, type Job, type JobsOptions } from "bullmq";
 import { Redis } from "ioredis";
@@ -7,9 +8,10 @@ import { asQueryable } from "@linklens/db";
 import { extractPage } from "./extract.js";
 import { fetchPage, type FetchOutcomeKind } from "./fetcher.js";
 import { Frontier } from "./frontier.js";
-import { fetchRobots, type RobotsPolicy } from "./robots/index.js";
+import { RedisHostThrottle } from "./redis-throttle.js";
+import { applyUnreachableGrace, fetchRobots, type RobotsPolicy } from "./robots/index.js";
 import { isHttpUrl, makeScope, requestKey } from "./scope.js";
-import { HostThrottle, systemClock, type Clock } from "./throttle.js";
+import { systemClock, type Clock } from "./throttle.js";
 import { checkUserAgent } from "./user-agent.js";
 
 export interface CrawlJobData {
@@ -28,11 +30,11 @@ interface CrawlJobResult {
 
 export interface CrawlProgress {
   readonly runId: number;
-  /** URLs whose processing has finished (success or final failure). */
+  /** URLs whose processing has finished (success or final failure), across worker restarts. */
   readonly pagesFetched: number;
   /** Jobs still waiting (including delayed retries). */
   readonly queueSize: number;
-  /** URLs admitted to the frontier so far (â‰¤ pageCap). */
+  /** URLs admitted to the frontier so far (≤ pageCap). */
   readonly admitted: number;
   readonly url: string;
   readonly depth: number;
@@ -42,9 +44,11 @@ export interface CrawlProgress {
 
 export interface CrawlSummary {
   readonly runId: number;
-  readonly status: "completed" | "cancelled" | "failed";
+  /** "detached": this process stopped working on the run; it is still running and resumable. */
+  readonly status: "completed" | "cancelled" | "failed" | "detached";
   readonly pagesFetched: number;
   readonly admitted: number;
+  readonly error?: string;
 }
 
 export interface CreateRunOptions {
@@ -76,7 +80,8 @@ class RetryableFetchError extends Error {
   override readonly name = "RetryableFetchError";
 }
 
-function jobOptions(config: Readonly<LinkLensConfig>, depth: number): JobsOptions {
+/** @internal exported for unit tests */
+export function jobOptions(config: Readonly<LinkLensConfig>, depth: number): JobsOptions {
   return {
     // Lower number = processed first; FIFO within a priority, so the queue is BFS by depth.
     priority: Math.min(depth + 1, MAX_PRIORITY),
@@ -87,12 +92,23 @@ function jobOptions(config: Readonly<LinkLensConfig>, depth: number): JobsOption
   };
 }
 
+/** @internal exported for unit tests: may a discovered link be enqueued under the nofollow setting? */
+export function mayFollow(
+  config: Readonly<Pick<LinkLensConfig, "followNofollow">>,
+  pageNofollow: boolean,
+  rel: string | null,
+): boolean {
+  if (config.followNofollow) return true;
+  if (pageNofollow) return false;
+  return !(rel ?? "").toLowerCase().split(/\s+/).includes("nofollow");
+}
+
 /**
  * Creates runs and drives their crawls through a BullMQ queue per run.
  *
  * Invariants:
  *  - robots.txt is checked before every request, including every redirect hop;
- *  - every request waits on the per-host token bucket;
+ *  - every request waits on the per-host throttle (shared through Redis by all workers);
  *  - every attempt (including retries and robots.txt fetches) is appended to `fetches`;
  *  - dedupe is on the resolved URL string (minus fragment) only; no canonicalisation.
  */
@@ -132,10 +148,10 @@ export class CrawlOrchestrator {
   }
 
   /** @internal */
-  async releaseQueue(runId: number): Promise<void> {
+  async releaseQueue(runId: number, obliterate: boolean): Promise<void> {
     const queue = this.queues.get(runId);
     if (queue === undefined) return;
-    await queue.obliterate({ force: true });
+    if (obliterate) await queue.obliterate({ force: true });
     await queue.close();
     this.queues.delete(runId);
   }
@@ -164,19 +180,35 @@ export class CrawlOrchestrator {
     return { runId: run.id, siteId: site.id, seedUrl };
   }
 
-  /** Start a worker for the run. Resolves once the worker is running. */
+  /** Start a worker for a pending run. Resolves once the worker is running. */
   async start(runId: number): Promise<CrawlHandle> {
+    return this.launch(runId, "pending");
+  }
+
+  /**
+   * Continue a run left in "running" by a stopped or crashed process: its queue and frontier live
+   * in Redis, so the crawl picks up where it was. Jobs that were in flight in a crashed process are
+   * re-queued by BullMQ's stalled-job check (after its lock expires) and fetched again.
+   * If the Redis state is gone, the run is marked failed.
+   */
+  async resume(runId: number): Promise<CrawlHandle> {
+    return this.launch(runId, "running");
+  }
+
+  private async launch(runId: number, expected: "pending" | "running"): Promise<CrawlHandle> {
     if (this.handles.has(runId)) throw new Error(`run ${runId} is already running here`);
     const run = await q.getRun(this.db, runId);
     if (run === null) throw new Error(`run ${runId} not found`);
-    if (run.status !== "pending")
-      throw new Error(`run ${runId} is ${run.status}, expected pending`);
+    if (run.status !== expected) {
+      throw new Error(`run ${runId} is ${run.status}, expected ${expected}`);
+    }
     const site = await q.getSite(this.db, run.siteId);
     if (site === null) throw new Error(`site ${run.siteId} not found`);
+    const config = makeConfig(run.config);
 
     const handle = new CrawlHandle(this, this.db, this.redis, {
       runId,
-      config: makeConfig(run.config),
+      config,
       seed: new URL(site.rootUrl),
       fetch: this.options.fetch ?? fetch,
       clock: this.options.clock ?? systemClock,
@@ -184,6 +216,11 @@ export class CrawlOrchestrator {
     });
     this.handles.set(runId, handle);
     void handle.done.finally(() => this.handles.delete(runId));
+
+    if (expected === "running" && !(await this.frontierFor(runId, config.pageCap).exists())) {
+      await handle.fail("frontier state missing in Redis; the run cannot be resumed");
+      return handle;
+    }
     await handle.begin();
     return handle;
   }
@@ -202,9 +239,19 @@ export class CrawlOrchestrator {
     return handle.cancel();
   }
 
+  /** Stop working on runs without cancelling them (they stay resumable), then disconnect. */
+  async shutdown(): Promise<void> {
+    await Promise.all([...this.handles.values()].map((h) => h.detach()));
+    await this.disconnect();
+  }
+
   /** Cancel running crawls and close all connections. */
   async close(): Promise<void> {
     await Promise.all([...this.handles.values()].map((h) => h.cancel()));
+    await this.disconnect();
+  }
+
+  private async disconnect(): Promise<void> {
     await Promise.all([...this.queues.values()].map((queue) => queue.close()));
     this.queues.clear();
     await this.redis.quit();
@@ -226,6 +273,11 @@ interface HandleEvents {
   error: [Error];
 }
 
+interface CachedRobots {
+  readonly policy: Promise<RobotsPolicy>;
+  readonly fetchedAt: number;
+}
+
 /** A running crawl. Emits `progress` after every finished URL, `done` once, `error` on faults. */
 export class CrawlHandle extends EventEmitter<HandleEvents> {
   readonly runId: number;
@@ -235,13 +287,12 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
   private readonly config: Readonly<LinkLensConfig>;
   private readonly frontier: Frontier;
   private readonly queue: Queue<CrawlJobData>;
-  private readonly throttle: HostThrottle;
+  private readonly throttle: RedisHostThrottle;
   private readonly inScope: (url: URL) => boolean;
-  private readonly robotsCache = new Map<string, Promise<RobotsPolicy>>();
+  private readonly robotsCache = new Map<string, CachedRobots>();
   private readonly abort = new AbortController();
   private worker: Worker<CrawlJobData, CrawlJobResult> | null = null;
-  private pagesFetched = 0;
-  private cancelling = false;
+  private stopping = false;
   private finished = false;
 
   constructor(
@@ -255,7 +306,7 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
     this.config = settings.config;
     this.frontier = orchestrator.frontierFor(settings.runId, settings.config.pageCap);
     this.queue = orchestrator.queueFor(settings.runId);
-    this.throttle = new HostThrottle(settings.config, settings.clock);
+    this.throttle = new RedisHostThrottle(redis, settings.prefix, settings.config, settings.clock);
     this.inScope = makeScope(settings.seed, settings.config.includeSubdomains);
     this.done = new Promise((resolve) => (this.resolveDone = resolve));
   }
@@ -292,14 +343,55 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
     void this.checkDone();
   }
 
+  /** Stop, discard the remaining queue, and mark the run cancelled. */
   async cancel(): Promise<CrawlSummary> {
-    if (this.finished || this.cancelling) return this.done;
-    this.cancelling = true;
+    if (this.finished || this.stopping) return this.done;
+    this.stopping = true;
     await this.frontier.requestCancel();
     this.abort.abort();
     await this.worker?.close(); // waits for the in-flight job, which sees the abort
     await this.finish("cancelled");
     return this.done;
+  }
+
+  /**
+   * Stop this process's worker after its in-flight job, keeping the queue and frontier in Redis.
+   * The run stays "running" and can be continued with `CrawlOrchestrator.resume()`.
+   */
+  async detach(): Promise<CrawlSummary> {
+    if (this.finished || this.stopping) return this.done;
+    this.stopping = true;
+    await this.worker?.close();
+    this.finished = true;
+    await this.orchestrator.releaseQueue(this.runId, false);
+    this.settle({ status: "detached" });
+    return this.done;
+  }
+
+  /** @internal Mark the run failed without starting a worker. */
+  async fail(error: string): Promise<void> {
+    this.finished = true;
+    await q.setRunStatus(this.db, this.runId, "failed");
+    await this.orchestrator.releaseQueue(this.runId, true);
+    this.settle({ status: "failed", error });
+  }
+
+  private settle(s: { status: CrawlSummary["status"]; error?: string }): void {
+    void (async () => {
+      const summary: CrawlSummary = {
+        runId: this.runId,
+        status: s.status,
+        pagesFetched: await this.frontier.finishedCount(),
+        admitted: await this.frontier.admittedCount(),
+        ...(s.error === undefined ? {} : { error: s.error }),
+      };
+      if (s.status !== "detached") await this.frontier.clear();
+      this.emit("done", summary);
+      this.resolveDone(summary);
+    })().catch((err: unknown) => {
+      this.emit("error", err instanceof Error ? err : new Error(String(err)));
+      this.resolveDone({ runId: this.runId, status: s.status, pagesFetched: 0, admitted: 0 });
+    });
   }
 
   private onFinished(
@@ -309,15 +401,15 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
     statusCode: number | null,
   ): void {
     if (outcome === "cancelled" || this.finished) return;
-    this.pagesFetched += 1;
     void (async () => {
       try {
+        const pagesFetched = await this.frontier.incrFinished();
         const counts = await this.queue.getJobCounts(...QUEUE_STATES);
         const queueSize =
           (counts["waiting"] ?? 0) + (counts["prioritized"] ?? 0) + (counts["delayed"] ?? 0);
         this.emit("progress", {
           runId: this.runId,
-          pagesFetched: this.pagesFetched,
+          pagesFetched,
           queueSize,
           admitted: await this.frontier.admittedCount(),
           url,
@@ -333,79 +425,93 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
   }
 
   private async checkDone(): Promise<void> {
-    if (this.finished || this.cancelling) return;
+    if (this.finished || this.stopping) return;
     const counts = await this.queue.getJobCounts(...QUEUE_STATES);
     const remaining = QUEUE_STATES.reduce((n, s) => n + (counts[s] ?? 0), 0);
     if (remaining === 0) await this.finish("completed");
   }
 
-  private async finish(status: CrawlSummary["status"]): Promise<void> {
+  private async finish(status: "completed" | "cancelled"): Promise<void> {
     if (this.finished) return;
     this.finished = true;
     try {
       await this.worker?.close();
-      await this.orchestrator.releaseQueue(this.runId);
+      await this.orchestrator.releaseQueue(this.runId, true);
       await q.setRunStatus(this.db, this.runId, status);
-      const summary: CrawlSummary = {
-        runId: this.runId,
-        status,
-        pagesFetched: this.pagesFetched,
-        admitted: await this.frontier.admittedCount(),
-      };
-      await this.frontier.clear();
-      this.emit("done", summary);
-      this.resolveDone(summary);
+      this.settle({ status });
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       this.emit("error", error);
-      this.resolveDone({
-        runId: this.runId,
-        status: "failed",
-        pagesFetched: this.pagesFetched,
-        admitted: 0,
-      });
+      this.settle({ status: "failed", error: error.message });
     }
   }
 
-  /** robots.txt for the URL's origin; fetched once per origin per run and stored as a fetch. */
+  /**
+   * robots.txt for the URL's origin, stored as a fetch. Cached per origin for at most
+   * config.robotsCacheTtlMs (RFC 9309 §2.4). A failed lookup is not cached, so the next request
+   * retries it instead of inheriting the failure.
+   */
   private robotsFor(url: URL): Promise<RobotsPolicy> {
-    let policy = this.robotsCache.get(url.origin);
-    if (policy === undefined) {
-      policy = (async () => {
-        await this.throttle.acquire(new URL("/robots.txt", url));
-        const { policy: p, record } = await fetchRobots(url, {
-          config: this.config,
-          fetch: this.settings.fetch,
-        });
-        await q.insertFetch(this.db, {
+    const now = this.settings.clock.now();
+    const cached = this.robotsCache.get(url.origin);
+    if (cached !== undefined && now - cached.fetchedAt < this.config.robotsCacheTtlMs) {
+      return cached.policy;
+    }
+    const policy = this.loadRobots(url);
+    this.robotsCache.set(url.origin, { policy, fetchedAt: now });
+    policy.catch(() => {
+      if (this.robotsCache.get(url.origin)?.policy === policy) this.robotsCache.delete(url.origin);
+    });
+    return policy;
+  }
+
+  private async loadRobots(url: URL): Promise<RobotsPolicy> {
+    const robotsUrl = new URL("/robots.txt", url);
+    await this.throttle.acquire(robotsUrl);
+    // fetchRobots issues its first request synchronously; mark the dispatch once it is out.
+    const pending = fetchRobots(url, { config: this.config, fetch: this.settings.fetch });
+    await this.throttle.dispatched(robotsUrl);
+    const { policy: fetched, record } = await pending;
+    await q.insertFetch(this.db, {
+      runId: this.runId,
+      requestedUrl: record.requestedUrl,
+      finalUrl: record.finalUrl,
+      statusCode: record.statusCode,
+      redirectChain: [...record.redirectChain],
+      headers: {},
+      contentType: null,
+      fetchedAt: record.fetchedAt,
+      bytes: null,
+      error:
+        record.error ??
+        (fetched.source.kind === "parsed"
+          ? null
+          : `robots.txt ${fetched.source.kind}: ${fetched.source.detail}`),
+    });
+
+    let policy = fetched;
+    if (fetched.source.kind === "unreachable") {
+      const history = await q.listFetchHistory(this.db, record.requestedUrl, 1000);
+      policy = applyUnreachableGrace(
+        fetched,
+        history,
+        record.fetchedAt,
+        this.config.robotsUnreachableGraceDays,
+        this.config.robotsTreat429AsUnreachable,
+      );
+    }
+
+    await this.throttle.setRobotsCrawlDelay(url, policy.crawlDelayMs);
+    if (policy.sitemaps.length > 0) {
+      await q.insertDiscoveryObservations(
+        this.db,
+        policy.sitemaps.map((s) => ({
           runId: this.runId,
-          requestedUrl: record.requestedUrl,
-          finalUrl: record.finalUrl,
-          statusCode: record.statusCode,
-          redirectChain: [...record.redirectChain],
-          headers: {},
-          contentType: null,
-          fetchedAt: record.fetchedAt,
-          bytes: null,
-          error:
-            record.error ??
-            (p.source.kind === "parsed" ? null : `robots.txt ${p.source.kind}: ${p.source.detail}`),
-        });
-        this.throttle.setRobotsCrawlDelay(url, p.crawlDelayMs);
-        if (p.sitemaps.length > 0) {
-          await q.insertDiscoveryObservations(
-            this.db,
-            p.sitemaps.map((s) => ({
-              runId: this.runId,
-              channel: "robots_sitemap" as const,
-              url: s.url,
-              sourceDocument: record.finalUrl ?? record.requestedUrl,
-            })),
-          );
-        }
-        return p;
-      })();
-      this.robotsCache.set(url.origin, policy);
+          channel: "robots_sitemap" as const,
+          url: s.url,
+          sourceDocument: record.finalUrl ?? record.requestedUrl,
+        })),
+      );
     }
     return policy;
   }
@@ -413,7 +519,7 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
   private async process(job: Job<CrawlJobData, CrawlJobResult>): Promise<CrawlJobResult> {
     const { url, depth } = job.data;
     const cancelled: CrawlJobResult = { url, depth, outcome: "cancelled", statusCode: null };
-    if (this.cancelling || (await this.frontier.isCancelled())) return cancelled;
+    if (this.stopping || (await this.frontier.isCancelled())) return cancelled;
 
     const o = await fetchPage(new URL(url), {
       config: this.config,
@@ -425,6 +531,7 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
     });
     if (o.kind === "cancelled") return cancelled;
 
+    const attempt = job.attemptsMade + 1;
     const fetchRow = await q.insertFetch(this.db, {
       runId: this.runId,
       requestedUrl: o.requestedUrl,
@@ -435,9 +542,18 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
       contentType: o.contentType,
       bytes: o.bytes,
       error: o.error,
+      attempt,
     });
+    if (o.rawBody !== null && this.config.storeRawHtml) {
+      await q.insertFetchBody(this.db, {
+        fetchId: fetchRow.id,
+        runId: this.runId,
+        body: Buffer.from(o.rawBody.buffer, o.rawBody.byteOffset, o.rawBody.byteLength),
+        truncated: o.truncated,
+        sha256: createHash("sha256").update(o.rawBody).digest("hex"),
+      });
+    }
 
-    const attempt = job.attemptsMade + 1;
     if (o.retryable && attempt < (job.opts.attempts ?? 1)) {
       throw new RetryableFetchError(o.error ?? `HTTP ${o.statusCode ?? "?"}`);
     }
@@ -446,8 +562,9 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
       const finalKey = requestKey(new URL(o.finalUrl));
       // A redirect target already in the frontier is (or will be) processed by its own job.
       const firstVisit = finalKey === url || (await this.frontier.markSeen(finalKey));
-      if (firstVisit && o.html !== null)
+      if (firstVisit && o.html !== null) {
         await this.processHtml(o.html, o.finalUrl, fetchRow.id, depth);
+      }
     }
     return { url, depth, outcome: o.kind, statusCode: o.statusCode };
   }
@@ -483,7 +600,7 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
         rel: l.rel,
         domRegion: l.domRegion,
         domPath: l.domPath,
-        templateSignature: null,
+        templateSignature: l.templateSignature,
         positionIndex: l.positionIndex,
       })),
     );
@@ -491,6 +608,7 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
     const children: { name: string; data: CrawlJobData; opts: JobsOptions }[] = [];
     for (const link of page.links) {
       if (link.resolvedUrl === null) continue;
+      if (!mayFollow(this.config, page.nofollow, link.rel)) continue;
       const target = new URL(link.resolvedUrl);
       if (!this.inScope(target)) continue;
       const key = requestKey(target);

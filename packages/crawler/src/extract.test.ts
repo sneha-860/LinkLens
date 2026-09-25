@@ -118,6 +118,32 @@ describe("extractPage", () => {
       metaRobots: null,
       lang: null,
       links: [],
+      nofollow: false,
     });
+  });
+
+  it("gives links in the same repeated structure the same template signature", () => {
+    const by = Object.fromEntries(page.links.map((l) => [l.rawHref, l.templateSignature]));
+    expect(by["a.html"]).toBe("nav|html>body>nav>ul>li>a");
+    expect(by["b.html"]).toBe(by["a.html"]); // siblings: positions dropped
+    expect(by["/"]).toBe("header|html>body>header>a");
+    expect(by["?q=1"]).toBe("nav|html>body>main>div>a"); // region from role=navigation
+    expect(page.links.find((l) => l.domRegion === null)).toBeUndefined();
+    // htmlparser2 does not synthesise <html>/<body>: paths reflect the markup as written.
+    expect(extractPage('<div><a href="/x">x</a></div>', PAGE).links[0]?.templateSignature).toBe(
+      "-|div>a",
+    );
+  });
+
+  it.each([
+    ["noindex,nofollow", true],
+    ["NOINDEX, NOFOLLOW", true],
+    ["none", true],
+    ["index, follow", false],
+    ["noindex", false],
+    ["nofollowing", false],
+  ])("detects page-level nofollow in meta robots %j → %s", (content, expected) => {
+    const p = extractPage(`<meta name="robots" content="${content}"><a href="/x">x</a>`, PAGE);
+    expect(p.nofollow).toBe(expected);
   });
 });

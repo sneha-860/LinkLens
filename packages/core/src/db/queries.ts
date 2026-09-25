@@ -3,8 +3,10 @@ import { TERMINAL_RUN_STATUSES } from "./types.js";
 import type {
   ArtefactRow,
   DiscoveryObservationRow,
+  FetchBodyRow,
   FetchRow,
   Id,
+  NewFetchBody,
   Json,
   LinkObservationRow,
   NewArtefact,
@@ -29,7 +31,9 @@ const RUN_COLS = `id, site_id AS "siteId", started_at AS "startedAt", finished_a
   config_json AS "config", status, seed`;
 const FETCH_COLS = `id, run_id AS "runId", requested_url AS "requestedUrl", final_url AS "finalUrl",
   status_code AS "statusCode", redirect_chain AS "redirectChain", headers,
-  content_type AS "contentType", fetched_at AS "fetchedAt", bytes, error`;
+  content_type AS "contentType", fetched_at AS "fetchedAt", bytes, error, attempt`;
+const FETCH_BODY_COLS = `fetch_id AS "fetchId", run_id AS "runId", body, truncated, sha256,
+  created_at AS "createdAt"`;
 const PAGE_COLS = `id, run_id AS "runId", fetch_id AS "fetchId", url, title, h1, headings,
   meta_canonical AS "metaCanonical", meta_robots AS "metaRobots", body_text AS "bodyText",
   paragraphs, lang`;
@@ -135,6 +139,7 @@ const FETCH_SPEC: readonly ColumnSpec<NewFetch>[] = [
   { column: "fetched_at", get: (f) => f.fetchedAt ?? new Date() },
   { column: "bytes", get: (f) => f.bytes ?? null },
   { column: "error", get: (f) => f.error ?? null },
+  { column: "attempt", get: (f) => f.attempt ?? 1 },
 ];
 
 export async function insertFetch(db: Queryable, fetch: NewFetch): Promise<FetchRow> {
@@ -155,6 +160,43 @@ export async function listFetches(db: Queryable, runId: Id): Promise<FetchRow[]>
     [runId],
   );
   return rows;
+}
+
+/** One row per requested URL: its last attempt (the `final_fetches` view). */
+export async function listFinalFetches(db: Queryable, runId: Id): Promise<FetchRow[]> {
+  const { rows } = await db.query<FetchRow>(
+    `SELECT ${FETCH_COLS} FROM final_fetches WHERE run_id = $1 ORDER BY id`,
+    [runId],
+  );
+  return rows;
+}
+
+/** Every fetch of exactly this URL across all runs, newest first (e.g. robots.txt history). */
+export async function listFetchHistory(
+  db: Queryable,
+  requestedUrl: string,
+  limit: number,
+): Promise<FetchRow[]> {
+  const { rows } = await db.query<FetchRow>(
+    `SELECT ${FETCH_COLS} FROM fetches WHERE requested_url = $1
+     ORDER BY fetched_at DESC, id DESC LIMIT $2`,
+    [requestedUrl, limit],
+  );
+  return rows;
+}
+
+// ---------- fetch_bodies (append-only: insert + read only) ----------
+export function insertFetchBody(db: Queryable, body: NewFetchBody): Promise<FetchBodyRow> {
+  return one(
+    db,
+    `INSERT INTO fetch_bodies (fetch_id, run_id, body, truncated, sha256)
+     VALUES ($1, $2, $3, $4, $5) RETURNING ${FETCH_BODY_COLS}`,
+    [body.fetchId, body.runId, body.body, body.truncated, body.sha256],
+  );
+}
+
+export function getFetchBody(db: Queryable, fetchId: Id): Promise<FetchBodyRow | null> {
+  return maybeOne(db, `SELECT ${FETCH_BODY_COLS} FROM fetch_bodies WHERE fetch_id = $1`, [fetchId]);
 }
 
 // ---------- pages ----------

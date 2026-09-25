@@ -1,5 +1,6 @@
 import type { db, LinkLensConfig } from "@linklens/core";
 import { decodeBody, isHtml } from "./content.js";
+import type { Throttle } from "./redis-throttle.js";
 import type { RobotsPolicy } from "./robots/index.js";
 import { requestHeaders } from "./user-agent.js";
 
@@ -7,7 +8,7 @@ export interface PageFetchDeps {
   readonly config: Readonly<LinkLensConfig>;
   readonly fetch: typeof fetch;
   /** Waits for the per-host token bucket. */
-  readonly throttle: { acquire(url: URL): Promise<number> };
+  readonly throttle: Pick<Throttle, "acquire" | "dispatched">;
   /** robots.txt policy for the URL's origin (fetched and cached by the caller). */
   readonly robots: (url: URL) => Promise<RobotsPolicy>;
   /** Same-site test applied to every redirect hop. */
@@ -22,7 +23,7 @@ export type FetchOutcomeKind =
   | "off-site-redirect" // a redirect left the crawl scope; not followed
   | "too-many-redirects"
   | "bad-redirect" // unparsable or non-http(s) Location
-  | "network-error" // DNS, connection, TLS, timeout â€¦
+  | "network-error" // DNS, connection, TLS, timeout …
   | "cancelled";
 
 export interface FetchOutcome {
@@ -40,6 +41,10 @@ export interface FetchOutcome {
   readonly retryable: boolean;
   /** Decoded body, only for 2xx HTML. */
   readonly html: string | null;
+  /** Raw body bytes as received, only for 2xx HTML (for fetch_bodies). */
+  readonly rawBody: Uint8Array | null;
+  /** True if the body was cut at maxBodyBytes. */
+  readonly truncated: boolean;
 }
 
 const REDIRECT = new Set([301, 302, 303, 307, 308]);
@@ -121,6 +126,8 @@ export async function fetchPage(url: URL, deps: PageFetchDeps): Promise<FetchOut
     error,
     retryable: false,
     html: null,
+    rawBody: null,
+    truncated: false,
     ...extra,
   });
 
@@ -136,20 +143,39 @@ export async function fetchPage(url: URL, deps: PageFetchDeps): Promise<FetchOut
           : `disallow ${decision.rule?.pattern ?? ""} (robots.txt line ${decision.rule?.line ?? "?"})`;
       return outcome("blocked", `blocked by robots.txt: ${current.toString()}: ${why}`);
     }
+    const crawlDelay = policy.crawlDelayMs;
+    if (crawlDelay !== null && crawlDelay > deps.config.maxCrawlDelayMs) {
+      return outcome(
+        "blocked",
+        `host not crawled: robots.txt Crawl-delay ${crawlDelay} ms exceeds maxCrawlDelayMs ${deps.config.maxCrawlDelayMs}`,
+      );
+    }
 
     await deps.throttle.acquire(current);
-    if (aborted()) return outcome("cancelled", "cancelled");
+    if (aborted()) {
+      await deps.throttle.dispatched?.(current); // release the slot (counted as used: polite)
+      return outcome("cancelled", "cancelled");
+    }
 
     const timeout = AbortSignal.timeout(deps.config.fetchTimeoutMs);
     const signal = deps.signal !== undefined ? AbortSignal.any([timeout, deps.signal]) : timeout;
-    let res: Response;
+    let pending: Promise<Response>;
     try {
-      res = await deps.fetch(current, {
+      pending = deps.fetch(current, {
         method: "GET",
         headers: requestHeaders(deps.config),
         redirect: "manual",
         signal,
       });
+    } catch (err) {
+      pending = Promise.reject(err instanceof Error ? err : new Error(String(err)));
+    }
+    pending.catch(() => undefined); // handled below; avoid an unhandled-rejection report meanwhile
+    // Mark the dispatch only after the request has been issued, so the next one waits from here.
+    await deps.throttle.dispatched?.(current);
+    let res: Response;
+    try {
+      res = await pending;
     } catch (err) {
       if (aborted()) return outcome("cancelled", "cancelled");
       return outcome("network-error", `${current.toString()}: ${describeError(err)}`, {
@@ -194,14 +220,16 @@ export async function fetchPage(url: URL, deps: PageFetchDeps): Promise<FetchOut
       });
     }
     const contentType = res.headers.get("content-type");
-    const ok = res.status >= 200 && res.status < 300;
+    const html = res.status >= 200 && res.status < 300 && isHtml(contentType);
     return outcome(
       "ok",
       body.truncated ? `body truncated at ${deps.config.maxBodyBytes} bytes` : null,
       {
         bytes: body.bytes.length,
         retryable: res.status >= 500,
-        html: ok && isHtml(contentType) ? decodeBody(body.bytes, contentType) : null,
+        html: html ? decodeBody(body.bytes, contentType) : null,
+        rawBody: html ? body.bytes : null,
+        truncated: body.truncated,
       },
     );
   }

@@ -42,6 +42,7 @@ describe("migrations", () => {
     expect(rows.map((r) => r.tablename)).toEqual([
       "artefacts",
       "discovery_observations",
+      "fetch_bodies",
       "fetches",
       "link_observations",
       "pages",
@@ -221,6 +222,74 @@ describe("typed helpers round-trip", () => {
     ).toBe("23514");
   });
 
+  it("numbers attempts and exposes each URL's last attempt via final_fetches", async () => {
+    const { run } = await seedRun(); // seeds one fetch of https://example.com/ (attempt 1)
+    const u = "https://example.com/flaky";
+    await q.insertFetch(db, { runId: run.id, requestedUrl: u, statusCode: 503, attempt: 1 });
+    await q.insertFetch(db, { runId: run.id, requestedUrl: u, statusCode: 503, attempt: 2 });
+    const last = await q.insertFetch(db, {
+      runId: run.id,
+      requestedUrl: u,
+      statusCode: 200,
+      attempt: 3,
+    });
+    expect(last.attempt).toBe(3);
+    const final = await q.listFinalFetches(db, run.id);
+    expect(final.map((f) => [f.requestedUrl, f.attempt, f.statusCode])).toEqual([
+      ["https://example.com/", 1, null],
+      [u, 3, 200],
+    ]);
+    expect(await sqlState(q.insertFetch(db, { runId: run.id, requestedUrl: u, attempt: 0 }))).toBe(
+      "23514",
+    );
+  });
+
+  it("lists a URL's fetch history across runs, newest first", async () => {
+    const u = `https://history.example/robots.txt?${Date.now()}`;
+    const a = await seedRun();
+    const b = await seedRun();
+    await q.insertFetch(db, {
+      runId: a.run.id,
+      requestedUrl: u,
+      fetchedAt: new Date("2026-01-01"),
+    });
+    await q.insertFetch(db, {
+      runId: b.run.id,
+      requestedUrl: u,
+      fetchedAt: new Date("2026-02-01"),
+    });
+    const history = await q.listFetchHistory(db, u, 10);
+    expect(history.map((f) => f.runId)).toEqual([b.run.id, a.run.id]);
+    expect(await q.listFetchHistory(db, u, 1)).toHaveLength(1);
+  });
+
+  it("stores raw bodies byte-for-byte", async () => {
+    const { run, fetch } = await seedRun();
+    const bytes = Buffer.from([0x3c, 0x70, 0x3e, 0xe2, 0x9c, 0x93, 0x00, 0xff]);
+    await q.insertFetchBody(db, {
+      fetchId: fetch.id,
+      runId: run.id,
+      body: bytes,
+      truncated: true,
+      sha256: "b".repeat(64),
+    });
+    const row = await q.getFetchBody(db, fetch.id);
+    expect(Buffer.from(row?.body ?? [])).toEqual(bytes);
+    expect(row).toMatchObject({ runId: run.id, truncated: true, sha256: "b".repeat(64) });
+    expect(await q.getFetchBody(db, 999_999_999)).toBeNull();
+    expect(
+      await sqlState(
+        q.insertFetchBody(db, {
+          fetchId: fetch.id,
+          runId: run.id,
+          body: bytes,
+          truncated: false,
+          sha256: "x",
+        }),
+      ),
+    ).toBe("23514");
+  });
+
   it("enforces foreign keys", async () => {
     expect(
       await sqlState(
@@ -233,7 +302,13 @@ describe("typed helpers round-trip", () => {
 describe("append-only enforcement", () => {
   const RESTRICT_VIOLATION = "23001";
 
-  for (const table of ["link_observations", "discovery_observations"] as const) {
+  const textColumn = {
+    link_observations: "raw_href",
+    discovery_observations: "url",
+    fetch_bodies: "sha256",
+  } as const;
+
+  for (const table of ["link_observations", "discovery_observations", "fetch_bodies"] as const) {
     describe(table, () => {
       let runId: number;
 
@@ -246,10 +321,17 @@ describe("append-only enforcement", () => {
         await q.insertDiscoveryObservations(db, [
           { runId, channel: "xml_sitemap", url: "https://example.com/x" },
         ]);
+        await q.insertFetchBody(db, {
+          fetchId: fetch.id,
+          runId,
+          body: Buffer.from("<p>x</p>"),
+          truncated: false,
+          sha256: "a".repeat(64),
+        });
       });
 
       it("blocks UPDATE", async () => {
-        const col = table === "link_observations" ? "raw_href" : "url";
+        const col = textColumn[table];
         expect(
           await sqlState(
             db.query(`UPDATE ${table} SET ${col} = 'changed' WHERE run_id = $1`, [runId]),

@@ -19,6 +19,11 @@ export interface ExtractedLink {
   readonly domRegion: string | null;
   /** e.g. "html>body>nav>ul>li:nth-of-type(2)>a". */
   readonly domPath: string;
+  /**
+   * The DOM path without positions plus the region, e.g. "nav|html>body>nav>ul>li>a". Links that
+   * share it sit in the same repeated structure, which is a raw hint for template/boilerplate links.
+   */
+  readonly templateSignature: string;
   /** 0-based position among the document's links. */
   readonly positionIndex: number;
 }
@@ -34,6 +39,8 @@ export interface ExtractedPage {
   readonly paragraphs: string[];
   readonly lang: string | null;
   readonly links: ExtractedLink[];
+  /** meta robots contains "nofollow" or "none". */
+  readonly nofollow: boolean;
 }
 
 const SKIP_TEXT = new Set(["script", "style", "noscript", "template", "head"]);
@@ -88,7 +95,7 @@ function region(el: Element): string | null {
   return null;
 }
 
-function hasRelToken(el: Element, token: string): boolean {
+export function hasRelToken(el: Pick<Element, "attribs">, token: string): boolean {
   return (el.attribs["rel"] ?? "").toLowerCase().split(/\s+/).includes(token);
 }
 
@@ -129,13 +136,16 @@ export function extractPage(html: string, pageUrl: string): ExtractedPage {
     const resolved = resolveHref(rawHref, base);
     const anchor =
       collapse(text(el)) || collapse(el.attribs["aria-label"] ?? el.attribs["alt"] ?? "");
+    const path = domPath(el);
+    const regionName = region(el);
     return {
       rawHref,
       resolvedUrl: resolved?.toString() ?? null,
       anchorText: orNull(anchor),
       rel: el.attribs["rel"] ?? null,
-      domRegion: region(el),
-      domPath: domPath(el),
+      domRegion: regionName,
+      domPath: path,
+      templateSignature: `${regionName ?? "-"}|${path.replace(/:nth-of-type\(\d+\)/g, "")}`,
       positionIndex,
     };
   });
@@ -152,5 +162,6 @@ export function extractPage(html: string, pageUrl: string): ExtractedPage {
       .filter((p) => p !== ""),
     lang: html0?.attribs["lang"] ?? null,
     links,
+    nofollow: /(^|[\s,])(nofollow|none)($|[\s,])/i.test(robotsMeta?.attribs["content"] ?? ""),
   };
 }

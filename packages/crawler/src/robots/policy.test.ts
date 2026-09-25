@@ -74,6 +74,14 @@ describe("fetchRobots: status handling (RFC 9309 §2.3.1)", () => {
     expect(record.statusCode).toBe(status);
   });
 
+  it("429 with robotsTreat429AsUnreachable: unreachable → disallow all", async () => {
+    const f = fakeFetch({ "https://www.example.com/robots.txt": text("", 429) });
+    const strict = makeConfig({ ...config, robotsTreat429AsUnreachable: true });
+    const { policy } = await fetchRobots(site, { config: strict, fetch: f });
+    expect(policy.source).toEqual({ kind: "unreachable", detail: "HTTP 429" });
+    expect(policy.isAllowed("https://www.example.com/anything")).toBe(false);
+  });
+
   it.each([500, 502, 503, 504, 599])("%i: unreachable → disallow all", async (status) => {
     const f = fakeFetch({ "https://www.example.com/robots.txt": text("", status) });
     const { policy } = await fetchRobots(site, { config, fetch: f });
