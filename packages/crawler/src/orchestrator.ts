@@ -9,7 +9,7 @@ import { extractPage } from "./extract.js";
 import { fetchPage, type FetchOutcomeKind } from "./fetcher.js";
 import { Frontier } from "./frontier.js";
 import { RedisHostThrottle } from "./redis-throttle.js";
-import { applyUnreachableGrace, fetchRobots, type RobotsPolicy } from "./robots/index.js";
+import { RobotsStore } from "./robots-store.js";
 import { stripFragment } from "./html/resolve.js";
 import { isHttpUrl, makeScope, requestKey, resolveHref } from "./scope.js";
 import { systemClock, type Clock } from "./throttle.js";
@@ -274,11 +274,6 @@ interface HandleEvents {
   error: [Error];
 }
 
-interface CachedRobots {
-  readonly policy: Promise<RobotsPolicy>;
-  readonly fetchedAt: number;
-}
-
 /** A running crawl. Emits `progress` after every finished URL, `done` once, `error` on faults. */
 export class CrawlHandle extends EventEmitter<HandleEvents> {
   readonly runId: number;
@@ -290,7 +285,7 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
   private readonly queue: Queue<CrawlJobData>;
   private readonly throttle: RedisHostThrottle;
   private readonly inScope: (url: URL) => boolean;
-  private readonly robotsCache = new Map<string, CachedRobots>();
+  private readonly robots: RobotsStore;
   private readonly abort = new AbortController();
   private worker: Worker<CrawlJobData, CrawlJobResult> | null = null;
   private stopping = false;
@@ -308,6 +303,14 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
     this.frontier = orchestrator.frontierFor(settings.runId, settings.config.pageCap);
     this.queue = orchestrator.queueFor(settings.runId);
     this.throttle = new RedisHostThrottle(redis, settings.prefix, settings.config, settings.clock);
+    this.robots = new RobotsStore(
+      db,
+      settings.runId,
+      settings.config,
+      this.throttle,
+      settings.fetch,
+      settings.clock,
+    );
     this.inScope = makeScope(settings.seed, settings.config.includeSubdomains);
     this.done = new Promise((resolve) => (this.resolveDone = resolve));
   }
@@ -447,76 +450,6 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
     }
   }
 
-  /**
-   * robots.txt for the URL's origin, stored as a fetch. Cached per origin for at most
-   * config.robotsCacheTtlMs (RFC 9309 §2.4). A failed lookup is not cached, so the next request
-   * retries it instead of inheriting the failure.
-   */
-  private robotsFor(url: URL): Promise<RobotsPolicy> {
-    const now = this.settings.clock.now();
-    const cached = this.robotsCache.get(url.origin);
-    if (cached !== undefined && now - cached.fetchedAt < this.config.robotsCacheTtlMs) {
-      return cached.policy;
-    }
-    const policy = this.loadRobots(url);
-    this.robotsCache.set(url.origin, { policy, fetchedAt: now });
-    policy.catch(() => {
-      if (this.robotsCache.get(url.origin)?.policy === policy) this.robotsCache.delete(url.origin);
-    });
-    return policy;
-  }
-
-  private async loadRobots(url: URL): Promise<RobotsPolicy> {
-    const robotsUrl = new URL("/robots.txt", url);
-    await this.throttle.acquire(robotsUrl);
-    // fetchRobots issues its first request synchronously; mark the dispatch once it is out.
-    const pending = fetchRobots(url, { config: this.config, fetch: this.settings.fetch });
-    await this.throttle.dispatched(robotsUrl);
-    const { policy: fetched, record } = await pending;
-    await q.insertFetch(this.db, {
-      runId: this.runId,
-      requestedUrl: record.requestedUrl,
-      finalUrl: record.finalUrl,
-      statusCode: record.statusCode,
-      redirectChain: [...record.redirectChain],
-      headers: {},
-      contentType: null,
-      fetchedAt: record.fetchedAt,
-      bytes: null,
-      error:
-        record.error ??
-        (fetched.source.kind === "parsed"
-          ? null
-          : `robots.txt ${fetched.source.kind}: ${fetched.source.detail}`),
-    });
-
-    let policy = fetched;
-    if (fetched.source.kind === "unreachable") {
-      const history = await q.listFetchHistory(this.db, record.requestedUrl, 1000);
-      policy = applyUnreachableGrace(
-        fetched,
-        history,
-        record.fetchedAt,
-        this.config.robotsUnreachableGraceDays,
-        this.config.robotsTreat429AsUnreachable,
-      );
-    }
-
-    await this.throttle.setRobotsCrawlDelay(url, policy.crawlDelayMs);
-    if (policy.sitemaps.length > 0) {
-      await q.insertDiscoveryObservations(
-        this.db,
-        policy.sitemaps.map((s) => ({
-          runId: this.runId,
-          channel: "robots_sitemap" as const,
-          url: s.url,
-          sourceDocument: record.finalUrl ?? record.requestedUrl,
-        })),
-      );
-    }
-    return policy;
-  }
-
   private async process(job: Job<CrawlJobData, CrawlJobResult>): Promise<CrawlJobResult> {
     const { url, depth } = job.data;
     const cancelled: CrawlJobResult = { url, depth, outcome: "cancelled", statusCode: null };
@@ -528,7 +461,7 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
         config: this.config,
         fetch: this.settings.fetch,
         throttle: this.throttle,
-        robots: (u) => this.robotsFor(u),
+        robots: (u) => this.robots.policyFor(u),
         inScope: this.inScope,
         signal: this.abort.signal,
       },
@@ -549,7 +482,7 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
       error: o.error,
       attempt,
     });
-    if (o.rawBody !== null && this.config.storeRawHtml) {
+    if (o.rawBody !== null && o.html !== null && this.config.storeRawHtml) {
       await q.insertFetchBody(this.db, {
         fetchId: fetchRow.id,
         runId: this.runId,

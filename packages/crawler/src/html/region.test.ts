@@ -39,6 +39,7 @@ describe("classifyRegion on the fixture pages", () => {
       ["/blog/", "blog", "main"], // #content.site-content
       ["/", "Home", "aside"], // .sidebar
       ["/about.html", "About", "footer"], // role=contentinfo
+      ["/site-map/", "Site map", "footer"],
     ]);
   });
 

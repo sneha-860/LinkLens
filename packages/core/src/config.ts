@@ -81,6 +81,17 @@ export interface LinkLensConfig {
   readonly betweennessExactMaxNodes: number;
   /** Number of source nodes sampled (with randomSeed) when betweenness is estimated. */
   readonly betweennessSamples: number;
+  /**
+   * Max requests the discovery channels may make per run (sitemaps, feeds, HTML sitemaps,
+   * llms.txt, common-path probes). Separate from pageCap, which counts crawl fetches only.
+   */
+  readonly discoveryMaxFetches: number;
+  /** Max sitemap-index nesting followed: the first sitemap is depth 0; deeper files are skipped. */
+  readonly sitemapMaxDepth: number;
+  /** Max <loc> entries read from one sitemap file (the sitemaps.org protocol limit is 50,000). */
+  readonly sitemapMaxUrls: number;
+  /** Store the raw bytes of discovery documents (sitemaps, feeds, llms.txt) in fetch_bodies. */
+  readonly storeDiscoveryBodies: boolean;
 }
 
 export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
@@ -114,6 +125,10 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   pagerankMaxIterations: 1_000,
   betweennessExactMaxNodes: 300,
   betweennessSamples: 100,
+  discoveryMaxFetches: 100,
+  sitemapMaxDepth: 3,
+  sitemapMaxUrls: 50_000,
+  storeDiscoveryBodies: true,
 });
 
 function assertUnitInterval(name: keyof LinkLensConfig, value: number): void {
@@ -161,11 +176,15 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   assertPositiveInt("pagerankMaxIterations", cfg.pagerankMaxIterations);
   assertPositiveInt("betweennessExactMaxNodes", cfg.betweennessExactMaxNodes);
   assertPositiveInt("betweennessSamples", cfg.betweennessSamples);
+  assertPositiveInt("discoveryMaxFetches", cfg.discoveryMaxFetches);
+  assertNonNegativeInt("sitemapMaxDepth", cfg.sitemapMaxDepth);
+  assertPositiveInt("sitemapMaxUrls", cfg.sitemapMaxUrls);
   for (const flag of [
     "includeSubdomains",
     "robotsTreat429AsUnreachable",
     "followNofollow",
     "storeRawHtml",
+    "storeDiscoveryBodies",
   ] as const) {
     if (typeof cfg[flag] !== "boolean") throw new RangeError(`config.${flag} must be a boolean`);
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DISCOVERY_CHANNELS } from "./index.js";
+import { DISCOVERY_CHANNELS } from "./channels.js";
 
 describe("DISCOVERY_CHANNELS", () => {
   it("lists the six channels in the order the spec gives them", () => {

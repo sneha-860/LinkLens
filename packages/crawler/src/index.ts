@@ -9,3 +9,5 @@ export * from "./fetcher.js";
 export * from "./frontier.js";
 export * from "./redis-throttle.js";
 export * from "./orchestrator.js";
+export * from "./discovery/index.js";
+export * from "./robots-store.js";

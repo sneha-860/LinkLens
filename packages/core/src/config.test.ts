@@ -34,6 +34,10 @@ describe("defaultConfig", () => {
       pagerankMaxIterations: 1_000,
       betweennessExactMaxNodes: 300,
       betweennessSamples: 100,
+      discoveryMaxFetches: 100,
+      sitemapMaxDepth: 3,
+      sitemapMaxUrls: 50_000,
+      storeDiscoveryBodies: true,
     });
   });
 
@@ -78,6 +82,8 @@ describe("makeConfig", () => {
     [{ pagerankTolerance: 0 }],
     [{ pagerankMaxIterations: 0 }],
     [{ betweennessSamples: 0 }],
+    [{ discoveryMaxFetches: 0 }],
+    [{ sitemapMaxDepth: -1 }],
   ])("rejects invalid override %o", (overrides) => {
     expect(() => makeConfig(overrides)).toThrow(RangeError);
   });

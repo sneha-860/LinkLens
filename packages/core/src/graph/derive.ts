@@ -147,16 +147,18 @@ export interface PersistedGraph extends DerivedGraph {
   readonly artefact: ArtefactRow;
 }
 
+export interface RunGraphInputs {
+  readonly observations: GraphObservations;
+  readonly context: CanonicalContext;
+  readonly config: Readonly<LinkLensConfig>;
+}
+
 /**
- * Load a run's raw observations, derive the graph under `policyId` using the run's own stored
- * config (so re-deriving is reproducible), and persist it as a `link-graph` artefact tagged with
- * the run id and the policy version. The payload is graphology's serialisation of the graph.
+ * A run's crawl observations and the P4/P5 context built from them, using the run's stored
+ * config. Only `crawl` fetches feed the context, so discovery (which runs later) cannot change
+ * the graph derived from a crawl.
  */
-export async function deriveGraph(
-  db: Queryable,
-  runId: number,
-  policyId: PolicyId,
-): Promise<PersistedGraph> {
+export async function loadRunGraphInputs(db: Queryable, runId: number): Promise<RunGraphInputs> {
   const run = await getRun(db, runId);
   if (run === null) throw new Error(`run ${runId} not found`);
   const site = await getSite(db, run.siteId);
@@ -168,11 +170,17 @@ export async function deriveGraph(
     listLinkObservations(db, runId),
     listFetches(db, runId),
   ]);
-  const context = buildCanonicalContext(observationsFromRows(fetches, pages), {
-    maxCanonicalHops: config.canonicalMaxHops,
-  });
-  const derived = deriveGraphFromObservations(
-    {
+  const context = buildCanonicalContext(
+    observationsFromRows(
+      fetches.filter((f) => f.purpose === "crawl"),
+      pages,
+    ),
+    { maxCanonicalHops: config.canonicalMaxHops },
+  );
+  return {
+    config,
+    context,
+    observations: {
       runId,
       seedUrl: site.rootUrl,
       pages: pages.map((p) => ({ fetchId: p.fetchId, url: p.url })),
@@ -186,10 +194,21 @@ export async function deriveGraph(
         rel: l.rel,
       })),
     },
-    policyId,
-    context,
-    config,
-  );
+  };
+}
+
+/**
+ * Load a run's raw observations, derive the graph under `policyId` using the run's own stored
+ * config (so re-deriving is reproducible), and persist it as a `link-graph` artefact tagged with
+ * the run id and the policy version. The payload is graphology's serialisation of the graph.
+ */
+export async function deriveGraph(
+  db: Queryable,
+  runId: number,
+  policyId: PolicyId,
+): Promise<PersistedGraph> {
+  const { observations, context, config } = await loadRunGraphInputs(db, runId);
+  const derived = deriveGraphFromObservations(observations, policyId, context, config);
   const artefact = await insertArtefact(db, {
     runId,
     policyVersion: derived.summary.policyVersion,

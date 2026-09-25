@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Depth 4 from sitemap_index.xml: beyond sitemapMaxDepth (3), never fetched. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>/too-deep.html</loc></url>
+</urlset>

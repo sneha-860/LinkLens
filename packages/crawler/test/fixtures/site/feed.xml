@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Fixture blog</title>
+    <link>/</link>
+    <item><title>Post one</title><link>/blog/post-1.html</link></item>
+    <item><title>Only in the feed</title><guid isPermaLink="true">/rss-orphan.html</guid></item>
+  </channel>
+</rss>

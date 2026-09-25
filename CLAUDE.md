@@ -212,6 +212,39 @@ whenever the output can change.**
   - Betweenness: Brandes, unweighted, directed. Exact up to `betweennessExactMaxNodes` (300); above
     that, `betweennessSamples` sources are drawn with `randomSeed` and the result is scaled by N/k.
 
+### Discovery channels (crawler/src/discovery, core/src/discovery)
+
+- `new DiscoveryRunner({ pool, redisUrl, prefix }).run(runId)` runs after a crawl. It uses the **same
+  prefix** as the crawl so the throttle is shared. Each channel goes separately into
+  `discovery_observations`, with `source_document` and a raw `detail` (provenance):
+  1. `link_graph`: the seed (`kind: "seed"`) and every link observation (`linkObservationId`,
+     anchor, region).
+  2. `xml_sitemap`: pages in sitemaps found at conventional paths (`/sitemap.xml`,
+     `/sitemap_index.xml`, `/sitemap.xml.gz`).
+  3. `robots_sitemap`: pages in sitemaps declared by robots.txt. The `Sitemap:` lines themselves are
+     stored with `detail.kind = "directive"` (sitemap files, not pages; reconciliation skips them).
+     Sitemaps: indexes are followed to `sitemapMaxDepth`; gzip is detected by magic bytes; cycles
+     are skipped; `detail` holds `rawLoc`, `lastmod`, `depth` and the `via` chain. A sitemap reached
+     both ways credits both channels.
+  4. `html_sitemap`: links outside page chrome on HTML sitemap pages. Candidates are links labelled
+     "sitemap"/"site map" and conventional paths; a path hit must have "sitemap" in its title/h1.
+     Pages already crawled reuse their stored body.
+  5. `feed`: RSS 2.0, RDF and Atom entry links, from `<link rel=alternate>` in crawled pages and
+     from conventional paths.
+  6. `llms_txt`: Markdown links in `/llms.txt`, with their section.
+- Discovery requests go through `fetchPage` (scope, robots.txt per hop, shared throttle). They are
+  stored as `fetches.purpose = 'discovery'`, each document is requested at most once, and they count
+  toward `discoveryMaxFetches`, **never `pageCap`**. robots.txt loading is shared with the crawl
+  (`RobotsStore`, `purpose = 'robots'`).
+- `reconcileDiscovery(db, runId, policyId)` (core) derives the policy's link graph for
+  reachability, maps each internal non-directive observation to a node, and appends a
+  `discovery-reconciliation` artefact:
+  - `inventory` (union of channels) with per-node `channels`, `sources`, raw `urls`, `reachable`,
+    `depth` and `orphan`
+  - `orphans`: found by a non-link channel but not reachable in the link graph
+  - per-channel `total`, `exclusive` (marginal yield) and `orphans`
+- The P4/P5 context uses only `crawl` fetches, so discovery never changes a derived graph.
+
 ### Database
 
 - Postgres 16 + Redis 7 via `docker-compose.yml` (Postgres on host port **5433**).

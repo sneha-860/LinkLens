@@ -1,18 +1,7 @@
 /**
- * Reconciliation of the six discovery channels (link graph, XML sitemap, robots.txt Sitemap,
- * HTML sitemap, RSS/Atom, llms.txt) with per-channel provenance; orphan detection.
- *
- * Reconciliation is not implemented yet.
+ * Discovery channels and their reconciliation: which URLs each channel found, which are
+ * orphans (found only outside the link graph), and each channel's marginal yield.
+ * Collection (fetching) lives in packages/crawler/src/discovery.
  */
-
-/** The six discovery channels. Values match the `discovery_observations.channel` CHECK constraint. */
-export const DISCOVERY_CHANNELS = [
-  "link_graph",
-  "xml_sitemap",
-  "robots_sitemap",
-  "html_sitemap",
-  "feed",
-  "llms_txt",
-] as const;
-
-export type DiscoveryChannel = (typeof DISCOVERY_CHANNELS)[number];
+export * from "./channels.js";
+export * from "./reconcile.js";

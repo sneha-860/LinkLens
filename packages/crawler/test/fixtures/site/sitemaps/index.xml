@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Declared in robots.txt (not at a conventional path, so only robots.txt finds it). Includes itself (cycle) and a nesting chain deeper than sitemapMaxDepth. -->
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap><loc>/sitemaps/pages.xml</loc></sitemap>
+  <sitemap><loc>/sitemaps/posts.xml.gz</loc></sitemap>
+  <sitemap><loc>/sitemaps/index.xml</loc></sitemap>
+  <sitemap><loc>/sitemaps/nested-1.xml</loc></sitemap>
+</sitemapindex>

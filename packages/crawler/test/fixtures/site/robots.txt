@@ -5,8 +5,9 @@ Disallow: /
 User-agent: LinkLensBot
 Disallow: /private/
 Disallow: /tmp/
+Disallow: /index.xml
 Allow: /private/public-note.html
 Crawl-delay: 0.02
 
-Sitemap: /sitemap.xml
+Sitemap: /sitemaps/index.xml
 Sitemap: https://fixture.invalid/other-sitemap.xml

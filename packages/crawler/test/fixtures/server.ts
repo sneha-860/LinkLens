@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+import { gzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 
@@ -114,6 +115,14 @@ export async function startFixtureServer(
       }
       case "/image.png":
         send(res, 200, "image/png", PNG);
+        return;
+      case "/sitemaps/posts.xml.gz":
+        send(
+          res,
+          200,
+          "application/gzip",
+          gzipSync(readFileSync(join(SITE_DIR, "sitemaps/posts.xml"))),
+        );
         return;
     }
     const file = files.get(path.endsWith("/") ? `${path}index.html` : path);

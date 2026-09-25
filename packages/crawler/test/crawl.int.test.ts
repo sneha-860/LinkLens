@@ -17,7 +17,7 @@ const BASE_CONFIG: Partial<LinkLensConfig> = {
   retryBackoffMs: 50,
   maxRedirects: 3,
 };
-const TOTAL_URLS = 31;
+const TOTAL_URLS = 32;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 let pool: pg.Pool;
@@ -103,6 +103,7 @@ const ALL_PATHS = [
   "/blog/post-2.html",
   "/nofollow-page.html",
   "/only-from-nofollow-page.html",
+  "/site-map/", // linked from about.html's footer ("Site map")
 ];
 
 describe("full crawl of the fixture site", () => {
@@ -149,10 +150,16 @@ describe("full crawl of the fixture site", () => {
   it("records robots.txt Sitemap directives raw as a discovery channel", async () => {
     const obs = await q.listDiscoveryObservations(db, runId, "robots_sitemap");
     expect(obs.map((d) => d.url)).toEqual([
-      "/sitemap.xml",
+      "/sitemaps/index.xml",
       "https://fixture.invalid/other-sitemap.xml",
     ]);
     expect(obs[0]?.sourceDocument).toBe(`${o}/robots.txt`);
+    expect(obs.map((d) => d.detail)).toEqual([
+      { kind: "directive", line: 12 },
+      { kind: "directive", line: 13 },
+    ]);
+    expect(fetches[0]?.purpose).toBe("robots");
+    expect(new Set(fetches.slice(1).map((f) => f.purpose))).toEqual(new Set(["crawl"]));
   });
 
   it("crawls exactly the linked in-scope URLs, deduped by string only", () => {
@@ -252,7 +259,7 @@ describe("full crawl of the fixture site", () => {
 
   it("stores one page per crawled HTML document, keeping canonical/robots tags raw", async () => {
     const pages = await q.listPages(db, runId);
-    expect(pages).toHaveLength(18);
+    expect(pages).toHaveLength(19);
     expect(count(pages, (p) => p.url)[`${o}/about.html`]).toBe(1); // chain-a's target not re-extracted
     expect(pages.find((p) => p.url === `${o}/moved.html`)).toBeDefined();
 

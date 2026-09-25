@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Found only by the conventional path /atom.xml. -->
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Fixture Atom</title>
+  <link href="/" />
+  <entry>
+    <title>Post two</title>
+    <link rel="alternate" href="/blog/post-2.html" />
+    <link rel="edit" href="/edit/2" />
+  </entry>
+</feed>

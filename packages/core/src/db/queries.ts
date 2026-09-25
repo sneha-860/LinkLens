@@ -22,7 +22,7 @@ import type {
   RunStatus,
   SiteRow,
 } from "./types.js";
-import type { DiscoveryChannel } from "../discovery/index.js";
+import type { DiscoveryChannel } from "../discovery/channels.js";
 
 // SELECT lists that map snake_case columns to the camelCase row types.
 const SITE_COLS = `id, root_url AS "rootUrl", architecture_class AS "architectureClass",
@@ -31,7 +31,7 @@ const RUN_COLS = `id, site_id AS "siteId", started_at AS "startedAt", finished_a
   config_json AS "config", status, seed`;
 const FETCH_COLS = `id, run_id AS "runId", requested_url AS "requestedUrl", final_url AS "finalUrl",
   status_code AS "statusCode", redirect_chain AS "redirectChain", headers,
-  content_type AS "contentType", fetched_at AS "fetchedAt", bytes, error, attempt`;
+  content_type AS "contentType", fetched_at AS "fetchedAt", bytes, error, attempt, purpose`;
 const FETCH_BODY_COLS = `fetch_id AS "fetchId", run_id AS "runId", body, truncated, sha256,
   created_at AS "createdAt"`;
 const PAGE_COLS = `id, run_id AS "runId", fetch_id AS "fetchId", url, title, h1, headings,
@@ -42,7 +42,7 @@ const LINK_COLS = `id, run_id AS "runId", source_fetch_id AS "sourceFetchId", ra
   dom_path AS "domPath", template_signature AS "templateSignature",
   position_index AS "positionIndex"`;
 const DISCOVERY_COLS = `id, run_id AS "runId", channel, url, source_document AS "sourceDocument",
-  observed_at AS "observedAt"`;
+  observed_at AS "observedAt", detail`;
 const ARTEFACT_COLS = `id, run_id AS "runId", policy_version AS "policyVersion", kind, payload,
   created_at AS "createdAt"`;
 
@@ -140,6 +140,7 @@ const FETCH_SPEC: readonly ColumnSpec<NewFetch>[] = [
   { column: "bytes", get: (f) => f.bytes ?? null },
   { column: "error", get: (f) => f.error ?? null },
   { column: "attempt", get: (f) => f.attempt ?? 1 },
+  { column: "purpose", get: (f) => f.purpose ?? "crawl" },
 ];
 
 export async function insertFetch(db: Queryable, fetch: NewFetch): Promise<FetchRow> {
@@ -268,6 +269,7 @@ const DISCOVERY_SPEC: readonly ColumnSpec<NewDiscoveryObservation>[] = [
   { column: "url", get: (d) => d.url },
   { column: "source_document", get: (d) => d.sourceDocument ?? null },
   { column: "observed_at", get: (d) => d.observedAt ?? new Date() },
+  { column: "detail", get: (d) => d.detail ?? {}, json: true },
 ];
 
 export function insertDiscoveryObservations(

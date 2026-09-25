@@ -87,7 +87,8 @@ describe("extractPage: dom_path and template_signature", () => {
       "ul#menu-primary>li:nth-of-type(3)>a",
       "div#content>p:nth-of-type(2)>a",
       "div:nth-of-type(3)>a",
-      "div:nth-of-type(4)>a",
+      "div:nth-of-type(4)>a:nth-of-type(1)",
+      "div:nth-of-type(4)>a:nth-of-type(2)",
     ]);
     const home = fixture("index.html", "http://f.test/");
     expect(home.links[2]?.domPath).toBe("header>nav>ul>li:nth-of-type(3)>a");

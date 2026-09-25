@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Lists the orphan page, which no HTML page links to. -->
+<!-- Found only by the conventional path /sitemap.xml (robots.txt does not declare it).
+     Locs are relative only because the fixture server's port is random. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>/</loc></url>
   <url><loc>/about.html</loc></url>
-  <url><loc>/orphan.html</loc></url>
+  <url><loc>/orphan.html</loc><lastmod>2026-01-01</lastmod></url>
   <url><loc>/blog/post-1.html</loc></url>
 </urlset>

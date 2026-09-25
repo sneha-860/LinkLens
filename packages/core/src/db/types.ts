@@ -1,5 +1,5 @@
 import type { LinkLensConfig } from "../config.js";
-import type { DiscoveryChannel } from "../discovery/index.js";
+import type { DiscoveryChannel } from "../discovery/channels.js";
 
 /**
  * Anything that can run a parameterised SQL query. `packages/db` adapts a `pg` Pool/Client to
@@ -50,6 +50,9 @@ export interface NewRun {
 }
 
 // ---------- fetches ----------
+export const FETCH_PURPOSES = ["crawl", "robots", "discovery"] as const;
+export type FetchPurpose = (typeof FETCH_PURPOSES)[number];
+
 /** One 3xx response in a redirect chain. `location` is the raw Location header value. */
 export interface RedirectHop {
   url: string;
@@ -70,6 +73,8 @@ export interface FetchRow {
   error: string | null;
   /** 1 for the first try at this URL, 2+ for retries. */
   attempt: number;
+  /** Why the request was made; only "crawl" fetches count toward pageCap. */
+  purpose: FetchPurpose;
 }
 export interface NewFetch {
   runId: Id;
@@ -83,6 +88,7 @@ export interface NewFetch {
   bytes?: number | null;
   error?: string | null;
   attempt?: number;
+  purpose?: FetchPurpose;
 }
 
 // ---------- fetch_bodies (append-only) ----------
@@ -175,6 +181,8 @@ export interface DiscoveryObservationRow {
   url: string;
   sourceDocument: string | null;
   observedAt: Date;
+  /** Raw provenance (sitemap chain, raw loc, feed format, anchor text…). kind "directive" = not a page. */
+  detail: { [key: string]: Json };
 }
 export interface NewDiscoveryObservation {
   runId: Id;
@@ -182,6 +190,7 @@ export interface NewDiscoveryObservation {
   url: string;
   sourceDocument?: string | null;
   observedAt?: Date;
+  detail?: { [key: string]: Json };
 }
 
 // ---------- artefacts ----------

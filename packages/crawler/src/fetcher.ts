@@ -15,6 +15,8 @@ export interface PageFetchDeps {
   readonly inScope: (url: URL) => boolean;
   /** Aborts the in-flight request on cancellation. */
   readonly signal?: AbortSignal;
+  /** Return raw bytes for every 2xx response, not only HTML (discovery reads XML, feeds, text). */
+  readonly keepAllBodies?: boolean;
 }
 
 export type FetchOutcomeKind =
@@ -41,7 +43,7 @@ export interface FetchOutcome {
   readonly retryable: boolean;
   /** Decoded body, only for 2xx HTML. */
   readonly html: string | null;
-  /** Raw body bytes as received, only for 2xx HTML (for fetch_bodies). */
+  /** Raw body bytes as received: 2xx HTML, or any 2xx with keepAllBodies. */
   readonly rawBody: Uint8Array | null;
   /** True if the body was cut at maxBodyBytes. */
   readonly truncated: boolean;
@@ -232,7 +234,10 @@ export async function fetchPage(
         bytes: body.bytes.length,
         retryable: res.status >= 500,
         html: html ? decodeBody(body.bytes, contentType) : null,
-        rawBody: html ? body.bytes : null,
+        rawBody:
+          html || (deps.keepAllBodies === true && res.status >= 200 && res.status < 300)
+            ? body.bytes
+            : null,
         truncated: body.truncated,
       },
     );

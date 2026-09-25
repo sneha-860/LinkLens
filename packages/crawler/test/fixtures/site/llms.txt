@@ -1,0 +1,12 @@
+# Fixture Site
+
+> A small site used to test LinkLens.
+
+## Docs
+
+- [About](/about.html): who we are
+- [Deep page](/deep/6.html)
+
+## Optional
+
+- [Only listed here](/llms-orphan.html): not linked from any page
