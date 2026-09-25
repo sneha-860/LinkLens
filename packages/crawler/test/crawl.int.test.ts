@@ -288,13 +288,36 @@ describe("full crawl of the fixture site", () => {
       resolvedUrl: `${o}/about.html#team`,
       anchorText: "Team",
       domRegion: "nav",
-      domPath: "html>body>header>nav>ul>li:nth-of-type(3)>a",
-      templateSignature: "nav|html>body>header>nav>ul>li>a",
+      domPath: "header>nav>ul>li:nth-of-type(3)>a",
     });
+    // Every link in the header menu shares one template signature.
+    expect(new Set(links.slice(0, 7).map((l) => l.templateSignature)).size).toBe(1);
+    expect(links[0]?.templateSignature).toMatch(/^[0-9a-f]{16}$/);
     expect(links.find((l) => l.rawHref === "/image.png")?.anchorText).toBe("Logo");
-    expect(links.find((l) => l.rawHref === "http://[bad")?.resolvedUrl).toBeNull();
+    // RFC 3986 resolution only: an unusable URL is still recorded (and simply not fetched).
+    expect(links.find((l) => l.rawHref === "http://[bad")?.resolvedUrl).toBe("http://[bad");
     expect(links.find((l) => l.rawHref === "mailto:hi@example.com")?.domRegion).toBe("footer");
+    expect(links.find((l) => l.rawHref === "/deep/1.html")?.domRegion).toBe("main");
     expect(links.find((l) => l.rawHref === "/nofollow-target.html")?.rel).toBe("nofollow");
+  });
+
+  it("classifies regions across the crawl (breadcrumb, pagination, aside, header)", async () => {
+    const all = await q.listLinkObservations(db, runId);
+    expect(new Set(all.map((l) => l.domRegion))).toEqual(
+      new Set(["nav", "main", "footer", "header", "aside", "breadcrumb", "pagination", "body"]),
+    );
+  });
+
+  it("records meta robots nofollow on the page and still stores all its links", async () => {
+    const pages = await q.listPages(db, runId);
+    const nofollowPage = pages.find((p) => p.url === `${o}/nofollow-page.html`);
+    expect(nofollowPage).toMatchObject({ nofollow: true, metaRobots: "index, nofollow" });
+    expect(pages.filter((p) => p.nofollow)).toHaveLength(1);
+    const fetchId = byUrl("/nofollow-page.html")[0]?.id;
+    const links = (await q.listLinkObservations(db, runId)).filter(
+      (l) => l.sourceFetchId === fetchId,
+    );
+    expect(links.map((l) => l.rawHref)).toEqual(["/only-from-nofollow-page.html"]);
   });
 
   it("follows nofollow links by default (followNofollow = true)", () => {

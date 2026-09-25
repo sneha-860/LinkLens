@@ -4,11 +4,39 @@
     <title>Blog</title>
     <link rel="canonical" href="https://www.example.com/blog/" />
   </head>
-  <body>
-    <h1>Blog</h1>
-    <a href="post-1.html">Post one</a>
-    <a href="/blog/post-2.html">Post two</a>
-    <a href="../">Home</a>
-    <a href="/nofollow-page.html">Nofollow page</a>
+  <body class="blog">
+    <div id="masthead" class="site-header">
+      <div class="main-navigation">
+        <ul id="menu-primary" class="menu">
+          <li class="menu-item menu-item-11"><a href="/">Home</a></li>
+          <li class="menu-item menu-item-12"><a href="/about.html">About</a></li>
+          <li class="menu-item menu-item-13 current-menu-item current_page_item">
+            <a href="/blog/" aria-current="page">Blog</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+    <nav aria-label="Breadcrumb">
+      <ol>
+        <li><a href="../">Home</a></li>
+        <li><a href="/blog/" aria-current="page">Blog</a></li>
+      </ol>
+    </nav>
+    <main>
+      <h1>Blog</h1>
+      <article>
+        <header><a href="post-1.html">Post one</a></header>
+        <p>Summary of the first post.</p>
+      </article>
+      <article>
+        <header><a href="/blog/post-2.html">Post two</a></header>
+        <p>Summary of the second post.</p>
+      </article>
+      <p><a href="/nofollow-page.html">Nofollow page</a></p>
+      <nav class="pagination" aria-label="Posts">
+        <a href="/blog/post-1.html">1</a>
+        <a href="/blog/post-2.html">2</a>
+      </nav>
+    </main>
   </body>
 </html>

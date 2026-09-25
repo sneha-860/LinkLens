@@ -10,7 +10,8 @@ import { fetchPage, type FetchOutcomeKind } from "./fetcher.js";
 import { Frontier } from "./frontier.js";
 import { RedisHostThrottle } from "./redis-throttle.js";
 import { applyUnreachableGrace, fetchRobots, type RobotsPolicy } from "./robots/index.js";
-import { isHttpUrl, makeScope, requestKey } from "./scope.js";
+import { stripFragment } from "./html/resolve.js";
+import { isHttpUrl, makeScope, requestKey, resolveHref } from "./scope.js";
 import { systemClock, type Clock } from "./throttle.js";
 import { checkUserAgent } from "./user-agent.js";
 
@@ -521,14 +522,18 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
     const cancelled: CrawlJobResult = { url, depth, outcome: "cancelled", statusCode: null };
     if (this.stopping || (await this.frontier.isCancelled())) return cancelled;
 
-    const o = await fetchPage(new URL(url), {
-      config: this.config,
-      fetch: this.settings.fetch,
-      throttle: this.throttle,
-      robots: (u) => this.robotsFor(u),
-      inScope: this.inScope,
-      signal: this.abort.signal,
-    });
+    const o = await fetchPage(
+      new URL(url),
+      {
+        config: this.config,
+        fetch: this.settings.fetch,
+        throttle: this.throttle,
+        robots: (u) => this.robotsFor(u),
+        inScope: this.inScope,
+        signal: this.abort.signal,
+      },
+      url, // stored as requested_url exactly as it was discovered
+    );
     if (o.kind === "cancelled") return cancelled;
 
     const attempt = job.attemptsMade + 1;
@@ -588,6 +593,7 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
       bodyText: page.bodyText,
       paragraphs: page.paragraphs,
       lang: page.lang,
+      nofollow: page.nofollow,
     });
     await q.insertLinkObservations(
       this.db,
@@ -607,11 +613,12 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
 
     const children: { name: string; data: CrawlJobData; opts: JobsOptions }[] = [];
     for (const link of page.links) {
-      if (link.resolvedUrl === null) continue;
       if (!mayFollow(this.config, page.nofollow, link.rel)) continue;
-      const target = new URL(link.resolvedUrl);
-      if (!this.inScope(target)) continue;
-      const key = requestKey(target);
+      // The frontier key is the RFC 3986-resolved string minus its fragment; WHATWG parsing is
+      // used only to test scope and to send the request. Unparsable links are recorded, not fetched.
+      const target = resolveHref(link.resolvedUrl, pageUrl);
+      if (target === null || !this.inScope(target)) continue;
+      const key = stripFragment(link.resolvedUrl);
       if ((await this.frontier.admit(key)) === "admitted") {
         children.push({
           name: "fetch",

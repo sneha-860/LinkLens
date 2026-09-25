@@ -122,6 +122,8 @@ export interface PageRow {
   bodyText: string | null;
   paragraphs: string[];
   lang: string | null;
+  /** meta robots nofollow/none on this page (recorded; links are still all observed). */
+  nofollow: boolean;
 }
 export interface NewPage {
   runId: Id;
@@ -135,6 +137,7 @@ export interface NewPage {
   bodyText?: string | null;
   paragraphs?: string[];
   lang?: string | null;
+  nofollow?: boolean;
 }
 
 // ---------- link_observations (append-only) ----------

@@ -118,8 +118,10 @@ Adapted from patent **US 11,586,824 B2** (Belezko & McGoey, 2023).
   order. `crawlConcurrency = 1` (the default) keeps the order deterministic.
 - Frontier state in Redis: a seen-set plus an admitted counter, updated by one atomic Lua script.
   At most `pageCap` URLs are admitted.
-- Dedupe key = WHATWG-resolved URL with the fragment dropped (fragments are never sent to the
-  server). Nothing else is normalised: case, trailing slashes, queries and index files stay as they are.
+- Dedupe key = the link's `resolved_url` (RFC 3986, see below) with the fragment dropped (fragments
+  are never sent to the server). Nothing else is normalised: case, ports, percent-encoding, trailing
+  slashes, queries and index files stay as they are. WHATWG `URL` is used only to test scope and to
+  send the request. Links it cannot parse are recorded but not fetched.
 - Before every request, including each redirect hop: check scope, check robots.txt, wait on the
   per-host bucket. Redirects are followed manually and each hop is stored as
   `{url, statusCode, location}`.
@@ -129,9 +131,29 @@ Adapted from patent **US 11,586,824 B2** (Belezko & McGoey, 2023).
 - Only 2xx HTML is parsed, into `pages` and `link_observations`. Its raw bytes go into `fetch_bodies`
   (when `storeRawHtml` is on) with a SHA-256, so extraction can be re-run offline. A redirect target
   already in the frontier is not re-extracted.
-- `link_observations.template_signature` = region + DOM path without positions (a raw template hint).
 - nofollow: `followNofollow` (default true) enqueues rel=nofollow links and links on meta-nofollow
-  pages. Either way they are always recorded.
+  pages. Either way they are always recorded. `pages.nofollow` flags meta-robots nofollow/none.
+
+### HTML extraction (packages/crawler/src/extract.ts, src/html/)
+
+- Cheerio (parse5, so parsing matches browsers). One `link_observations` row per `<a href>` in
+  document order (`position_index`). `raw_href` is exactly as written.
+- `resolved_url`: RFC 3986 §5.2 resolution against the document base (the first `<base href>`,
+  itself resolved against the page URL, else the page URL), and **nothing else**. The only
+  preprocessing is the HTML-mandated strip of leading/trailing ASCII whitespace. The fragment is kept.
+  Never use WHATWG `URL` to produce it (that lower-cases hosts, drops ports, re-encodes).
+- `anchor_text`: link text including `img alt`; `aria-label` if there is no text.
+- `dom_region` (`src/html/region.ts`) is one of breadcrumb, pagination, nav, header, footer, aside,
+  main or body (the default). Evidence per element: breadcrumb/pagination signals first
+  (aria-label, class/id, schema.org BreadcrumbList, rel=next/prev on the link), then semantic
+  tags/ARIA roles, then class/id words. `<header>`/`<footer>` inside sectioning content are not
+  chrome. The nearest region wins, except that a nav inside a footer or aside reports the outer one.
+- `dom_path`: short CSS-like path from the nearest ancestor with an id (`tag#id`), or from `<body>`.
+- `template_signature`: 16 hex chars of SHA-1 over the ancestor chain (tag, digit-free id,
+  structural classes). Positions, digits and state classes (active/current/is-*) are dropped, so the
+  same block matches across pages.
+- `body_text` and `paragraphs` (`<p>` and `<li>`) come from `<main>`/`[role=main]`, else `<body>`,
+  with nav/header/footer/aside/breadcrumb/pagination stripped.
 - 5xx, network errors and timeouts are retried up to `fetchMaxRetries` times with exponential
   backoff. 4xx is never retried.
 - `pageCap` counts every admitted URL, whatever its outcome.

@@ -36,7 +36,7 @@ const FETCH_BODY_COLS = `fetch_id AS "fetchId", run_id AS "runId", body, truncat
   created_at AS "createdAt"`;
 const PAGE_COLS = `id, run_id AS "runId", fetch_id AS "fetchId", url, title, h1, headings,
   meta_canonical AS "metaCanonical", meta_robots AS "metaRobots", body_text AS "bodyText",
-  paragraphs, lang`;
+  paragraphs, lang, nofollow`;
 const LINK_COLS = `id, run_id AS "runId", source_fetch_id AS "sourceFetchId", raw_href AS "rawHref",
   resolved_url AS "resolvedUrl", anchor_text AS "anchorText", rel, dom_region AS "domRegion",
   dom_path AS "domPath", template_signature AS "templateSignature",
@@ -212,6 +212,7 @@ const PAGE_SPEC: readonly ColumnSpec<NewPage>[] = [
   { column: "body_text", get: (p) => p.bodyText ?? null },
   { column: "paragraphs", get: (p) => p.paragraphs ?? [], json: true },
   { column: "lang", get: (p) => p.lang ?? null },
+  { column: "nofollow", get: (p) => p.nofollow ?? false },
 ];
 
 export async function insertPage(db: Queryable, page: NewPage): Promise<PageRow> {

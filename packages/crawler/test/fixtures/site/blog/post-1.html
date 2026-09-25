@@ -5,8 +5,28 @@
     <link rel="canonical" href="/blog/post-1.html" />
   </head>
   <body>
-    <h1>Post one</h1>
-    <p>First post.</p>
-    <a href="/blog/">Back to blog</a>
+    <header>
+      <nav><a href="/">Home</a> <a href="/blog/">Blog</a></nav>
+    </header>
+    <ol class="breadcrumbs" itemscope itemtype="https://schema.org/BreadcrumbList">
+      <li><a href="/">Home</a></li>
+      <li><a href="/blog/">Blog</a></li>
+    </ol>
+    <main>
+      <article>
+        <h1>Post one</h1>
+        <p>First post.</p>
+        <footer class="entry-footer"><a href="/about.html">About the author</a></footer>
+      </article>
+      <a href="/blog/post-2.html" rel="next">Next post</a>
+      <a href="/blog/">Back to blog</a>
+    </main>
+    <aside>
+      <nav><a href="/about.html">About</a></nav>
+    </aside>
+    <footer>
+      <nav class="footer-menu"><a href="/">Home</a></nav>
+      <p>© Fixture</p>
+    </footer>
   </body>
 </html>

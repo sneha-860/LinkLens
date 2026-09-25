@@ -4,6 +4,7 @@ export * from "./user-agent.js";
 export * from "./scope.js";
 export * from "./content.js";
 export * from "./extract.js";
+export * from "./html/index.js";
 export * from "./fetcher.js";
 export * from "./frontier.js";
 export * from "./redis-throttle.js";

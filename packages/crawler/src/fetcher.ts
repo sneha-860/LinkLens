@@ -103,8 +103,12 @@ function describeError(err: unknown): string {
  * robots.txt before EVERY request, and wait on the per-host token bucket before each request.
  * Never throws for HTTP or network failures; the outcome says what happened.
  */
-export async function fetchPage(url: URL, deps: PageFetchDeps): Promise<FetchOutcome> {
-  const requestedUrl = url.toString();
+export async function fetchPage(
+  url: URL,
+  deps: PageFetchDeps,
+  /** The URL as discovered (recorded verbatim); defaults to the WHATWG serialisation of `url`. */
+  requestedUrl: string = url.toString(),
+): Promise<FetchOutcome> {
   const aborted = () => deps.signal?.aborted === true;
   const chain: db.RedirectHop[] = [];
   let current = url;
