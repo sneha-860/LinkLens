@@ -600,9 +600,22 @@ config } }` returns 202 with a Location header.
   `/audits/:id/:tab` with the tabs summary, graph, fixes, diagnosis, orphans, canonicalisation and
   export. The live progress panel (bar + 18 stages with durations + crawl counter + resume) shows
   while an audit runs or after it fails.
-- Graph tab: sigma (WebGL) in a lazily loaded chunk. `buildDrawGraph` collapses parallel links,
-  sizes nodes by PageRank, colours them by depth, and lays them out with ForceAtlas2 from seeded
-  positions (the same graph always looks the same).
+- Graph tab (`features/graph`): Cytoscape.js with the fcose layout, loaded lazily (its own chunk).
+  - `model.ts` (pure, tested) builds the elements:
+    - node size is √PageRank;
+    - colour is the depth band or the most important issue (both precomputed, so the toggle
+      recolours without a new layout);
+    - every orphan sits in a highlighted "Orphans" compound cluster, added when the link graph
+      lacks it;
+    - parallel links collapse into one edge per pair, styled by its most prominent `dom_region`.
+  - Rendering is capped at the top N pages by PageRank (100/300/1000; the home page and orphans
+    always shown) and 1500 edges, main content first. A notice says what is hidden. Large graphs
+    use `textureOnViewport`, `hideEdgesOnViewport` and pixel ratio 1.
+  - The policy selector re-fetches the graph and its issues (`/issues?policy=`).
+  - Clicking a node opens `NodePanel`: metrics, issues with evidence, inbound and outbound links
+    (region, count, anchors), and the fixes that target it. Fixes exist only under the audit's
+    policy. "Preview fix" overlays the suggested edge, dashed, adding its end points if the cap
+    hid them.
 - Dev: `pnpm --filter @linklens/web dev` (proxy `/api` → `localhost:3001`). The API needs
   `LINKLENS_USER_AGENT` with a real contact URL for audits started from the form.
 - Tests: Vitest + Testing Library with mocked `fetch` and `EventSource` (`src/test/utils.tsx`).

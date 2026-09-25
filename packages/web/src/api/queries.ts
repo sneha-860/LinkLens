@@ -9,6 +9,7 @@ import type {
   DiagnosisResponse,
   FixesResponse,
   GraphResponse,
+  IssuesResponse,
   OrphansResponse,
   Policy,
   SensitivityResponse,
@@ -73,6 +74,13 @@ export const useGraph = (id: number, policy: Policy) =>
   useQuery({
     queryKey: [...keys.audit(id), "graph", policy],
     queryFn: () => api<GraphResponse>(`/audits/${id}/graph?policy=${policy}`),
+    ...results,
+  });
+
+export const useIssues = (id: number, policy: Policy) =>
+  useQuery({
+    queryKey: [...keys.audit(id), "issues", policy],
+    queryFn: () => api<IssuesResponse>(`/audits/${id}/issues?policy=${policy}`),
     ...results,
   });
 

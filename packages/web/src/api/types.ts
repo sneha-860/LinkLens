@@ -194,9 +194,31 @@ export interface GraphResponse {
       key?: string;
       source: string;
       target: string;
-      attributes?: { domRegion?: string | null };
+      attributes?: { domRegion?: string | null; anchorText?: string | null };
     }[];
   };
+}
+
+export type IssueType =
+  | "orphan"
+  | "deep-page"
+  | "weak-authority"
+  | "outside-largest-scc"
+  | "dead-end"
+  | "noindex-nofollow-conflict";
+
+export interface Issue {
+  id: string;
+  type: IssueType;
+  rule?: string;
+  node: string;
+  severity: "high" | "medium" | "low";
+  evidence: Record<string, unknown>;
+}
+export interface IssuesResponse {
+  policy: Policy;
+  policyVersion: string;
+  issues: Issue[];
 }
 
 export interface SensitivityRow {
