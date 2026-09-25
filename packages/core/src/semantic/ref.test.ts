@@ -80,21 +80,21 @@ describe("ε cutoff", () => {
     expect(byPair(cut, "/animals", "/whale")).toBe(1);
     expect(cut.stats.nonZero).toBe(all.stats.nonZero);
     expect(cut.stats.kept).toBeLessThan(all.stats.kept);
-    expect(cut.entries.every((e) => e.ref >= cut.epsilon)).toBe(true);
+    expect(cut.entries.every((e) => e.ref > cut.epsilon)).toBe(true);
   });
 
-  it("keeps a score exactly equal to ε (only scores below ε are zeroed)", () => {
+  it("drops a score exactly equal to ε (only REF > ε survives)", () => {
     // Target terms {whale, fact, whale fact}; donor has 2 of 3 → unweighted 2/3.
     const m = model([page("/a", "", "Whale. Fact."), page("/b", "Whale facts", "")]);
-    const exact = refMatrix(m, "unweighted", { epsilon: 2 / 3, refExplainTerms: 10 });
-    expect(byPair(exact, "/a", "/b")).toBe(2 / 3);
-    expect(refMatrix(m, "unweighted", { epsilon: 0.67, refExplainTerms: 10 }).entries).toEqual([]);
+    expect(refMatrix(m, "unweighted", { epsilon: 2 / 3, refExplainTerms: 10 }).entries).toEqual([]);
+    const below = refMatrix(m, "unweighted", { epsilon: 0.66, refExplainTerms: 10 });
+    expect(byPair(below, "/a", "/b")).toBe(2 / 3);
   });
 
   it("uses the configured default ε", () => {
     const m = refMatrix(site, "weighted", makeConfig());
     expect(m.epsilon).toBe(0.2);
-    expect(m.entries.every((e) => e.ref >= 0.2)).toBe(true);
+    expect(m.entries.every((e) => e.ref > 0.2)).toBe(true);
   });
 
   it("never stores self-pairs or zero scores", () => {
@@ -193,7 +193,7 @@ describe("output", () => {
     );
     expect(JSON.stringify(reversed)).toBe(JSON.stringify(one));
     expect(one).toMatchObject({
-      version: "ref@1.0.0",
+      version: "ref@1.1.0",
       textVersion: "text@1.0.0",
       policyVersion: "P0@1.0.0",
       variant: "weighted",

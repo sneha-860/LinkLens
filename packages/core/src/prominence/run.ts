@@ -63,21 +63,24 @@ export async function importAnalyticsCsv(
   );
 }
 
-export interface PersistedProminence extends Prominence {
+export interface PersistedProminence extends RunProminence {
+  readonly artefact: ArtefactRow;
+}
+
+export interface RunProminence extends Prominence {
   readonly runId: number;
   readonly policyVersion: string;
-  readonly artefact: ArtefactRow;
 }
 
 /**
  * Prominence of every edge of the run's graph under `policyId` (the run's stored config), with
- * the run's imported analytics clicks when there are any, appended as a `prominence` artefact.
+ * the run's imported analytics clicks when there are any. Nothing is written.
  */
-export async function buildProminenceRun(
+export async function loadProminence(
   db: Queryable,
   runId: number,
   policyId: PolicyId,
-): Promise<PersistedProminence> {
+): Promise<RunProminence> {
   const { observations, context, config } = await loadRunGraphInputs(db, runId);
   const policy = POLICIES[policyId];
   const canonicalise = (url: string) => policy.canonicalise(url, context);
@@ -123,10 +126,19 @@ export async function buildProminenceRun(
     { pages, analytics: mapClicks(clicks, isInternal, canonicalise) },
     config,
   );
-  const result = { ...prominence, runId, policyVersion: policy.version };
+  return { ...prominence, runId, policyVersion: policy.version };
+}
+
+/** loadProminence, appended as a `prominence` artefact. */
+export async function buildProminenceRun(
+  db: Queryable,
+  runId: number,
+  policyId: PolicyId,
+): Promise<PersistedProminence> {
+  const result = await loadProminence(db, runId, policyId);
   const artefact = await insertArtefact(db, {
     runId,
-    policyVersion: policy.version,
+    policyVersion: result.policyVersion,
     kind: PROMINENCE_ARTEFACT,
     payload: result as unknown as Json,
   });

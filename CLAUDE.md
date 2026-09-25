@@ -39,12 +39,14 @@ Adapted from patent **US 11,586,824 B2** (Belezko & McGoey, 2023).
 
 ### Four-case diagnosis
 
-| Label | Meaning              |
-| ----- | -------------------- |
-| v4    | missing              |
-| v3    | buried               |
-| v2    | good                 |
-| v1    | misleading/low-value |
+For each pair with REF > ε or a link, with threshold α (`config.alpha`):
+
+| Label | Meaning              | Rule               | Recommendation                            |
+| ----- | -------------------- | ------------------ | ----------------------------------------- |
+| v4    | missing              | ρ > α, no link     | add link                                  |
+| v3    | buried               | ρ > α, link, ω < α | make more visible                         |
+| v2    | good                 | ρ > α, ω ≥ α       | none                                      |
+| v1    | misleading/low-value | ρ ≤ α, ω ≥ α       | flag for review/removal (never simulated) |
 
 ## Fix simulation & ranking
 
@@ -295,13 +297,13 @@ whenever the output can change.**
 
 - `buildRefRun(db, runId, policyId, variant)` builds the text model in memory (`loadTextModel`,
   with the run's stored config) and appends a `ref-matrix` artefact. The pure core is `refMatrix`.
-  `REF_VERSION` (`ref@1.0.0`) and the text version are stored in the payload. **Bump it whenever
+  `REF_VERSION` (`ref@1.1.0`) and the text version are stored in the payload. **Bump it whenever
   the output can change.**
 - Variants: `weighted` (default; `w_B` = the target view's summed field TF-IDF weights) and
   `unweighted`. `ref()` computes one pair.
 - All ordered pairs u ≠ v, computed exactly but through an inverted index (CSR postings over
   interned term ids), so a donor only touches targets it shares a term with.
-- ε cutoff: REF below `config.epsilon` is set to 0 and not stored (REF = ε is kept). The matrix
+- ε cutoff: only REF > `config.epsilon` survives; REF ≤ ε is set to 0 and not stored. The matrix
   is sparse (COO, node indices, sorted by source then target); self-pairs are never stored.
 - Per-node normalisation: `ρ(u,v) = REF(u,v) / Σ_w REF(u,w)` over u's stored entries, so each
   source's ρ sums to 1.
@@ -371,6 +373,24 @@ The structural stand-in for the patent's session counts. Always call it **promin
     template whose signature varies across pages is not discounted.
   - Where analytics exist, prefer them. E-series results that depend on ω should report the
     weights used (`params` in the artefact).
+
+### Diagnosis (packages/core/src/diagnosis)
+
+- `buildDiagnosisRun(db, runId, policyId, variant)` computes the REF matrix (`variant`, default
+  weighted) and prominence in memory with the run's stored config. It appends a `diagnosis`
+  artefact (`DIAGNOSIS_VERSION`) that records the REF and prominence versions, the variant, α
+  and ε. The pure core is `diagnose`; `classify(ρ, ω, hasEdge, α)` is the rule.
+- Pairs: every (u,v), u ≠ v, with REF(u,v) > ε or a link u→v, when both ends have a text document.
+  ρ is 0 when REF ≤ ε and ω is 0 without a link. Links to or from a node without text (not
+  crawled as HTML) are counted as `skippedNoText`, not judged. ρ ≤ α with ω < α is
+  `unclassified`.
+- `α` (`config.alpha`, 0.1) is the diagnosis threshold for both ρ and ω: ρ must exceed it, and ω
+  counts as prominent at ≥ α.
+- Each diagnosis: `id` (`case:u->v`), case, label, REF, ρ, ω, severity `|ω − ρ|`, recommendation,
+  `simulate` (v4 and v3 true; v1 is never simulated), the existing link (weight, observations,
+  origin, regions) and REF's matched n-grams (for explanations).
+- Order: case (v4, v3, v1, v2), then severity (highest first), then source and target. `counts`
+  has each case, `unclassified`, `skippedNoText` and `pairs`.
 
 ### Database
 

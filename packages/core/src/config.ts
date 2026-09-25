@@ -40,13 +40,16 @@ export interface LinkLensConfig {
   /** User-Agent sent with every request and matched against robots.txt groups (RFC 9309). */
   readonly userAgent: string;
   /**
-   * REF cutoff ε: REF(u,v) scores below ε are set to 0 in the REF matrix, and
-   * σ_hybrid(u,v) = cosine(u,v) only where REF survives.
+   * REF cutoff ε: REF(u,v) ≤ ε is set to 0 in the REF matrix (only REF > ε survives), and
+   * σ_hybrid(u,v) = cosine(u,v) only where REF > ε.
    */
   readonly epsilon: number;
   /** Matched n-grams kept per REF pair as its explanation (highest target weight first). */
   readonly refExplainTerms: number;
-  /** Semantic/structural blend weight α. Exact role TBD. */
+  /**
+   * Diagnosis threshold α, applied to both normalised scores: a pair is semantically strong when
+   * ρ(u,v) > α and its link is prominent when ω(u,v) ≥ α (see diagnosis).
+   */
   readonly alpha: number;
   /**
    * Share (0–1) of the site's distinct n-grams dropped before TF-IDF, most frequent first by

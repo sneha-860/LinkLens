@@ -6,7 +6,7 @@ import { viewWeights, type TextDocument, type TextModel } from "../text/model.js
 import { loadTextModel } from "../text/run.js";
 
 /** Bump whenever the output can change (formula, cutoff, normalisation, explanation). */
-export const REF_VERSION = "ref@1.0.0";
+export const REF_VERSION = "ref@1.1.0";
 export const REF_ARTEFACT = "ref-matrix";
 
 /**
@@ -45,7 +45,7 @@ export interface RefEntry {
   readonly source: number;
   /** Index into `nodes` of the target v. */
   readonly target: number;
-  /** REF(u,v) ≥ ε. */
+  /** REF(u,v) > ε. */
   readonly ref: number;
   /** ρ(u,v) = REF(u,v) / Σ_w REF(u,w) over u's entries: each source's row sums to 1. */
   readonly rho: number;
@@ -71,14 +71,14 @@ export interface RefMatrix {
     readonly pairs: number;
     /** Pairs with REF > 0 before the ε cutoff. */
     readonly nonZero: number;
-    /** Pairs with REF ≥ ε (stored). */
+    /** Pairs with REF > ε (stored). */
     readonly kept: number;
     /** Sources with at least one stored entry. */
     readonly sourcesWithEntries: number;
     /** Largest stored REF, or null. */
     readonly maxRef: number | null;
   };
-  /** Sparse (COO), sorted by source then target. Pairs below ε and self-pairs are absent. */
+  /** Sparse (COO), sorted by source then target. Pairs with REF ≤ ε and self-pairs are absent. */
   readonly entries: RefEntry[];
 }
 
@@ -86,7 +86,7 @@ const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
  * Pure: REF(u,v) for every ordered pair of the model's documents, u ≠ v, with S_A = donor(u)
- * and S_B = target(v). Scores below ε become 0 and are not stored; the rest are normalised per
+ * and S_B = target(v). Scores ≤ ε become 0 and are not stored; the rest are normalised per
  * source (ρ) and explained by their matched n-grams.
  *
  * Exact all-pairs, but through an inverted index of target terms, so a donor only touches the
@@ -183,7 +183,7 @@ export function refMatrix(
       seen[v] = 0;
       if (v === u) continue;
       nonZero += 1;
-      if (r >= config.epsilon) row.push({ v, ref: r });
+      if (r > config.epsilon) row.push({ v, ref: r });
     }
     if (row.length === 0) continue;
     sourcesWithEntries += 1;
@@ -269,7 +269,7 @@ export function targetWeights(doc: TextDocument): Map<string, number> {
   return new Map([...w.keys()].sort().map((t) => [t, w.get(t) as number]));
 }
 
-/** Look up a stored pair by node ids (null if below ε or absent). */
+/** Look up a stored pair by node ids (null if REF ≤ ε or absent). */
 export function refEntry(m: RefMatrix, source: string, target: string): RefEntry | null {
   const s = m.nodes.indexOf(source);
   const t = m.nodes.indexOf(target);

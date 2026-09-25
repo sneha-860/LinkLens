@@ -5,6 +5,7 @@ import type pg from "pg";
 import {
   audit as a,
   db as q,
+  diagnosis as dg,
   discovery as d,
   prominence as pr,
   semantic as sem,
@@ -370,7 +371,7 @@ describe("discovery on the fixture site", () => {
         expect(m.stats.kept).toBeGreaterThan(0);
         const sums = new Map<number, number>();
         for (const e of m.entries) {
-          expect(e.ref).toBeGreaterThanOrEqual(0.2);
+          expect(e.ref).toBeGreaterThan(0.2);
           expect(e.matched.length).toBeGreaterThan(0);
           sums.set(e.source, (sums.get(e.source) ?? 0) + e.rho);
         }
@@ -427,6 +428,29 @@ describe("discovery on the fixture site", () => {
         overriddenSources: 1,
         unmatched: { external: 1 },
       });
+    });
+
+    it("diagnoses the run into the four cases (typed artefact with counts)", async () => {
+      const report = await dg.buildDiagnosisRun(db, runId, "P0");
+      expect(report.artefact).toMatchObject({
+        runId,
+        policyVersion: "P0@1.0.0",
+        kind: "diagnosis",
+      });
+      expect(report).toMatchObject({ alpha: 0.1, epsilon: 0.2, refVariant: "weighted" });
+      const { counts } = report;
+      expect(counts.v4 + counts.v3 + counts.v2 + counts.v1 + counts.unclassified).toBe(
+        counts.pairs,
+      );
+      expect(report.diagnoses).toHaveLength(counts.v4 + counts.v3 + counts.v2 + counts.v1);
+      expect(counts.pairs).toBeGreaterThan(0);
+      for (const d of report.diagnoses) {
+        expect(d.case).toBe(dg.classify(d.rho, d.omega, d.edge !== null, 0.1));
+        expect(d.severity).toBeCloseTo(Math.abs(d.omega - d.rho), 12);
+        expect(d.simulate).toBe(d.case === "v4" || d.case === "v3");
+      }
+      const stored = await q.listArtefacts(db, runId, { kind: "diagnosis" });
+      expect((stored[0]?.payload as unknown as dg.DiagnosisReport).counts).toEqual(counts);
     });
 
     it("works under a coarser policy (P3 nodes)", async () => {
