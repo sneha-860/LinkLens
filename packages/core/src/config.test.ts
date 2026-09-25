@@ -45,6 +45,18 @@ describe("defaultConfig", () => {
       sitemapMaxDepth: 3,
       sitemapMaxUrls: 50_000,
       storeDiscoveryBodies: true,
+      prominenceRegionWeights: {
+        body: 1.0,
+        breadcrumb: 0.5,
+        aside: 0.4,
+        header: 0.3,
+        nav: 0.3,
+        pagination: 0.2,
+        footer: 0.1,
+      },
+      prominencePositionDecay: 0.1,
+      prominenceSitewideShare: 0.5,
+      prominenceSitewideDiscount: 0.3,
       auditDeepPageDepth: 3,
       auditDeepPageHighDepth: 6,
       auditWeakAuthorityPercentile: 20,
@@ -105,6 +117,12 @@ describe("makeConfig", () => {
     [{ embeddingBodyTokens: 0 }],
     [{ embeddingBatchSize: 0 }],
     [{ embeddingDtype: "fp64" as never }],
+    [{ prominencePositionDecay: -0.1 }],
+    [{ prominenceSitewideShare: 1.5 }],
+    [{ prominenceSitewideDiscount: -1 }],
+    [{ prominenceRegionWeights: { ...defaultConfig.prominenceRegionWeights, footer: -1 } }],
+    [{ prominenceRegionWeights: { ...defaultConfig.prominenceRegionWeights, main: 1 } as never }],
+    [{ prominenceRegionWeights: { body: 1 } as never }],
   ])("rejects invalid override %o", (overrides) => {
     expect(() => makeConfig(overrides)).toThrow(RangeError);
   });

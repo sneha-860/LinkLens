@@ -40,6 +40,7 @@ describe("migrations", () => {
       "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename",
     );
     expect(rows.map((r) => r.tablename)).toEqual([
+      "analytics_clicks",
       "artefacts",
       "discovery_observations",
       "fetch_bodies",
@@ -306,9 +307,15 @@ describe("append-only enforcement", () => {
     link_observations: "raw_href",
     discovery_observations: "url",
     fetch_bodies: "sha256",
+    analytics_clicks: "source_url",
   } as const;
 
-  for (const table of ["link_observations", "discovery_observations", "fetch_bodies"] as const) {
+  for (const table of [
+    "link_observations",
+    "discovery_observations",
+    "fetch_bodies",
+    "analytics_clicks",
+  ] as const) {
     describe(table, () => {
       let runId: number;
 
@@ -328,6 +335,9 @@ describe("append-only enforcement", () => {
           truncated: false,
           sha256: "a".repeat(64),
         });
+        await q.insertAnalyticsClicks(db, [
+          { runId, sourceUrl: "https://example.com/", targetUrl: "/x", clicks: 3, lineNumber: 2 },
+        ]);
       });
 
       it("blocks UPDATE", async () => {
@@ -375,5 +385,42 @@ describe("append-only enforcement", () => {
   it("does not affect mutable tables", async () => {
     const { run } = await seedRun();
     await expect(q.setRunStatus(db, run.id, "failed")).resolves.toMatchObject({ status: "failed" });
+  });
+});
+
+describe("analytics_clicks", () => {
+  it("round-trips rows exactly as written, in insertion order", async () => {
+    const { run } = await seedRun();
+    const rows = await q.insertAnalyticsClicks(db, [
+      {
+        runId: run.id,
+        sourceUrl: "HTTPS://Example.com/A?utm_source=x",
+        targetUrl: "/b",
+        clicks: 12,
+        lineNumber: 2,
+        sourceDocument: "ga.csv",
+      },
+      {
+        runId: run.id,
+        sourceUrl: "https://example.com/a",
+        targetUrl: "/c",
+        clicks: 9_007_199_254,
+        lineNumber: 3,
+      },
+    ]);
+    expect(await q.listAnalyticsClicks(db, run.id)).toEqual(rows);
+    expect(rows[0]).toMatchObject({
+      sourceUrl: "HTTPS://Example.com/A?utm_source=x",
+      clicks: 12,
+      sourceDocument: "ga.csv",
+    });
+    expect(rows[1]).toMatchObject({ clicks: 9_007_199_254, sourceDocument: null });
+  });
+
+  it("rejects negative clicks and header line numbers", async () => {
+    const { run } = await seedRun();
+    const row = { runId: run.id, sourceUrl: "/a", targetUrl: "/b", clicks: 1, lineNumber: 2 };
+    expect(await sqlState(q.insertAnalyticsClicks(db, [{ ...row, clicks: -1 }]))).toBe("23514");
+    expect(await sqlState(q.insertAnalyticsClicks(db, [{ ...row, lineNumber: 1 }]))).toBe("23514");
   });
 });

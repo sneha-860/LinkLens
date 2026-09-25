@@ -334,12 +334,51 @@ whenever the output can change.**
   `packedIndex`). Look pairs up with `cosineOf`.
 - The integration test downloads the model once (~90 MB) into `packages/embeddings/.cache/models`.
 
+### Prominence (packages/core/src/prominence)
+
+The structural stand-in for the patent's session counts. Always call it **prominence**.
+
+- `buildProminenceRun(db, runId, policyId)` takes the policy's link graph (the same representative
+  pages and edges as `deriveGraph`) and appends a `prominence` artefact (`PROMINENCE_VERSION`).
+  The pure core is `computeProminence`; `observationFactors` gives each observation's factors.
+- `W(u,v) = Σ over observations u→v of regionWeight × positionFactor × sitewideDiscount`:
+  - `regionWeight` = `prominenceRegionWeights[regionClass(dom_region)]`. The defaults are body 1.0,
+    breadcrumb 0.5, aside 0.4, header 0.3, nav 0.3, pagination 0.2, footer 0.1. `main`, `body` and
+    a missing region are body.
+  - `positionFactor` = `1 / (1 + prominencePositionDecay × rank)` for body links (reasonable
+    surfer). The rank counts the page's body links in `position_index` order, including external
+    ones, and starts at 0. Other regions get 1.
+  - `sitewideDiscount` = `prominenceSitewideDiscount` (0.3) when the link's `template_signature`
+    is on more than `prominenceSitewideShare` (50%) of the representative pages, else 1.
+- `ω(u,v) = W(u,v) / Σ_v W(u,v)`, or 0 when u's total is 0.
+- Analytics (optional): `importAnalyticsCsv(db, runId, csv, name)` parses an RFC 4180 CSV
+  (`source_url, target_url, clicks`: any column order and case, other columns ignored). Every
+  problem is reported with its line, and nothing is stored if any row is invalid. Valid rows
+  are stored raw in `analytics_clicks`. At build time the URLs are mapped through the same policy
+  and context as the graph.
+  - **The override is per source node.** A node with clicks on any of its edges uses clicks as W
+    for all its edges (0 for those without clicks), so each ω row stays in one unit.
+  - Rows that are not an existing edge are counted (invalid URL, external, self-loop, no link),
+    not used. Each edge keeps `structuralWeight` for comparison.
+- **Limitations.**
+  - The region weights, position decay, site-wide threshold and discount are our assumptions.
+    They were not fitted to click data, and the reasonable-surfer shape is borrowed, not
+    measured.
+  - Prominence is therefore a structural proxy for how likely a link is to be followed, not
+    evidence of it. A single mis-classified region (e.g. a content block in an `<aside>`) shifts
+    ω for that page.
+  - Only representative pages are weighted, and a site-wide block is judged per signature, so a
+    template whose signature varies across pages is not discounted.
+  - Where analytics exist, prefer them. E-series results that depend on ω should report the
+    weights used (`params` in the artefact).
+
 ### Database
 
 - Postgres 16 + Redis 7 via `docker-compose.yml` (Postgres on host port **5433**).
 - Schema changes are **new** SQL migrations only (`pnpm --filter @linklens/db migrate:create <name>`);
   never edit an applied migration.
-- `link_observations`, `discovery_observations` and `fetch_bodies` are **append-only**, enforced by
+- `link_observations`, `discovery_observations`, `fetch_bodies` and `analytics_clicks` are
+  **append-only**, enforced by
   triggers that reject UPDATE, DELETE and TRUNCATE (SQLSTATE 23001). Core exposes only insert/read
   for them.
 - Every `artefacts` row has non-null `run_id` and `policy_version`.

@@ -193,6 +193,28 @@ export interface NewDiscoveryObservation {
   detail?: { [key: string]: Json };
 }
 
+// ---------- analytics_clicks (append-only) ----------
+/** One line of an imported analytics CSV, as written (URLs are not normalised). */
+export interface AnalyticsClickRow {
+  id: Id;
+  runId: Id;
+  sourceUrl: string;
+  targetUrl: string;
+  clicks: number;
+  sourceDocument: string | null;
+  /** CSV line number (the header is line 1). */
+  lineNumber: number;
+  importedAt: Date;
+}
+export interface NewAnalyticsClick {
+  runId: Id;
+  sourceUrl: string;
+  targetUrl: string;
+  clicks: number;
+  sourceDocument?: string | null;
+  lineNumber: number;
+}
+
 // ---------- artefacts ----------
 export interface ArtefactRow<P extends Json = Json> {
   id: Id;

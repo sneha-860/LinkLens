@@ -6,6 +6,7 @@ import {
   audit as a,
   db as q,
   discovery as d,
+  prominence as pr,
   semantic as sem,
   text as t,
   type LinkLensConfig,
@@ -380,6 +381,52 @@ describe("discovery on the fixture site", () => {
         "unweighted",
         "weighted",
       ]);
+    });
+
+    it("computes prominence from regions, positions and templates, and lets analytics override it", async () => {
+      const structural = await pr.buildProminenceRun(db, runId, "P0");
+      expect(structural.artefact).toMatchObject({
+        runId,
+        policyVersion: "P0@1.0.0",
+        kind: "prominence",
+      });
+      const edge = (p: pr.Prominence, from: string, to: string) =>
+        p.edges.find((e) => e.source === o + from && e.target === o + to);
+      const sums = new Map<string, number>();
+      for (const e of structural.edges) sums.set(e.source, (sums.get(e.source) ?? 0) + e.omega);
+      for (const sum of sums.values()) expect(sum).toBeCloseTo(1, 12);
+      expect(structural.stats.analytics).toBeNull();
+
+      // Home: "/about.html" and "about.html" both sit in the header <nav> (0.3 each).
+      const about = edge(structural, "/", "/about.html");
+      expect(about).toMatchObject({ observations: 2, regions: { nav: 2 }, origin: "structural" });
+      // The first <main> link on the home page (rank 0) is a full-weight body link.
+      expect(edge(structural, "/", "/deep/1.html")?.weight).toBe(1);
+      expect(about?.weight).toBeLessThan(1);
+
+      const csv = [
+        "source_url,target_url,clicks",
+        `${o}/,${o}/deep/1.html,90`,
+        `${o}/,${o}/about.html,10`,
+        `${o}/,https://external.invalid/page,50`,
+      ].join("\n");
+      const imported = await pr.importAnalyticsCsv(db, runId, csv, "analytics.csv");
+      expect(imported).toHaveLength(3);
+      const withClicks = await pr.buildProminenceRun(db, runId, "P0");
+      expect(edge(withClicks, "/", "/deep/1.html")).toMatchObject({
+        origin: "analytics",
+        clicks: 90,
+        omega: 0.9,
+      });
+      expect(edge(withClicks, "/", "/about.html")?.omega).toBeCloseTo(0.1, 12);
+      expect(edge(withClicks, "/", "/blog/")).toMatchObject({ origin: "analytics", weight: 0 });
+      expect(edge(withClicks, "/blog/post-1.html", "/about.html")?.origin).toBe("structural");
+      expect(withClicks.stats.analytics).toMatchObject({
+        rows: 3,
+        matchedRows: 2,
+        overriddenSources: 1,
+        unmatched: { external: 1 },
+      });
     });
 
     it("works under a coarser policy (P3 nodes)", async () => {

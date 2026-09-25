@@ -14,6 +14,21 @@ export const EMBEDDING_DTYPES = [
 ] as const;
 export type EmbeddingDtype = (typeof EMBEDDING_DTYPES)[number];
 
+/**
+ * Region classes that prominence weights links by. `body` covers dom_region main and body (and
+ * a missing region, the extractor's default).
+ */
+export const PROMINENCE_REGIONS = [
+  "body",
+  "breadcrumb",
+  "aside",
+  "header",
+  "nav",
+  "pagination",
+  "footer",
+] as const;
+export type ProminenceRegion = (typeof PROMINENCE_REGIONS)[number];
+
 export interface LinkLensConfig {
   /**
    * Maximum URLs admitted to a crawl's frontier (the seed included). Every admitted URL counts,
@@ -127,6 +142,17 @@ export interface LinkLensConfig {
   readonly sitemapMaxUrls: number;
   /** Store the raw bytes of discovery documents (sitemaps, feeds, llms.txt) in fetch_bodies. */
   readonly storeDiscoveryBodies: boolean;
+  /**
+   * Prominence (the structural stand-in for the patent's session counts): weight of a link by
+   * the page region it sits in. Our choice, not measured; see the limitations in CLAUDE.md.
+   */
+  readonly prominenceRegionWeights: Readonly<Record<ProminenceRegion, number>>;
+  /** Body link at rank r (0 = first body link on the page) is weighted 1 / (1 + decay × r). */
+  readonly prominencePositionDecay: number;
+  /** A template block (template_signature) on more than this share of pages is site-wide… */
+  readonly prominenceSitewideShare: number;
+  /** …and its links are multiplied by this. */
+  readonly prominenceSitewideDiscount: number;
   /** Audit: a crawled page deeper than this many clicks from the seed is a "deep page". */
   readonly auditDeepPageDepth: number;
   /** Audit: a deep page deeper than this is high severity (else medium). */
@@ -179,6 +205,18 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   sitemapMaxDepth: 3,
   sitemapMaxUrls: 50_000,
   storeDiscoveryBodies: true,
+  prominenceRegionWeights: Object.freeze({
+    body: 1.0,
+    breadcrumb: 0.5,
+    aside: 0.4,
+    header: 0.3,
+    nav: 0.3,
+    pagination: 0.2,
+    footer: 0.1,
+  }),
+  prominencePositionDecay: 0.1,
+  prominenceSitewideShare: 0.5,
+  prominenceSitewideDiscount: 0.3,
   auditDeepPageDepth: 3,
   auditDeepPageHighDepth: 6,
   auditWeakAuthorityPercentile: 20,
@@ -271,6 +309,24 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   assertPositiveInt("textMinTokenLength", cfg.textMinTokenLength);
   assertPositiveInt("textMaxNgram", cfg.textMaxNgram);
   assertUnitInterval("pagerankDamping", cfg.pagerankDamping);
+  const weights = cfg.prominenceRegionWeights as Record<string, unknown>;
+  const keys = Object.keys(weights).sort();
+  if (keys.join() !== [...PROMINENCE_REGIONS].sort().join()) {
+    throw new RangeError(
+      `config.prominenceRegionWeights must have exactly the keys ${PROMINENCE_REGIONS.join(", ")}`,
+    );
+  }
+  for (const k of keys) {
+    const w = weights[k];
+    if (typeof w !== "number" || !Number.isFinite(w) || w < 0) {
+      throw new RangeError(`config.prominenceRegionWeights.${k} must be a finite number ≥ 0`);
+    }
+  }
+  if (!(Number.isFinite(cfg.prominencePositionDecay) && cfg.prominencePositionDecay >= 0)) {
+    throw new RangeError("config.prominencePositionDecay must be a finite number ≥ 0");
+  }
+  assertUnitInterval("prominenceSitewideShare", cfg.prominenceSitewideShare);
+  assertUnitInterval("prominenceSitewideDiscount", cfg.prominenceSitewideDiscount);
   if (cfg.userAgent.trim() === "") throw new RangeError("config.userAgent must be non-empty");
   assertPositiveInt("embeddingBodyTokens", cfg.embeddingBodyTokens);
   assertPositiveInt("embeddingBatchSize", cfg.embeddingBatchSize);

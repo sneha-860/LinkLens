@@ -1,6 +1,7 @@
 import { buildInsert, type ColumnSpec } from "./sql.js";
 import { TERMINAL_RUN_STATUSES } from "./types.js";
 import type {
+  AnalyticsClickRow,
   ArtefactRow,
   DiscoveryObservationRow,
   FetchBodyRow,
@@ -9,6 +10,7 @@ import type {
   NewFetchBody,
   Json,
   LinkObservationRow,
+  NewAnalyticsClick,
   NewArtefact,
   NewDiscoveryObservation,
   NewFetch,
@@ -43,6 +45,9 @@ const LINK_COLS = `id, run_id AS "runId", source_fetch_id AS "sourceFetchId", ra
   position_index AS "positionIndex"`;
 const DISCOVERY_COLS = `id, run_id AS "runId", channel, url, source_document AS "sourceDocument",
   observed_at AS "observedAt", detail`;
+const ANALYTICS_COLS = `id, run_id AS "runId", source_url AS "sourceUrl",
+  target_url AS "targetUrl", clicks, source_document AS "sourceDocument",
+  line_number AS "lineNumber", imported_at AS "importedAt"`;
 const ARTEFACT_COLS = `id, run_id AS "runId", policy_version AS "policyVersion", kind, payload,
   created_at AS "createdAt"`;
 
@@ -288,6 +293,31 @@ export async function listDiscoveryObservations(
     `SELECT ${DISCOVERY_COLS} FROM discovery_observations
      WHERE run_id = $1 AND ($2::text IS NULL OR channel = $2) ORDER BY id`,
     [runId, channel ?? null],
+  );
+  return rows;
+}
+
+// ---------- analytics_clicks (append-only: insert + read only) ----------
+const ANALYTICS_SPEC: readonly ColumnSpec<NewAnalyticsClick>[] = [
+  { column: "run_id", get: (a) => a.runId },
+  { column: "source_url", get: (a) => a.sourceUrl },
+  { column: "target_url", get: (a) => a.targetUrl },
+  { column: "clicks", get: (a) => a.clicks },
+  { column: "source_document", get: (a) => a.sourceDocument ?? null },
+  { column: "line_number", get: (a) => a.lineNumber },
+];
+
+export function insertAnalyticsClicks(
+  db: Queryable,
+  clicks: readonly NewAnalyticsClick[],
+): Promise<AnalyticsClickRow[]> {
+  return insertMany(db, "analytics_clicks", ANALYTICS_SPEC, clicks, ANALYTICS_COLS);
+}
+
+export async function listAnalyticsClicks(db: Queryable, runId: Id): Promise<AnalyticsClickRow[]> {
+  const { rows } = await db.query<AnalyticsClickRow>(
+    `SELECT ${ANALYTICS_COLS} FROM analytics_clicks WHERE run_id = $1 ORDER BY id`,
+    [runId],
   );
   return rows;
 }
