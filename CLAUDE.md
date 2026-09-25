@@ -586,6 +586,29 @@ config } }` returns 202 with a Location header.
   LINKLENS_CACHE_DIR, LINKLENS_PREFIX). The config default User-Agent has no contact URL, so pass
   `options.config.userAgent` until one is configured.
 
+### Web dashboard (packages/web)
+
+- React 18 + Vite + TypeScript, TanStack Query and React Router 7. Plain CSS: design tokens and
+  namespaced classes in `styles/app.css`; no UI kit.
+- `api/`: `types.ts` holds hand-written response shapes of the API. `client.ts` is a fetch wrapper
+  that turns `{ error }` bodies into `ApiError`. `queries.ts` has the query hooks (finished
+  results use `staleTime: Infinity` and are invalidated when the audit finishes) plus
+  `useCreateAudit`, which creates the audit and then uploads the CSV, before the pipeline reaches
+  prominence. `useAuditEvents.ts` is the SSE live state (`applyEvent` is pure) with a polling
+  fallback.
+- Routes: `/` (audits list), `/audits/new` (form: URL, page cap, policy, σ, optional CSV), and
+  `/audits/:id/:tab` with the tabs summary, graph, fixes, diagnosis, orphans, canonicalisation and
+  export. The live progress panel (bar + 18 stages with durations + crawl counter + resume) shows
+  while an audit runs or after it fails.
+- Graph tab: sigma (WebGL) in a lazily loaded chunk. `buildDrawGraph` collapses parallel links,
+  sizes nodes by PageRank, colours them by depth, and lays them out with ForceAtlas2 from seeded
+  positions (the same graph always looks the same).
+- Dev: `pnpm --filter @linklens/web dev` (proxy `/api` → `localhost:3001`). The API needs
+  `LINKLENS_USER_AGENT` with a real contact URL for audits started from the form.
+- Tests: Vitest + Testing Library with mocked `fetch` and `EventSource` (`src/test/utils.tsx`).
+  `test-setup.ts` strips the `signal` from `Request`, because jsdom's AbortSignal is not the one
+  Node's Request accepts.
+
 ### Database
 
 - Postgres 16 + Redis 7 via `docker-compose.yml` (Postgres on host port **5433**).

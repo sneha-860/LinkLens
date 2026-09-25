@@ -5,7 +5,8 @@ import { createApp } from "./app.js";
 import { PipelineRunner, type Logger } from "./pipeline.js";
 
 // Environment: DATABASE_URL (or the PG* variables; see @linklens/db), REDIS_URL, PORT,
-// LINKLENS_CACHE_DIR (embeddings and model files), LINKLENS_PREFIX (Redis key prefix).
+// LINKLENS_CACHE_DIR (embeddings and model files), LINKLENS_PREFIX (Redis key prefix),
+// LINKLENS_USER_AGENT (default User-Agent for new audits; it needs a (+https://…) contact URL).
 const env = process.env;
 const logger: Logger = {
   info: (m) => console.log(`${new Date().toISOString()} ${m}`),
@@ -19,6 +20,9 @@ const runner = new PipelineRunner({
   prefix: env["LINKLENS_PREFIX"] ?? "linklens",
   cacheDir: resolve(env["LINKLENS_CACHE_DIR"] ?? ".cache/linklens"),
   embedder: (options) => EmbeddingWorker.start(options),
+  ...(env["LINKLENS_USER_AGENT"] === undefined
+    ? {}
+    : { defaultConfig: { userAgent: env["LINKLENS_USER_AGENT"] } }),
   logger,
 });
 const port = Number(env["PORT"] ?? 3001);

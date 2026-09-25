@@ -107,6 +107,11 @@ export interface PipelineDeps {
   /** Cache root for embeddings and model files. */
   readonly cacheDir: string;
   readonly logger?: Logger;
+  /**
+   * Config applied to every new audit under its own overrides (e.g. the deployment's
+   * User-Agent with a real contact URL).
+   */
+  readonly defaultConfig?: Partial<LinkLensConfig>;
   /** Called before each stage runs (tests use it to inject failures). */
   readonly beforeStage?: (runId: number, stage: Stage) => Promise<void> | void;
 }
@@ -159,6 +164,7 @@ export class PipelineRunner extends EventEmitter {
   async create(input: CreateAuditInput): Promise<q.AuditRow> {
     const options = input.options ?? {};
     const config = {
+      ...this.deps.defaultConfig,
       ...options.config,
       ...(input.pageCap === undefined ? {} : { pageCap: input.pageCap }),
     };
