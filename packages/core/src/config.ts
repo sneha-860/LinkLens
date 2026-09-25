@@ -200,6 +200,8 @@ export interface LinkLensConfig {
    * discoveryMaxFetches).
    */
   readonly rescueMaxFetches: number;
+  /** Explanations: matched n-grams quoted per fix or diagnosis (at most refExplainTerms). */
+  readonly explainTerms: number;
   /** Audit: a crawled page deeper than this many clicks from the seed is a "deep page". */
   readonly auditDeepPageDepth: number;
   /** Audit: a deep page deeper than this is high severity (else medium). */
@@ -283,6 +285,7 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   fixTopK: 10,
   rescueTopK: 5,
   rescueMaxFetches: 50,
+  explainTerms: 5,
   auditDeepPageDepth: 3,
   auditDeepPageHighDepth: 6,
   auditWeakAuthorityPercentile: 20,
@@ -365,6 +368,10 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   assertPositiveInt("fixTopK", cfg.fixTopK);
   assertPositiveInt("rescueTopK", cfg.rescueTopK);
   assertPositiveInt("rescueMaxFetches", cfg.rescueMaxFetches);
+  assertPositiveInt("explainTerms", cfg.explainTerms);
+  if (cfg.explainTerms > cfg.refExplainTerms) {
+    throw new RangeError("config.explainTerms must be ≤ refExplainTerms (only those are stored)");
+  }
   assertNonNegativeInt("auditDeepPageDepth", cfg.auditDeepPageDepth);
   if (
     !Number.isInteger(cfg.auditDeepPageHighDepth) ||

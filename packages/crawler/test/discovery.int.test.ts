@@ -561,6 +561,19 @@ describe("discovery on the fixture site", () => {
           if (i > 0) expect(x.deltaPr).toBeLessThanOrEqual(orphan.donors[i - 1]?.deltaPr as number);
         });
       }
+
+      // Every rescue donor gets an explanation naming the channel that revealed the orphan.
+      const explained = await fx.buildExplanations(db, runId, "P0");
+      expect(explained.counts.rescues).toBe(
+        report.orphans.reduce((n, x) => n + x.donors.length, 0),
+      );
+      const aboutRescue = explained.rescues.find(
+        (e) => e.donor === `${o}/about.html` && e.target === `${o}/orphan.html`,
+      );
+      expect(aboutRescue?.lines[0]).toBe(
+        "Why the target: /orphan.html is linked from nowhere and was found only via the XML sitemap.",
+      );
+      expect(aboutRescue?.donorEvidence.matched.length).toBeGreaterThan(0);
     });
 
     it("works under a coarser policy (P3 nodes)", async () => {

@@ -119,6 +119,14 @@ describe("rescueShortlists (stage 1: REF)", () => {
     expect(refs.every((r) => r > config.epsilon)).toBe(true);
   });
 
+  it("keeps each shortlisted donor's matched n-grams, largest share first", () => {
+    const m = songs?.shortlist[0]?.matched ?? [];
+    expect(m.map((x) => x.term)).toContain("whale song");
+    const c = m.map((x) => x.contribution);
+    expect(c).toEqual([...c].sort((a, b) => b - a));
+    expect(m.length).toBeLessThanOrEqual(config.refExplainTerms);
+  });
+
   it("counts the donors each rule removed", () => {
     expect(songs?.rejected).toEqual({
       unreachable: 1, // /whales/deep

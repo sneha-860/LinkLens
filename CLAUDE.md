@@ -517,6 +517,34 @@ The structural stand-in for the patent's session counts. Always call it **promin
   the home page). sitemap-orphan is the control and gets no donor. The 7% boilerplate quota drops
   the deep pages' words on this small site, so they cannot donate.
 
+### Explanations (packages/core/src/fixes/explain.ts, explain-run.ts)
+
+- Deterministic templates only (no LLM, no SHAP). The same evidence always gives byte-identical
+  text: fixed number formats (`f2` two decimals, `sci` 3 significant digits, `pct` one decimal),
+  URLs shown as path + query (`shortUrl`), and fixed orders. **Bump `EXPLAIN_VERSION` whenever a
+  template or format changes**, and update the snapshots on purpose (`vitest -u`), after reading
+  the diff.
+- `buildExplanations(db, runId, policyId)` explains every fix of the latest `fix-ranking`, every
+  donor of the latest `orphan-rescue` (either may be absent) and every diagnosis. It appends an
+  `explanations` artefact.
+- Fix / rescue record (`explainFix`), structured, plus six `lines` and one `sentence`:
+  - `needs` (why the target), in this order:
+    - orphan, with the non-link channels that revealed it ("found only via the XML sitemap");
+    - deep page (depth > threshold);
+    - weak authority (bottom N% by PageRank, value < threshold);
+    - v4/v3, with how many pages diagnosed it.
+  - `donorEvidence`: REF, the top `explainTerms` (5) matched n-grams (Porter stems, as matched)
+    and cosine (null for orphans, which are not embedded).
+  - `link`: exists, ω and regions (e.g. "only from the footer").
+  - `impact`: PR before and after, ΔPR and ΔPR % (null when PR before is 0), depth before, after
+    and Δ.
+  - `effort`: κ and templateReach.
+  - `case`: the pair's v1–v4 label, or why there is none.
+- Diagnosis record (`explainDiagnosis`): case, ρ, ω, α, REF, matched n-grams, link regions,
+  severity, recommendation, and a per-case sentence (v1 says it is never simulated).
+- Tests: snapshot tests (inline for the key sentences, plus a file snapshot of the full output)
+  on the four-case example, and end-to-end runs on the counterfactual and crawler fixtures.
+
 ### Database
 
 - Postgres 16 + Redis 7 via `docker-compose.yml` (Postgres on host port **5433**).

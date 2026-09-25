@@ -10,3 +10,5 @@ export * from "./effort.js";
 export * from "./scoring.js";
 export * from "./rescue.js";
 export * from "./rescue-inputs.js";
+export * from "./explain.js";
+export * from "./explain-run.js";

@@ -1,13 +1,13 @@
 import type { LinkLensConfig } from "../config.js";
 import type { DiscoveryChannel } from "../discovery/channels.js";
-import { ref, type RefVariant } from "../semantic/ref.js";
+import { ref, type MatchedTerm, type RefVariant } from "../semantic/ref.js";
 import { idfOf, type RawDocument, type TextModel } from "../text/model.js";
 import { terms } from "../text/tokenise.js";
 import { sectionOf, sectionRelation, utilityMatcher, type SectionRelation } from "./candidates.js";
 import type { CounterfactualResult } from "./counterfactual.js";
 
 /** Bump whenever the output can change (orphan weighting, admission, the two ranking stages). */
-export const RESCUE_VERSION = "rescue@1.0.0";
+export const RESCUE_VERSION = "rescue@1.1.0";
 export const RESCUE_ARTEFACT = "orphan-rescue";
 
 type RescueConfig = Pick<
@@ -19,6 +19,7 @@ type RescueConfig = Pick<
   | "candidateSiblingSections"
   | "candidateTopLevelIsSibling"
   | "rescueTopK"
+  | "refExplainTerms"
 >;
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -43,6 +44,23 @@ export function externalTargetWeights(
   return new Map(
     [...counts.keys()].sort().map((t) => [t, (counts.get(t) as number) * (model.idf[t] ?? unseen)]),
   );
+}
+
+/** The matched terms of a target in a donor, by share of REF (largest first, ties by term). */
+export function matchedTerms(
+  donor: ReadonlySet<string>,
+  target: ReadonlyMap<string, number>,
+  variant: RefVariant,
+  limit: number,
+): MatchedTerm[] {
+  let total = 0;
+  for (const w of target.values()) total += variant === "weighted" ? w : 1;
+  if (total === 0) return [];
+  return [...target]
+    .filter(([t]) => donor.has(t))
+    .map(([term, w]) => ({ term, contribution: (variant === "weighted" ? w : 1) / total }))
+    .sort((a, b) => b.contribution - a.contribution || cmp(a.term, b.term))
+    .slice(0, limit);
 }
 
 /** A reconciled orphan and, if it could be fetched, its page. */
@@ -84,6 +102,8 @@ export interface RescueShortlistEntry {
     readonly orphan: string;
     readonly relation: SectionRelation;
   };
+  /** The refExplainTerms matched n-grams with the largest share of REF (ties by term). */
+  readonly matched: MatchedTerm[];
 }
 
 export interface RescueShortlist {
@@ -148,6 +168,7 @@ export function rescueShortlists(
           ref: r,
           depth: dDepth,
           section: { donor: dSection, orphan: oSection, relation },
+          matched: matchedTerms(new Set(d.donor), target, variant, config.refExplainTerms),
         });
       }
       admitted.sort((a, b) => b.ref - a.ref || cmp(a.donor, b.donor));
@@ -171,6 +192,11 @@ export interface RescueDonor {
   readonly donor: string;
   readonly ref: number;
   readonly refRank: number;
+  /** The matched n-grams behind REF (for explanations). */
+  readonly matched: MatchedTerm[];
+  /** PR of the orphan before and after the link. */
+  readonly prBefore: number;
+  readonly prAfter: number;
   readonly deltaPr: number;
   readonly deltaPrL1: number;
   /** The orphan's click depth once linked (the donor's depth + 1). */
@@ -235,6 +261,9 @@ export function rankRescue(
         donor: e.donor,
         ref: e.ref,
         refRank: e.refRank,
+        matched: e.matched,
+        prBefore: r.prBefore,
+        prAfter: r.prAfter,
         deltaPr: r.deltaPrTarget,
         deltaPrL1: r.deltaPrL1,
         depthAfter: r.depthAfter,

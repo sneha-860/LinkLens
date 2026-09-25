@@ -1,0 +1,443 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`determinism > matches the stored snapshot of every explanation 1`] = `
+{
+  "diagnoses": [
+    {
+      "alpha": 0.1,
+      "case": "v4",
+      "id": "v4:https://site.test/shark->https://site.test/ocean",
+      "kind": "diagnosis",
+      "label": "missing",
+      "link": {
+        "exists": false,
+        "regions": {},
+      },
+      "matched": [
+        {
+          "contribution": 0.07862610212448408,
+          "term": "shark",
+        },
+        {
+          "contribution": 0.07862610212448408,
+          "term": "shark teeth",
+        },
+        {
+          "contribution": 0.07862610212448408,
+          "term": "teeth",
+        },
+      ],
+      "omega": 0,
+      "recommendation": "add-link",
+      "ref": 0.23587830637345225,
+      "rho": 1,
+      "sentence": "/shark → /ocean is missing (v4): /shark covers /ocean's topic (ρ 1.00 > α 0.1; REF 0.24 on 'shark', 'shark teeth', 'teeth') but does not link to it. Recommendation: add a link (severity 1.00).",
+      "severity": 1,
+      "source": "https://site.test/shark",
+      "target": "https://site.test/ocean",
+    },
+    {
+      "alpha": 0.1,
+      "case": "v4",
+      "id": "v4:https://site.test/turtle->https://site.test/ocean",
+      "kind": "diagnosis",
+      "label": "missing",
+      "link": {
+        "exists": false,
+        "regions": {},
+      },
+      "matched": [
+        {
+          "contribution": 0.07862610212448408,
+          "term": "nest",
+        },
+        {
+          "contribution": 0.07862610212448408,
+          "term": "turtl",
+        },
+        {
+          "contribution": 0.07862610212448408,
+          "term": "turtl nest",
+        },
+      ],
+      "omega": 0,
+      "recommendation": "add-link",
+      "ref": 0.23587830637345225,
+      "rho": 1,
+      "sentence": "/turtle → /ocean is missing (v4): /turtle covers /ocean's topic (ρ 1.00 > α 0.1; REF 0.24 on 'nest', 'turtl', 'turtl nest') but does not link to it. Recommendation: add a link (severity 1.00).",
+      "severity": 1,
+      "source": "https://site.test/turtle",
+      "target": "https://site.test/ocean",
+    },
+    {
+      "alpha": 0.1,
+      "case": "v4",
+      "id": "v4:https://site.test/whale->https://site.test/ocean",
+      "kind": "diagnosis",
+      "label": "missing",
+      "link": {
+        "exists": false,
+        "regions": {},
+      },
+      "matched": [
+        {
+          "contribution": 0.07862610212448408,
+          "term": "fact",
+        },
+        {
+          "contribution": 0.07862610212448408,
+          "term": "whale",
+        },
+        {
+          "contribution": 0.07862610212448408,
+          "term": "whale fact",
+        },
+      ],
+      "omega": 0,
+      "recommendation": "add-link",
+      "ref": 0.23587830637345225,
+      "rho": 1,
+      "sentence": "/whale → /ocean is missing (v4): /whale covers /ocean's topic (ρ 1.00 > α 0.1; REF 0.24 on 'fact', 'whale', 'whale fact') but does not link to it. Recommendation: add a link (severity 1.00).",
+      "severity": 1,
+      "source": "https://site.test/whale",
+      "target": "https://site.test/ocean",
+    },
+    {
+      "alpha": 0.1,
+      "case": "v4",
+      "id": "v4:https://site.test/ocean->https://site.test/turtle",
+      "kind": "diagnosis",
+      "label": "missing",
+      "link": {
+        "exists": false,
+        "regions": {},
+      },
+      "matched": [
+        {
+          "contribution": 0.3333333333333333,
+          "term": "nest",
+        },
+        {
+          "contribution": 0.3333333333333333,
+          "term": "turtl",
+        },
+        {
+          "contribution": 0.3333333333333333,
+          "term": "turtl nest",
+        },
+      ],
+      "omega": 0,
+      "recommendation": "add-link",
+      "ref": 1,
+      "rho": 0.3333333333333333,
+      "sentence": "/ocean → /turtle is missing (v4): /ocean covers /turtle's topic (ρ 0.33 > α 0.1; REF 1.00 on 'nest', 'turtl', 'turtl nest') but does not link to it. Recommendation: add a link (severity 0.33).",
+      "severity": 0.3333333333333333,
+      "source": "https://site.test/ocean",
+      "target": "https://site.test/turtle",
+    },
+    {
+      "alpha": 0.1,
+      "case": "v3",
+      "id": "v3:https://site.test/ocean->https://site.test/shark",
+      "kind": "diagnosis",
+      "label": "buried",
+      "link": {
+        "exists": true,
+        "regions": {
+          "footer": 1,
+        },
+      },
+      "matched": [
+        {
+          "contribution": 0.3333333333333333,
+          "term": "shark",
+        },
+        {
+          "contribution": 0.3333333333333333,
+          "term": "shark teeth",
+        },
+        {
+          "contribution": 0.3333333333333333,
+          "term": "teeth",
+        },
+      ],
+      "omega": 0.04977375565610861,
+      "recommendation": "make-more-visible",
+      "ref": 1,
+      "rho": 0.3333333333333333,
+      "sentence": "/ocean → /shark is buried (v3): /ocean covers /shark's topic (ρ 0.33 > α 0.1; REF 1.00 on 'shark', 'shark teeth', 'teeth') but links to it only from the footer with ω 0.05 < α 0.1. Recommendation: make the link more visible (severity 0.28).",
+      "severity": 0.28355957767722473,
+      "source": "https://site.test/ocean",
+      "target": "https://site.test/shark",
+    },
+    {
+      "alpha": 0.1,
+      "case": "v1",
+      "id": "v1:https://site.test/ocean->https://site.test/cake",
+      "kind": "diagnosis",
+      "label": "misleading/low-value",
+      "link": {
+        "exists": true,
+        "regions": {
+          "body": 1,
+        },
+      },
+      "matched": [],
+      "omega": 0.4524886877828055,
+      "recommendation": "flag-for-review",
+      "ref": 0,
+      "rho": 0,
+      "sentence": "/ocean → /cake is misleading or low-value (v1): it links prominently from the main content (ω 0.45 ≥ α 0.1) but the pages are not related (ρ 0.00 ≤ α 0.1; REF 0.00). Recommendation: flag for review or removal (never simulated; severity 0.45).",
+      "severity": 0.4524886877828055,
+      "source": "https://site.test/ocean",
+      "target": "https://site.test/cake",
+    },
+    {
+      "alpha": 0.1,
+      "case": "v2",
+      "id": "v2:https://site.test/ocean->https://site.test/whale",
+      "kind": "diagnosis",
+      "label": "good",
+      "link": {
+        "exists": true,
+        "regions": {
+          "body": 1,
+        },
+      },
+      "matched": [
+        {
+          "contribution": 0.3333333333333333,
+          "term": "fact",
+        },
+        {
+          "contribution": 0.3333333333333333,
+          "term": "whale",
+        },
+        {
+          "contribution": 0.3333333333333333,
+          "term": "whale fact",
+        },
+      ],
+      "omega": 0.49773755656108604,
+      "recommendation": null,
+      "ref": 1,
+      "rho": 0.3333333333333333,
+      "sentence": "/ocean → /whale is good (v2): /ocean covers /whale's topic (ρ 0.33 > α 0.1; REF 1.00 on 'fact', 'whale', 'whale fact') and links to it prominently from the main content (ω 0.50 ≥ α 0.1). No action needed.",
+      "severity": 0.16440422322775272,
+      "source": "https://site.test/ocean",
+      "target": "https://site.test/whale",
+    },
+  ],
+  "fixes": [
+    {
+      "case": {
+        "label": "v4",
+        "name": "v4 (missing)",
+      },
+      "donor": "https://site.test/ocean",
+      "donorEvidence": {
+        "cosine": 0.8,
+        "matched": [
+          {
+            "contribution": 0.3333333333333333,
+            "term": "nest",
+          },
+          {
+            "contribution": 0.3333333333333333,
+            "term": "turtl",
+          },
+          {
+            "contribution": 0.3333333333333333,
+            "term": "turtl nest",
+          },
+        ],
+        "ref": 1,
+      },
+      "effort": {
+        "kappa": 2,
+        "templateReach": 4,
+      },
+      "id": "add-link:https://site.test/ocean->https://site.test/turtle",
+      "impact": {
+        "deltaDepth": -1,
+        "deltaPr": 0.03,
+        "deltaPrPct": 30,
+        "depthAfter": 1,
+        "depthBefore": 2,
+        "prAfter": 0.13,
+        "prBefore": 0.1,
+      },
+      "kind": "fix",
+      "lines": [
+        "Why the target: /turtle is 5 clicks from the home page (deeper than 3); is in the bottom 20% by PageRank (1.20e-3 < 1.80e-3); is missing a link from 1 related page (v4).",
+        "Why this donor: REF(u,v) 1.00 > ε 0.2, on 'nest', 'turtl', 'turtl nest'; cosine 0.80.",
+        "There is no link from /ocean to /turtle yet.",
+        "Predicted: PageRank +3.00e-2 (+30.0%); /turtle goes from 2 to 1 click deep (-1).",
+        "Effort: κ 2 (2 body link blocks); its widest body block is a template on 4 pages.",
+        "Case: v4 (missing).",
+      ],
+      "link": {
+        "exists": false,
+        "omega": null,
+        "regions": {},
+      },
+      "needs": [
+        {
+          "depth": 5,
+          "kind": "deep-page",
+          "threshold": 3,
+        },
+        {
+          "kind": "weak-authority",
+          "pagerank": 0.0012,
+          "percentile": 20,
+          "threshold": 0.0018,
+        },
+        {
+          "from": 1,
+          "kind": "v4",
+        },
+      ],
+      "rank": 1,
+      "score": 0.024,
+      "sentence": "Add a link from /ocean to /turtle: the target is 5 clicks from the home page (deeper than 3); REF 1.00 on 'nest', 'turtl'; predicted PageRank +3.00e-2 (+30.0%); κ 2.",
+      "target": "https://site.test/turtle",
+      "type": "add-link",
+    },
+    {
+      "case": {
+        "label": "v3",
+        "name": "v3 (buried)",
+      },
+      "donor": "https://site.test/ocean",
+      "donorEvidence": {
+        "cosine": 0.8,
+        "matched": [
+          {
+            "contribution": 0.3333333333333333,
+            "term": "shark",
+          },
+          {
+            "contribution": 0.3333333333333333,
+            "term": "shark teeth",
+          },
+          {
+            "contribution": 0.3333333333333333,
+            "term": "teeth",
+          },
+        ],
+        "ref": 1,
+      },
+      "effort": {
+        "kappa": 2,
+        "templateReach": 4,
+      },
+      "id": "make-visible:https://site.test/ocean->https://site.test/shark",
+      "impact": {
+        "deltaDepth": 0,
+        "deltaPr": 0.020000000000000004,
+        "deltaPrPct": 25.000000000000004,
+        "depthAfter": 1,
+        "depthBefore": 1,
+        "prAfter": 0.1,
+        "prBefore": 0.08,
+      },
+      "kind": "fix",
+      "lines": [
+        "Why the target: /shark is buried: 1 related page links to it only faintly (v3).",
+        "Why this donor: REF(u,v) 1.00 > ε 0.2, on 'shark', 'shark teeth', 'teeth'; cosine 0.80.",
+        "/ocean already links to /shark from the footer, with low prominence ω 0.05 (< α 0.1).",
+        "Predicted: PageRank +2.00e-2 (+25.0%); /shark stays 1 click deep.",
+        "Effort: κ 2 (2 body link blocks); its widest body block is a template on 4 pages.",
+        "Case: v3 (buried).",
+      ],
+      "link": {
+        "exists": true,
+        "omega": 0.04977375565610861,
+        "regions": {
+          "footer": 1,
+        },
+      },
+      "needs": [
+        {
+          "from": 1,
+          "kind": "v3",
+        },
+      ],
+      "rank": 2,
+      "score": 0.016000000000000004,
+      "sentence": "Make the link from /ocean to /shark more visible: the target is buried: 1 related page links to it only faintly (v3); REF 1.00 on 'shark', 'shark teeth'; predicted PageRank +2.00e-2 (+25.0%); κ 2.",
+      "target": "https://site.test/shark",
+      "type": "make-visible",
+    },
+  ],
+  "rescues": [
+    {
+      "case": {
+        "label": null,
+        "name": "orphan rescue (not diagnosed: the orphan has no link to judge)",
+      },
+      "donor": "https://site.test/whale",
+      "donorEvidence": {
+        "cosine": null,
+        "matched": [
+          {
+            "contribution": 0.3,
+            "term": "whale",
+          },
+          {
+            "contribution": 0.2,
+            "term": "fact",
+          },
+          {
+            "contribution": 0.11,
+            "term": "whale fact",
+          },
+        ],
+        "ref": 0.61,
+      },
+      "effort": {
+        "kappa": 1,
+        "templateReach": 1,
+      },
+      "id": "rescue:https://site.test/whale->https://site.test/whale-songs",
+      "impact": {
+        "deltaDepth": null,
+        "deltaPr": 0.03,
+        "deltaPrPct": 150,
+        "depthAfter": 2,
+        "depthBefore": null,
+        "prAfter": 0.05,
+        "prBefore": 0.02,
+      },
+      "kind": "rescue",
+      "lines": [
+        "Why the target: /whale-songs is linked from nowhere and was found only via the XML sitemap.",
+        "Why this donor: REF(u,v) 0.61 > ε 0.2, on 'whale', 'fact', 'whale fact'; no embedding cosine.",
+        "There is no link from /whale to /whale-songs yet.",
+        "Predicted: PageRank +3.00e-2 (+150.0%); /whale-songs becomes reachable, 2 clicks from the home page.",
+        "Effort: κ 1 (1 body link block); its body blocks are unique to the page.",
+        "Case: orphan rescue (not diagnosed: the orphan has no link to judge).",
+      ],
+      "link": {
+        "exists": false,
+        "omega": null,
+        "regions": {},
+      },
+      "needs": [
+        {
+          "kind": "orphan",
+          "revealedBy": [
+            "xml_sitemap",
+          ],
+        },
+      ],
+      "rank": 1,
+      "score": null,
+      "sentence": "Add a link from /whale to /whale-songs: the target is linked from nowhere and was found only via the XML sitemap; REF 0.61 on 'whale', 'fact'; predicted PageRank +3.00e-2 (+150.0%); κ 1.",
+      "target": "https://site.test/whale-songs",
+      "type": "add-link",
+    },
+  ],
+}
+`;

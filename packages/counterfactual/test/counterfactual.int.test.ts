@@ -166,7 +166,7 @@ describe("fix ranking (S = ΔPR × σ / κ)", () => {
       kind: "fix-ranking",
     });
     expect(ranking).toMatchObject({
-      version: "scoring@1.0.0",
+      version: "scoring@1.1.0",
       sigmaVariant: "refGateCosine",
       lambda: 0.5,
       sources: { counterfactualArtefactId: cf?.id, cosineModel: config.embeddingModel },
@@ -188,5 +188,26 @@ describe("fix ranking (S = ΔPR × σ / κ)", () => {
     const refOnly = await fixes.buildFixRanking(db, runId, "P0", { sigmaVariant: "refOnly" });
     expect(refOnly.fixes.map((f) => f.id).sort()).toEqual(ranking.fixes.map((f) => f.id).sort());
     for (const f of refOnly.fixes) expect(f.sigma).toBe(f.ref);
+  });
+});
+
+describe("explanations", () => {
+  it("explains every ranked fix and every diagnosis, deterministically", async () => {
+    const set = await fixes.buildExplanations(db, runId, "P0");
+    const ranking = (await q.listArtefacts(db, runId, { kind: "fix-ranking" })).at(-1);
+    const ranked = (ranking?.payload as unknown as fixes.FixRanking).fixes;
+    expect(set.artefact).toMatchObject({ runId, policyVersion: "P0@1.0.0", kind: "explanations" });
+    expect(set.sources.fixRankingArtefactId).toBe(ranking?.id);
+    expect(set.fixes.map((f) => f.id)).toEqual(ranked.map((f) => f.id));
+    expect(set.counts.diagnoses).toBeGreaterThan(0);
+    const hub = set.fixes.find((f) => f.id === `add-link:${S}/guides/->${S}/guides/whale-song`);
+    expect(hub?.needs).toContainEqual({ kind: "deep-page", depth: 5, threshold: 3 });
+    expect(hub?.lines[3]).toMatch(
+      /^Predicted: PageRank \+\d\.\d{2}e-\d \(\+\d+\.\d%\); \/guides\/whale-song goes from 5 to 2 clicks deep \(-3\)\.$/,
+    );
+    for (const f of set.fixes) expect(f.sentence.length).toBeGreaterThan(0);
+    for (const d of set.diagnoses) expect(d.sentence).toContain(`(${d.case})`);
+    const again = await fixes.buildExplanations(db, runId, "P0");
+    expect(JSON.stringify(again.fixes)).toBe(JSON.stringify(set.fixes));
   });
 });

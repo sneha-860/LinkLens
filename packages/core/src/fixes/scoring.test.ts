@@ -141,6 +141,8 @@ describe("scoreFixes", () => {
       donor: "B",
       target: "T1",
       type: "make-visible",
+      prBefore: 0.01,
+      prAfter: 0.01 + 0.02,
       deltaPr: 0.02,
       deltaPrL1: 0.04,
       deltaDepth: -3,

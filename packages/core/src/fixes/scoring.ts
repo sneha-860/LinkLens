@@ -14,7 +14,7 @@ import { COUNTERFACTUAL_ARTEFACT, type CounterfactualResult } from "./counterfac
 import { loadDonorEffort, type DonorEffort } from "./effort.js";
 
 /** Bump whenever the output can change (σ definitions, S, ordering, record fields). */
-export const SCORING_VERSION = "scoring@1.0.0";
+export const SCORING_VERSION = "scoring@1.1.0";
 export const FIX_RANKING_ARTEFACT = "fix-ranking";
 
 type SigmaConfig = Pick<LinkLensConfig, "epsilon" | "sigmaBlendLambda">;
@@ -51,7 +51,9 @@ export interface FixRecord {
   readonly donor: string;
   readonly target: string;
   readonly type: CandidateAction;
-  /** ΔPR_v, and the site-wide L1 change. */
+  /** PR(v) before and after the fix; ΔPR_v; and the site-wide L1 change. */
+  readonly prBefore: number;
+  readonly prAfter: number;
   readonly deltaPr: number;
   readonly deltaPrL1: number;
   readonly deltaDepth: number | null;
@@ -124,6 +126,8 @@ export function scoreFixes(
       donor: c.donor,
       target: c.target,
       type: c.action,
+      prBefore: r.prBefore,
+      prAfter: r.prAfter,
       deltaPr: r.deltaPrTarget,
       deltaPrL1: r.deltaPrL1,
       deltaDepth: r.deltaDepth,
