@@ -1,0 +1,276 @@
+{
+  "experiment": "E2",
+  "artefactId": 0,
+  "result": {
+    "orphans": 1,
+    "inventory": 3,
+    "subsets": [
+      {
+        "channels": ["xml_sitemap", "robots_sitemap", "html_sitemap", "feed", "llms_txt"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 3
+      },
+      {
+        "channels": ["robots_sitemap", "html_sitemap", "feed", "llms_txt"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 3
+      },
+      {
+        "channels": ["xml_sitemap", "html_sitemap", "feed", "llms_txt"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 3
+      },
+      {
+        "channels": ["xml_sitemap", "robots_sitemap", "feed", "llms_txt"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 3
+      },
+      {
+        "channels": ["xml_sitemap", "robots_sitemap", "html_sitemap", "llms_txt"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 3
+      },
+      {
+        "channels": ["xml_sitemap", "robots_sitemap", "html_sitemap", "feed"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["html_sitemap", "feed", "llms_txt"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 3
+      },
+      {
+        "channels": ["robots_sitemap", "feed", "llms_txt"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 3
+      },
+      {
+        "channels": ["xml_sitemap", "feed", "llms_txt"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 3
+      },
+      {
+        "channels": ["xml_sitemap", "html_sitemap", "llms_txt"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 3
+      },
+      {
+        "channels": ["xml_sitemap", "robots_sitemap", "llms_txt"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 3
+      },
+      {
+        "channels": ["robots_sitemap", "html_sitemap", "feed"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["xml_sitemap", "html_sitemap", "feed"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["xml_sitemap", "robots_sitemap", "feed"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["xml_sitemap", "robots_sitemap", "html_sitemap"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["robots_sitemap", "html_sitemap", "llms_txt"],
+        "orphansFound": 0,
+        "orphanRecall": 0,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["feed", "llms_txt"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 3
+      },
+      {
+        "channels": ["xml_sitemap", "llms_txt"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 3
+      },
+      {
+        "channels": ["html_sitemap", "feed"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["robots_sitemap", "feed"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["xml_sitemap", "feed"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["xml_sitemap", "html_sitemap"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["xml_sitemap", "robots_sitemap"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["html_sitemap", "llms_txt"],
+        "orphansFound": 0,
+        "orphanRecall": 0,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["robots_sitemap", "llms_txt"],
+        "orphansFound": 0,
+        "orphanRecall": 0,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["robots_sitemap", "html_sitemap"],
+        "orphansFound": 0,
+        "orphanRecall": 0,
+        "pagesKnown": 1
+      },
+      {
+        "channels": ["feed"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["xml_sitemap"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["llms_txt"],
+        "orphansFound": 0,
+        "orphanRecall": 0,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["html_sitemap"],
+        "orphansFound": 0,
+        "orphanRecall": 0,
+        "pagesKnown": 1
+      },
+      {
+        "channels": ["robots_sitemap"],
+        "orphansFound": 0,
+        "orphanRecall": 0,
+        "pagesKnown": 1
+      },
+      {
+        "channels": [],
+        "orphansFound": 0,
+        "orphanRecall": 0,
+        "pagesKnown": 1
+      }
+    ],
+    "single": [
+      {
+        "channels": ["xml_sitemap"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["robots_sitemap"],
+        "orphansFound": 0,
+        "orphanRecall": 0,
+        "pagesKnown": 1
+      },
+      {
+        "channels": ["html_sitemap"],
+        "orphansFound": 0,
+        "orphanRecall": 0,
+        "pagesKnown": 1
+      },
+      {
+        "channels": ["feed"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 2
+      },
+      {
+        "channels": ["llms_txt"],
+        "orphansFound": 0,
+        "orphanRecall": 0,
+        "pagesKnown": 2
+      }
+    ],
+    "leaveOneOut": [
+      {
+        "channels": ["robots_sitemap", "html_sitemap", "feed", "llms_txt"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 3,
+        "removed": "xml_sitemap",
+        "orphansLost": 0
+      },
+      {
+        "channels": ["xml_sitemap", "html_sitemap", "feed", "llms_txt"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 3,
+        "removed": "robots_sitemap",
+        "orphansLost": 0
+      },
+      {
+        "channels": ["xml_sitemap", "robots_sitemap", "feed", "llms_txt"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 3,
+        "removed": "html_sitemap",
+        "orphansLost": 0
+      },
+      {
+        "channels": ["xml_sitemap", "robots_sitemap", "html_sitemap", "llms_txt"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 3,
+        "removed": "feed",
+        "orphansLost": 0
+      },
+      {
+        "channels": ["xml_sitemap", "robots_sitemap", "html_sitemap", "feed"],
+        "orphansFound": 1,
+        "orphanRecall": 1,
+        "pagesKnown": 2,
+        "removed": "llms_txt",
+        "orphansLost": 0
+      }
+    ]
+  }
+}

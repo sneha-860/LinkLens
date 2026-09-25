@@ -288,6 +288,24 @@ describe("generateCandidates", () => {
     expect(open.targets[0]?.rejected).toMatchObject({ section: 0, "ref-not-above-epsilon": 2 });
   });
 
+  it("can drop the REF rule (σ ablation): the same pool for every σ, REF ≤ ε counted as 0", () => {
+    const open = generateCandidates(input(), { ...config, candidateRequireRef: false });
+    const t = open.targets.find((x) => x.node === S + T);
+    expect(t?.rejected["ref-not-above-epsilon"]).toBe(0);
+    // /blog/d (REF = ε) is now a candidate; the utility, section and prominence rules still apply.
+    const d = open.candidates.find((c) => c.donor === `${S}/blog/d`);
+    expect(d).toMatchObject({ ref: 0.2, action: "add-link" });
+    expect(d?.reasons[4]).toBe(
+      "REF(u,v) = 0.2 ≤ ε = 0.2 (REF rule off: candidateRequireRef false)",
+    );
+    expect(open.candidates.some((c) => c.donor === `${S}/login`)).toBe(false);
+    expect(open.candidates.some((c) => c.donor === `${S}/news/x`)).toBe(false);
+    expect(open.params.candidateRequireRef).toBe(false);
+    expect(open.candidates.length).toBeGreaterThan(
+      generateCandidates(input(), config).candidates.length,
+    );
+  });
+
   it("uses the configured utility patterns and α", () => {
     const noUtility = generateCandidates(input(), { ...config, candidateUtilityPatterns: [] });
     expect(noUtility.candidates.slice(0, 2).map((c) => c.donor.replace(S, ""))).toEqual([

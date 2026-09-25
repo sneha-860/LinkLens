@@ -1,0 +1,17 @@
+{
+  "experiment": "E4",
+  "artefactId": 0,
+  "result": {
+    "runA": 1,
+    "runB": 2,
+    "daysApart": 0.0000013194444444444444,
+    "pagesJaccard": 1,
+    "edgesJaccard": 0.9166666666666666,
+    "orphansJaccard": 1,
+    "pagerankSpearman": 0.9872062961643026,
+    "meanAbsDepthShift": 0,
+    "topFixesJaccard": 0.8,
+    "caseAgreement": 0.9375,
+    "casePairs": 16
+  }
+}

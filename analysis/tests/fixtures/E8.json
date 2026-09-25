@@ -1,0 +1,19 @@
+{
+  "experiment": "E8",
+  "artefactId": 0,
+  "result": {
+    "ratings": 4,
+    "items": 4,
+    "raters": ["ana"],
+    "meanRelevance": 3.5,
+    "wouldAddRate": 1,
+    "meanRelevanceTop10": 3.5,
+    "meanRelevanceRest": null,
+    "scoreVsRelevance": 1,
+    "interRater": {
+      "pairs": 0,
+      "spearman": null,
+      "exactAgreement": null
+    }
+  }
+}

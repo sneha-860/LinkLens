@@ -191,6 +191,11 @@ export interface LinkLensConfig {
   /** Top-level pages (home, /about) may donate to, and receive from, any section. */
   readonly candidateTopLevelIsSibling: boolean;
   /**
+   * Fix candidates must have REF(u,v) > ε. The σ ablation (E7) turns this off, so every σ
+   * variant scores the same pool (otherwise cosineOnly and refGateCosine always agree).
+   */
+  readonly candidateRequireRef: boolean;
+  /**
    * Counterfactual engine: worker threads that simulate candidates in parallel; 0 = half the
    * logical processors (about the physical cores; at least 1). Results do not depend on it.
    */
@@ -290,6 +295,7 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   candidateSectionBlocking: true,
   candidateSiblingSections: Object.freeze([]),
   candidateTopLevelIsSibling: true,
+  candidateRequireRef: true,
   counterfactualWorkers: 0,
   counterfactualValidationSample: 5,
   sigmaVariant: "refGateCosine",
@@ -408,6 +414,7 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
     "storeDiscoveryBodies",
     "candidateSectionBlocking",
     "candidateTopLevelIsSibling",
+    "candidateRequireRef",
   ] as const) {
     if (typeof cfg[flag] !== "boolean") throw new RangeError(`config.${flag} must be a boolean`);
   }

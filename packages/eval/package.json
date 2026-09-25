@@ -2,14 +2,21 @@
   "name": "@linklens/eval",
   "version": "0.0.0",
   "private": true,
-  "description": "LinkLens evaluation experiments E1–E8",
+  "description": "LinkLens evaluation experiments E1â€“E8",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e": "tsx src/cli.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
-    "@linklens/core": "workspace:*"
+    "@linklens/core": "workspace:*",
+    "@linklens/db": "workspace:^"
+  },
+  "devDependencies": {
+    "@linklens/counterfactual": "workspace:^",
+    "@types/pg": "^8.23.1"
   }
 }

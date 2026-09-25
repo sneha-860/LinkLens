@@ -69,3 +69,22 @@ export function depthShift(
   }
   return n === 0 ? null : { mean: sum / n, meanAbs: abs / n, pages: n };
 }
+
+export const mean = (xs: readonly number[]): number | null =>
+  xs.length === 0 ? null : xs.reduce((s, x) => s + x, 0) / xs.length;
+
+/**
+ * Ranking metrics for recovery experiments, from the 1-based rank at which each sought item was
+ * found (null = not found): mean reciprocal rank, and recall@k for each k.
+ */
+export function rankingMetrics(
+  ranks: readonly (number | null)[],
+  ks: readonly number[],
+): { n: number; mrr: number | null; recall: Record<number, number | null> } {
+  const n = ranks.length;
+  const recall: Record<number, number | null> = {};
+  for (const k of ks) {
+    recall[k] = n === 0 ? null : ranks.filter((r) => r !== null && r <= k).length / n;
+  }
+  return { n, mrr: mean(ranks.map((r) => (r === null ? 0 : 1 / r))), recall };
+}

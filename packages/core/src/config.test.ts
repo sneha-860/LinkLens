@@ -71,6 +71,7 @@ describe("defaultConfig", () => {
       candidateSectionBlocking: true,
       candidateSiblingSections: [],
       candidateTopLevelIsSibling: true,
+      candidateRequireRef: true,
       counterfactualWorkers: 0,
       counterfactualValidationSample: 5,
       sigmaVariant: "refGateCosine",

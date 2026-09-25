@@ -1,0 +1,25 @@
+{
+  "experiment": "E5",
+  "artefactId": 0,
+  "result": {
+    "ours": 9,
+    "screamingFrog": 4,
+    "common": 4,
+    "coverageJaccard": 0.4444444444444444,
+    "onlyOurs": [
+      "https://eval.test/guides/a",
+      "https://eval.test/guides/b",
+      "https://eval.test/guides/c",
+      "https://eval.test/guides/shark",
+      "https://eval.test/guides/turtle"
+    ],
+    "onlyScreamingFrog": [],
+    "depth": {
+      "pages": 4,
+      "exact": 1,
+      "withinOne": 1,
+      "spearman": 1
+    },
+    "inlinksSpearman": 1
+  }
+}

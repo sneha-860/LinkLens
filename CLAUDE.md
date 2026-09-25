@@ -656,6 +656,38 @@ config } }` returns 202 with a Location header.
   `test-setup.ts` strips the `signal` from `Request`, because jsdom's AbortSignal is not the one
   Node's Request accepts.
 
+### Evaluation (packages/eval, analysis/)
+
+- `runExperiment(db, "E1"…"E8", { runId, policy, … })` runs an experiment on a stored, audited run
+  and appends an `evaluation-E<n>` artefact. The CLI is
+  `pnpm --filter @linklens/eval e E3 --run 12 [--policy P3] [--out results/e3.json]`; it needs
+  DATABASE_URL.
+  - **E1** policy sensitivity: core `stats.compareRunPolicies`, the same as `/sensitivity`.
+  - **E2** channel ablation: every subset of the five non-link channels (orphans found, recall,
+    pages known), each channel alone, and leave-one-out loss.
+  - **E3** fixes vs baselines: per target, among the same admissible donors, LinkLens's pick
+    against REF-only, highest-PageRank, seeded random, same-section random, the home page and
+    the ΔPR oracle. Mean ΔPR, share of the best ΔPR, depth gain, REF, win rate, and per-target
+    picks for paired tests.
+  - **E4** re-crawl stability: two runs of the same site compared in P3 form (pages, edges,
+    orphans, PageRank Spearman, depth shift, top-k fixes, diagnosis case agreement). The 14-day
+    re-crawl itself is a second audit run later.
+  - **E5** Screaming Frog calibration: `--sf internal_all.csv`; coverage Jaccard, depth
+    agreement (exact / ±1 / Spearman) and unique-inlink Spearman on HTML 200 pages.
+  - **E6** hide-and-recover: a seeded sample of main-content links is hidden (every observation
+    of the pair, including the donor's anchor text). Text, REF, prominence, diagnosis,
+    candidates, counterfactual and scores are rebuilt in memory, and each hidden donor's rank for
+    its target is found: MRR and recall@1/3/5/10.
+  - **E7** σ ablation: E6 for all four σ with `candidateRequireRef: false`, so every σ ranks the
+    same pool, plus the pairwise top-k Jaccard between σ rankings.
+  - **E8** human rating: without `--ratings` it writes a rating sheet (CSV, top 50 fixes with
+    their explanation). With the filled sheets it summarises mean relevance, would-add rate,
+    top-10 vs rest, score–relevance Spearman and inter-rater agreement.
+- `analysis/` (Python): `python -m linklens_analysis report results/*.json` prints Markdown
+  tables. It adds paired Wilcoxon tests (E3: LinkLens vs each baseline; E7: σ pairs) and seeded
+  bootstrap CIs for MRR. Its tests read fixtures written by the eval integration test with
+  `LINKLENS_WRITE_FIXTURES=1`, so both sides share one shape.
+
 ### Database
 
 - Postgres 16 + Redis 7 via `docker-compose.yml` (Postgres on host port **5433**).

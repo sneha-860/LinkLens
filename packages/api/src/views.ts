@@ -12,7 +12,7 @@ import {
 import { toCsv } from "./csv.js";
 import { notFound, notReady } from "./errors.js";
 import { STAGES, type PolicyJob } from "./pipeline.js";
-import { depthShift, jaccard, spearman } from "./stats.js";
+import { stats } from "@linklens/core";
 
 type PolicyId = canonicalise.PolicyId;
 const versionOf = (p: PolicyId) => canonicalise.POLICIES[p].version;
@@ -315,12 +315,7 @@ export async function reconciliationView(db: q.Queryable, a: q.AuditRow) {
 
 // ---------- sensitivity (E1) ----------
 
-/**
- * Derive the run under all six policies and compare each with the audit's policy. Pages are
- * compared in P3 form, where node ids of every policy meet (a P3 page's PageRank is the sum of
- * its merged nodes', its depth the smallest). Fixes are compared by their (donor, target) pairs
- * in P3 form, for the rankings that exist with the audit's σ.
- */
+/** The six policies compared with the audit's (core stats.compareRunPolicies), with the job. */
 export async function sensitivityView(
   db: q.Queryable,
   a: q.AuditRow,
@@ -329,82 +324,15 @@ export async function sensitivityView(
 ) {
   const run = await q.getRun(db, a.runId);
   if (run?.status !== "completed") throw notReady("the sensitivity analysis");
-  const { observations, context, config } = await graph.loadRunGraphInputs(db, a.runId);
-  const p3 = (n: string) => canonicalise.POLICIES.P3.canonicalise(n, context);
-  const sigma = (a.options["sigma"] as SigmaVariant | undefined) ?? config.sigmaVariant;
-
-  const perPolicy = [];
-  for (const id of POLICIES_ORDER) {
-    const derived = graph.deriveGraphFromObservations(observations, id, context, config);
-    const [rec, aud, ranking] = await Promise.all([
-      discovery.loadReconciliation(db, a.runId, id),
-      auditCore.loadAudit(db, a.runId, id),
-      latest<fixes.FixRanking>(
-        db,
-        a.runId,
-        fixes.FIX_RANKING_ARTEFACT,
-        id,
-        (p) => p.sigmaVariant === sigma,
-      ),
-    ]);
-    const pagerank = new Map<string, number>();
-    const depth = new Map<string, number>();
-    const depths: number[] = [];
-    derived.graph.forEachNode((n, attrs) => {
-      const key = p3(n);
-      pagerank.set(key, (pagerank.get(key) ?? 0) + (attrs.pagerank ?? 0));
-      if (attrs.depth !== null && attrs.depth !== undefined) {
-        depths.push(attrs.depth);
-        depth.set(key, Math.min(depth.get(key) ?? Infinity, attrs.depth));
-      }
-    });
-    perPolicy.push({
-      id,
-      summary: derived.summary,
-      orphans: rec.orphans.length,
-      issues: aud.summary.total,
-      pagerank,
-      depth,
-      meanDepth: depths.length === 0 ? null : depths.reduce((s, d) => s + d, 0) / depths.length,
-      topFixes:
-        ranking === null
-          ? null
-          : new Set(
-              ranking.payload.fixes.slice(0, k).map((f) => `${p3(f.donor)} -> ${p3(f.target)}`),
-            ),
-      fixCount: ranking?.payload.fixes.length ?? null,
-    });
-  }
-  const base = perPolicy.find((r) => r.id === a.policy) as (typeof perPolicy)[number];
-  return {
-    runId: a.runId,
-    baselinePolicy: a.policy,
-    sigma,
+  const result = await stats.compareRunPolicies(
+    db,
+    a.runId,
+    a.policy as PolicyId,
     k,
-    fixesJob: job,
-    policies: perPolicy.map((r) => {
-      const shift = depthShift(r.depth, base.depth);
-      return {
-        policy: r.id,
-        policyVersion: versionOf(r.id),
-        nodes: r.summary.nodes,
-        edges: r.summary.edges,
-        reachable: r.summary.reachable,
-        largestScc: r.summary.largestSccSize,
-        orphans: r.orphans,
-        issues: r.issues,
-        meanDepth: r.meanDepth,
-        pagerankSpearman: spearman(r.pagerank, base.pagerank),
-        meanDepthShift: shift?.mean ?? null,
-        meanAbsDepthShift: shift?.meanAbs ?? null,
-        fixesRanked: r.fixCount,
-        topFixesJaccard:
-          r.topFixes === null || base.topFixes === null ? null : jaccard(r.topFixes, base.topFixes),
-      };
-    }),
-  };
+    a.options["sigma"] as SigmaVariant | undefined,
+  );
+  return { ...result, fixesJob: job };
 }
-const POLICIES_ORDER: readonly PolicyId[] = ["P0", "P1", "P2", "P3", "P4", "P5"];
 
 // ---------- export ----------
 

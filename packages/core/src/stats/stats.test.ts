@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { averageRanks, depthShift, jaccard, spearman } from "./stats.js";
+import { averageRanks, depthShift, jaccard, rankingMetrics, spearman } from "./stats.js";
 
 describe("jaccard", () => {
   it("is |A ∩ B| / |A ∪ B|, and 1 for two empty sets", () => {
@@ -99,5 +99,15 @@ describe("depthShift", () => {
     );
     expect(r).toEqual({ mean: 0.5, meanAbs: 1.5, pages: 2 });
     expect(depthShift(new Map([["a", 1]]), new Map())).toBeNull();
+  });
+});
+
+describe("rankingMetrics", () => {
+  it("gives MRR and recall@k from 1-based ranks (null = not found)", () => {
+    const m = rankingMetrics([1, 3, null, 2], [1, 3]);
+    expect(m.n).toBe(4);
+    expect(m.mrr).toBeCloseTo((1 + 1 / 3 + 0 + 1 / 2) / 4, 12);
+    expect(m.recall).toEqual({ 1: 0.25, 3: 0.75 });
+    expect(rankingMetrics([], [1])).toEqual({ n: 0, mrr: null, recall: { 1: null } });
   });
 });

@@ -12,7 +12,7 @@ import { loadTextModel } from "../text/run.js";
 import { parseReference } from "../url/rfc3986.js";
 
 /** Bump whenever the output can change (target selection, admission rules, cap, reasons). */
-export const CANDIDATES_VERSION = "candidates@1.0.0";
+export const CANDIDATES_VERSION = "candidates@1.1.0";
 export const CANDIDATES_ARTEFACT = "fix-candidates";
 
 /** Why a node is a fix target. */
@@ -41,6 +41,7 @@ type CandidateConfig = Pick<
   | "candidateSectionBlocking"
   | "candidateSiblingSections"
   | "candidateTopLevelIsSibling"
+  | "candidateRequireRef"
 >;
 
 export type SectionRelation = "same" | "sibling" | "top-level" | "unblocked";
@@ -99,6 +100,7 @@ export interface CandidateList {
     | "candidateSectionBlocking"
     | "candidateSiblingSections"
     | "candidateTopLevelIsSibling"
+    | "candidateRequireRef"
   >;
   readonly stats: {
     readonly targets: number;
@@ -192,7 +194,8 @@ export interface CandidateInput {
  * 1. u is a same-site HTML page with text (the REF matrix's nodes) and u ≠ v;
  * 2. u is not a utility page (candidateUtilityPatterns);
  * 3. u and v are in the same section, sibling sections, or one is top level (when blocking);
- * 4. REF(u,v) > ε;
+ * 4. REF(u,v) > ε (unless candidateRequireRef is false: the σ ablation needs the same pool for
+ *    every σ, so REF must not pre-filter it);
  * 5. there is no body link u→v (action add-link), or the body link has ω(u,v) < α
  *    (action make-visible); a body link with ω ≥ α is already prominent.
  */
@@ -249,11 +252,14 @@ export function generateCandidates(
         reject("section");
         continue;
       }
-      const r = refs.get(key(u, v));
-      if (r === undefined || !(r.ref > config.epsilon)) {
+      const stored = refs.get(key(u, v));
+      const refOk = stored !== undefined && stored.ref > config.epsilon;
+      if (config.candidateRequireRef && !refOk) {
         reject("ref-not-above-epsilon");
         continue;
       }
+      // With the REF rule off (σ ablation), REF ≤ ε counts as 0.
+      const r = stored ?? { ref: 0, rho: 0 };
       const edge = edges.get(key(u, v));
       const bodyLink = (edge?.regions.body ?? 0) > 0;
       if (edge !== undefined && bodyLink && edge.omega >= config.alpha) {
@@ -267,7 +273,9 @@ export function generateCandidates(
         "donor is a same-site HTML page with text",
         "donor is not a utility page",
         sectionReason(relation, uSection, vSection),
-        `REF(u,v) = ${fmt(r.ref)} > ε = ${config.epsilon}`,
+        refOk
+          ? `REF(u,v) = ${fmt(r.ref)} > ε = ${config.epsilon}`
+          : `REF(u,v) = ${fmt(r.ref)} ≤ ε = ${config.epsilon} (REF rule off: candidateRequireRef false)`,
         edge === undefined
           ? "no link u→v yet: add a body link"
           : bodyLink
@@ -323,6 +331,7 @@ export function generateCandidates(
       candidateSectionBlocking: config.candidateSectionBlocking,
       candidateSiblingSections: config.candidateSiblingSections,
       candidateTopLevelIsSibling: config.candidateTopLevelIsSibling,
+      candidateRequireRef: config.candidateRequireRef,
     },
     stats: {
       targets: targets.length,
