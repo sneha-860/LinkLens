@@ -474,17 +474,16 @@ The structural stand-in for the patent's session counts. Always call it **promin
     matched by candidate id, and checked against its `candidatesVersion`;
   - κ and templateReach: `loadDonorEffort`.
 - σ variants (`sigmaValues`, all reported on every fix for E7; `config.sigmaVariant` picks the
-  one that scores):
+  one that scores; a missing cosine counts as 0):
   - `cosineOnly`
   - `refOnly`
   - `refGateCosine` (default): cos if REF > ε, else 0
   - `blended`: `sigmaBlendLambda`·REF + (1 − λ)·cos
-  A missing cosine counts as 0.
 - `S(u→v) = ΔPR_v × σ(u,v) / κ(u)` (`fixScore`). A negative cosine gives a negative S, which
   ranks last.
 - Order: S (highest first), then ΔPR_v, then donor, then target. `rank` is global and
   `targetRank` is within the target. `topK(fixes, k)` and `topKPerTarget(fixes, k)` return the
-  top k (`fixTopK`, default 10; the UI offers 10/25/50).
+  top k (`fixTopK`, default 10; tested with 10, 25 and 50).
 - Each record: id, donor, target, type (add-link / make-visible), ΔPR, ΔPR L1, depth
   before/after/Δ, the σ used and every variant, REF, ρ, cosine, prominence (existing ω, link
   weight before and after), κ, templateReach, score, rank, targetRank, target reasons, diagnosis
