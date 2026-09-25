@@ -449,6 +449,20 @@ The structural stand-in for the patent's session counts. Always call it **promin
   one thread (4.2 s), and about 2.3 s with 6 workers. Past about 6 workers the performance cores
   are saturated.
 
+### Editing effort κ (packages/core/src/fixes/effort.ts)
+
+- `κ(u)`: the number of distinct `template_signature`s among the donor's body-region link
+  observations (`regionClass` body: main, body or no region; unsigned links ignored), at least 1.
+  A page whose body links sit in one block costs 1; each further block adds 1.
+- `templateReach(u)`: the most pages (representative pages, links in any region) that carry one
+  of the donor's body signatures; 1 when it has none. `templates` lists each body block with its
+  page count, widest first. It is used in explanations ("this block is on N pages").
+- `effortByNode(pages)` is pure. `loadDonorEffort(db, runId, policyId)` uses `loadPageLinks` (the
+  same representative pages as the graph and prominence).
+- **Limitation:** signatures are structural. A link directly under `<body>` has an empty ancestor
+  chain, so every such page shares one signature and `templateReach` counts unrelated pages
+  together (10 on the fixture site).
+
 ### Database
 
 - Postgres 16 + Redis 7 via `docker-compose.yml` (Postgres on host port **5433**).

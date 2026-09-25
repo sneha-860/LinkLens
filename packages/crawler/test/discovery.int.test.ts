@@ -480,6 +480,17 @@ describe("discovery on the fixture site", () => {
       expect(list.stats.candidates).toBe(list.candidates.length);
     });
 
+    it("computes κ and templateReach for the crawled pages", async () => {
+      const effort = await fx.loadDonorEffort(db, runId, "P0");
+      expect(effort.get(`${o}/`)).toMatchObject({ kappa: 1, bodyLinks: 16 });
+      expect(effort.get(`${o}/blog/`)?.kappa).toBe(2);
+      expect(effort.get(`${o}/blog/post-1.html`)?.kappa).toBe(2);
+      for (const e of effort.values()) {
+        expect(e.kappa).toBeGreaterThanOrEqual(1);
+        expect(e.templateReach).toBeGreaterThanOrEqual(1);
+      }
+    });
+
     it("works under a coarser policy (P3 nodes)", async () => {
       const p3 = await d.reconcileDiscovery(db, runId, "P3");
       const https = o.replace("http://", "https://");

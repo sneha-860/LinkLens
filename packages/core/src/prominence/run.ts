@@ -1,4 +1,5 @@
 import { POLICIES, type PolicyId } from "../canonicalise/index.js";
+import type { LinkLensConfig } from "../config.js";
 import {
   insertAnalyticsClicks,
   insertArtefact,
@@ -72,15 +73,25 @@ export interface RunProminence extends Prominence {
   readonly policyVersion: string;
 }
 
+export interface RunPageLinks {
+  /** One per crawled node of the policy's graph: its representative page's link observations. */
+  readonly pages: PageLinks[];
+  readonly policyVersion: string;
+  readonly isInternal: (url: string) => boolean;
+  readonly canonicalise: (url: string) => string;
+  /** The run's stored config. */
+  readonly config: Readonly<LinkLensConfig>;
+}
+
 /**
- * Prominence of every edge of the run's graph under `policyId` (the run's stored config), with
- * the run's imported analytics clicks when there are any. Nothing is written.
+ * Every crawled node of the run's graph under `policyId` with its representative page's link
+ * observations (region, template signature, position, and the node each edge points to).
  */
-export async function loadProminence(
+export async function loadPageLinks(
   db: Queryable,
   runId: number,
   policyId: PolicyId,
-): Promise<RunProminence> {
+): Promise<RunPageLinks> {
   const { observations, context, config } = await loadRunGraphInputs(db, runId);
   const policy = POLICIES[policyId];
   const canonicalise = (url: string) => policy.canonicalise(url, context);
@@ -93,10 +104,7 @@ export async function loadProminence(
     canonicalise,
   });
 
-  const [rows, clicks] = await Promise.all([
-    listLinkObservations(db, runId),
-    listAnalyticsClicks(db, runId),
-  ]);
+  const rows = await listLinkObservations(db, runId);
   const byFetch = new Map<number, typeof rows>();
   for (const r of rows) {
     const list = byFetch.get(r.sourceFetchId);
@@ -121,12 +129,27 @@ export async function loadProminence(
       }),
     });
   });
+  return { pages, policyVersion: policy.version, isInternal, canonicalise, config };
+}
 
+/**
+ * Prominence of every edge of the run's graph under `policyId` (the run's stored config), with
+ * the run's imported analytics clicks when there are any. Nothing is written.
+ */
+export async function loadProminence(
+  db: Queryable,
+  runId: number,
+  policyId: PolicyId,
+): Promise<RunProminence> {
+  const [{ pages, policyVersion, isInternal, canonicalise, config }, clicks] = await Promise.all([
+    loadPageLinks(db, runId, policyId),
+    listAnalyticsClicks(db, runId),
+  ]);
   const prominence = computeProminence(
     { pages, analytics: mapClicks(clicks, isInternal, canonicalise) },
     config,
   );
-  return { ...prominence, runId, policyVersion: policy.version };
+  return { ...prominence, runId, policyVersion };
 }
 
 /** loadProminence, appended as a `prominence` artefact. */
