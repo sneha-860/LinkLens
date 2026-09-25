@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fixture Home</title>
+    <link rel="canonical" href="/" />
+  </head>
+  <body>
+    <header>
+      <nav>
+        <ul>
+          <li><a href="/about.html">About</a></li>
+          <li><a href="about.html">About (relative)</a></li>
+          <li><a href="./about.html#team">Team</a></li>
+          <li><a href="/about.html?ref=nav">About (tracked)</a></li>
+          <li><a href="/About.html">About (case)</a></li>
+          <li><a href="/blog/">Blog</a></li>
+          <li><a href="/blog">Blog (no slash)</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main>
+      <h1>Welcome</h1>
+      <p>Fixture site for the LinkLens crawler integration test.</p>
+      <h2>Sections</h2>
+      <ul>
+        <li><a href="/deep/1.html">Deep chain</a></li>
+        <li><a href="/old-page">Old page (301)</a></li>
+        <li><a href="/chain-a">Redirect chain</a></li>
+        <li><a href="/loop-a">Redirect loop</a></li>
+        <li><a href="/to-external">Redirect off-site</a></li>
+        <li><a href="/to-private">Redirect into robots-blocked area</a></li>
+        <li><a href="/private/secret.html">Secret</a></li>
+        <li><a href="/private/public-note.html">Public note</a></li>
+        <li><a href="/tmp/x.html">Temp</a></li>
+        <li><a href="/missing.html">Missing</a></li>
+        <li>
+          <a href="/image.png"><img src="/image.png" alt="Logo" /></a>
+        </li>
+        <li><a href="/files/report.pdf">Report</a></li>
+        <li><a href="/flaky">Flaky</a></li>
+        <li><a href="/always-500">Broken</a></li>
+        <li><a href="/slow">Slow</a></li>
+      </ul>
+    </main>
+    <footer>
+      <a href="https://external.invalid/page">External</a>
+      <a href="mailto:hi@example.com">Email</a>
+      <a href="javascript:void(0)">JS</a>
+      <a href="#top">Top</a>
+      <a href="http://[bad">Bad URL</a>
+    </footer>
+  </body>
+</html>

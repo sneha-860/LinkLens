@@ -1,0 +1,36 @@
+# Local development services for LinkLens.
+# Postgres is published on host port 5433 (5432 is often taken by a local install).
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: linklens-postgres
+    environment:
+      POSTGRES_USER: linklens
+      POSTGRES_PASSWORD: linklens
+      POSTGRES_DB: linklens
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U linklens -d linklens"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: linklens-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  redisdata:

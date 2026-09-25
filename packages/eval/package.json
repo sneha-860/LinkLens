@@ -1,0 +1,15 @@
+{
+  "name": "@linklens/eval",
+  "version": "0.0.0",
+  "private": true,
+  "description": "LinkLens evaluation experiments E1–E8",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@linklens/core": "workspace:*"
+  }
+}

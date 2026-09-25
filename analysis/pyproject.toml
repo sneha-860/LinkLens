@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "linklens-analysis"
+version = "0.0.0"
+description = "Statistical analysis for LinkLens evaluation experiments (E1–E8)"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+  "pandas>=2.2",
+  "scipy>=1.12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+include = ["linklens_analysis*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

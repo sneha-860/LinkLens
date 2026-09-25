@@ -1,0 +1,65 @@
+import { describe, expect, it } from "vitest";
+import { defaultConfig, makeConfig } from "./config.js";
+
+describe("defaultConfig", () => {
+  it("has the specified defaults", () => {
+    expect(defaultConfig).toEqual({
+      pageCap: 500,
+      crawlDelayMs: 500,
+      userAgent: "LinkLensBot/0.1 (+contact URL)",
+      epsilon: 0.2,
+      alpha: 0.1,
+      frequentNgramDropPct: 0.07,
+      embeddingModel: "Xenova/all-MiniLM-L6-v2",
+      pagerankDamping: 0.85,
+      randomSeed: 42,
+      robotsMaxBytes: 512_000,
+      robotsMaxRedirects: 5,
+      robotsFetchTimeoutMs: 10_000,
+      fetchTimeoutMs: 15_000,
+      maxRedirects: 10,
+      maxBodyBytes: 10_485_760,
+      fetchMaxRetries: 2,
+      retryBackoffMs: 1_000,
+      crawlConcurrency: 1,
+      includeSubdomains: false,
+    });
+  });
+
+  it("is frozen", () => {
+    expect(Object.isFrozen(defaultConfig)).toBe(true);
+  });
+});
+
+describe("makeConfig", () => {
+  it("returns defaults when given no overrides", () => {
+    expect(makeConfig()).toEqual(defaultConfig);
+  });
+
+  it("applies overrides and freezes the result", () => {
+    const cfg = makeConfig({ epsilon: 0.3 });
+    expect(cfg.epsilon).toBe(0.3);
+    expect(cfg.pageCap).toBe(500);
+    expect(Object.isFrozen(cfg)).toBe(true);
+  });
+
+  it.each([
+    [{ epsilon: 1.5 }],
+    [{ alpha: -0.1 }],
+    [{ pagerankDamping: 2 }],
+    [{ pageCap: 0 }],
+    [{ pageCap: 10.5 }],
+    [{ crawlDelayMs: -1 }],
+    [{ userAgent: " " }],
+    [{ robotsMaxBytes: 1024 }],
+    [{ robotsMaxRedirects: 4 }],
+    [{ robotsFetchTimeoutMs: 0 }],
+    [{ fetchTimeoutMs: 0 }],
+    [{ maxRedirects: -1 }],
+    [{ fetchMaxRetries: 1.5 }],
+    [{ crawlConcurrency: 0 }],
+    [{ includeSubdomains: "yes" as unknown as boolean }],
+  ])("rejects invalid override %o", (overrides) => {
+    expect(() => makeConfig(overrides)).toThrow(RangeError);
+  });
+});

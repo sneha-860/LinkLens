@@ -1,0 +1,12 @@
+# LinkLens fixture site
+User-agent: *
+Disallow: /
+
+User-agent: LinkLensBot
+Disallow: /private/
+Disallow: /tmp/
+Allow: /private/public-note.html
+Crawl-delay: 0.02
+
+Sitemap: /sitemap.xml
+Sitemap: https://fixture.invalid/other-sitemap.xml

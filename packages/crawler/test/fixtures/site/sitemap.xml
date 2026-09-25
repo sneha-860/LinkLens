@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Lists the orphan page, which no HTML page links to. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>/</loc></url>
+  <url><loc>/about.html</loc></url>
+  <url><loc>/orphan.html</loc></url>
+  <url><loc>/blog/post-1.html</loc></url>
+</urlset>

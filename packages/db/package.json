@@ -1,0 +1,36 @@
+{
+  "name": "@linklens/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Postgres connection, migrations and integration tests for LinkLens",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./testing": {
+      "types": "./src/testing.ts",
+      "default": "./src/testing.ts"
+    }
+  },
+  "scripts": {
+    "migrate": "node-pg-migrate --migrations-dir migrations --envPath ../../.env",
+    "migrate:up": "pnpm migrate up",
+    "migrate:down": "pnpm migrate down",
+    "migrate:create": "pnpm migrate create --migration-file-language sql",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
+  },
+  "dependencies": {
+    "@linklens/core": "workspace:*",
+    "dotenv": "^18.0.3",
+    "node-pg-migrate": "^9.0.0",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
+  }
+}
