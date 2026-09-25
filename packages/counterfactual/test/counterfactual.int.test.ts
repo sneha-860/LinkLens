@@ -1,6 +1,6 @@
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { db as q, fixes, makeConfig } from "@linklens/core";
+import { db as q, fixes, makeConfig, semantic } from "@linklens/core";
 import { asQueryable, createPool } from "@linklens/db";
 import { buildCounterfactualRun, type TimedResult } from "../src/index.js";
 
@@ -126,5 +126,67 @@ describe("counterfactual engine", () => {
     const again = await buildCounterfactualRun(db, runId, "P0", { workers: 1 });
     expect(strip(again.results)).toEqual(strip(report.results));
     expect(again.validation).toEqual(report.validation);
+  });
+});
+
+describe("fix ranking (S = ΔPR × σ / κ)", () => {
+  it("needs the cosine matrix first", async () => {
+    await expect(fixes.buildFixRanking(db, runId, "P0")).rejects.toThrow(/cosine-matrix/);
+  });
+
+  it("ranks the simulated candidates from the stored artefacts", async () => {
+    // A cosine matrix with fixed vectors (no model): whale pages point the same way.
+    const nodes = PAGES.map(([p]) => S + p).sort();
+    const vec = (n: string) =>
+      Float32Array.from(n.includes("whale") || n.endsWith("/guides/") ? [1, 0.2] : [0.1, 1]);
+    const matrix: semantic.CosineMatrix = {
+      version: semantic.COSINE_VERSION,
+      runId,
+      policyVersion: "P0@1.0.0",
+      model: config.embeddingModel,
+      dtype: config.embeddingDtype,
+      bodyTokens: config.embeddingBodyTokens,
+      dimensions: 2,
+      nodes,
+      contentKeys: nodes.map((n) => `key:${n}`),
+      upper: [...semantic.cosineUpper(nodes.map(vec))],
+    };
+    await q.insertArtefact(db, {
+      runId,
+      policyVersion: "P0@1.0.0",
+      kind: semantic.COSINE_ARTEFACT,
+      payload: matrix as unknown as q.Json,
+    });
+
+    const ranking = await fixes.buildFixRanking(db, runId, "P0");
+    const cf = (await q.listArtefacts(db, runId, { kind: "counterfactual" })).at(-1);
+    expect(ranking.artefact).toMatchObject({
+      runId,
+      policyVersion: "P0@1.0.0",
+      kind: "fix-ranking",
+    });
+    expect(ranking).toMatchObject({
+      version: "scoring@1.0.0",
+      sigmaVariant: "refGateCosine",
+      lambda: 0.5,
+      sources: { counterfactualArtefactId: cf?.id, cosineModel: config.embeddingModel },
+    });
+    expect(ranking.counts.fixes).toBe((cf?.payload as { results: unknown[] }).results.length);
+    ranking.fixes.forEach((f, i) => {
+      expect(f.rank).toBe(i + 1);
+      expect(f.score).toBeCloseTo((f.deltaPr * f.sigma) / f.kappa, 15);
+      expect(f.cosine).toBeCloseTo(semantic.cosineOf(matrix, f.donor, f.target) as number, 12);
+      expect(f.policyVersion).toBe("P0@1.0.0");
+    });
+    const hub = ranking.fixes.find(
+      (f) => f.donor === `${S}/guides/` && f.target === `${S}/guides/whale-song`,
+    );
+    expect(hub).toMatchObject({ type: "add-link", deltaDepth: -3, kappa: 1 });
+    expect(hub?.cosine).toBeCloseTo(1, 12);
+
+    // Another σ variant re-ranks the same fixes.
+    const refOnly = await fixes.buildFixRanking(db, runId, "P0", { sigmaVariant: "refOnly" });
+    expect(refOnly.fixes.map((f) => f.id).sort()).toEqual(ranking.fixes.map((f) => f.id).sort());
+    for (const f of refOnly.fixes) expect(f.sigma).toBe(f.ref);
   });
 });

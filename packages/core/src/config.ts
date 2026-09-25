@@ -29,6 +29,13 @@ export const PROMINENCE_REGIONS = [
 ] as const;
 export type ProminenceRegion = (typeof PROMINENCE_REGIONS)[number];
 
+/**
+ * σ(u,v) variants for fix scoring (E7 ablation): cosine only, REF only, cosine gated by REF > ε
+ * (the default), and the blend λ·REF + (1 − λ)·cosine.
+ */
+export const SIGMA_VARIANTS = ["cosineOnly", "refOnly", "refGateCosine", "blended"] as const;
+export type SigmaVariant = (typeof SIGMA_VARIANTS)[number];
+
 export interface LinkLensConfig {
   /**
    * Maximum URLs admitted to a crawl's frontier (the seed included). Every admitted URL counts,
@@ -180,6 +187,12 @@ export interface LinkLensConfig {
   readonly counterfactualWorkers: number;
   /** Candidates also re-run from a cold start to check the warm start (seeded by randomSeed). */
   readonly counterfactualValidationSample: number;
+  /** σ variant used to score fixes (all variants are still reported on each fix). */
+  readonly sigmaVariant: SigmaVariant;
+  /** λ of the blended σ: λ·REF + (1 − λ)·cosine. */
+  readonly sigmaBlendLambda: number;
+  /** Fixes returned by default (top-k, globally and per target). */
+  readonly fixTopK: number;
   /** Audit: a crawled page deeper than this many clicks from the seed is a "deep page". */
   readonly auditDeepPageDepth: number;
   /** Audit: a deep page deeper than this is high severity (else medium). */
@@ -258,6 +271,9 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   candidateTopLevelIsSibling: true,
   counterfactualWorkers: 0,
   counterfactualValidationSample: 5,
+  sigmaVariant: "refGateCosine",
+  sigmaBlendLambda: 0.5,
+  fixTopK: 10,
   auditDeepPageDepth: 3,
   auditDeepPageHighDepth: 6,
   auditWeakAuthorityPercentile: 20,
@@ -333,6 +349,11 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   }
   assertNonNegativeInt("counterfactualWorkers", cfg.counterfactualWorkers);
   assertNonNegativeInt("counterfactualValidationSample", cfg.counterfactualValidationSample);
+  if (!SIGMA_VARIANTS.includes(cfg.sigmaVariant)) {
+    throw new RangeError(`config.sigmaVariant must be one of ${SIGMA_VARIANTS.join(", ")}`);
+  }
+  assertUnitInterval("sigmaBlendLambda", cfg.sigmaBlendLambda);
+  assertPositiveInt("fixTopK", cfg.fixTopK);
   assertNonNegativeInt("auditDeepPageDepth", cfg.auditDeepPageDepth);
   if (
     !Number.isInteger(cfg.auditDeepPageHighDepth) ||

@@ -463,6 +463,33 @@ The structural stand-in for the patent's session counts. Always call it **promin
   chain, so every such page shares one signature and `templateReach` counts unrelated pages
   together (10 on the fixture site).
 
+### Fix scoring and ranking (packages/core/src/fixes/scoring.ts)
+
+- `buildFixRanking(db, runId, policyId, { sigmaVariant })` appends a `fix-ranking` artefact
+  (`SCORING_VERSION`). Its inputs:
+  - ΔPR and Δdepth: the run's latest `counterfactual` artefact for the policy;
+  - cosine: the latest `cosine-matrix` artefact. The model is never loaded here; if either
+    artefact is missing it throws;
+  - REF, ρ and prominence: the fix candidates, recomputed with the counterfactual's REF variant,
+    matched by candidate id, and checked against its `candidatesVersion`;
+  - κ and templateReach: `loadDonorEffort`.
+- σ variants (`sigmaValues`, all reported on every fix for E7; `config.sigmaVariant` picks the
+  one that scores):
+  - `cosineOnly`
+  - `refOnly`
+  - `refGateCosine` (default): cos if REF > ε, else 0
+  - `blended`: `sigmaBlendLambda`·REF + (1 − λ)·cos
+  A missing cosine counts as 0.
+- `S(u→v) = ΔPR_v × σ(u,v) / κ(u)` (`fixScore`). A negative cosine gives a negative S, which
+  ranks last.
+- Order: S (highest first), then ΔPR_v, then donor, then target. `rank` is global and
+  `targetRank` is within the target. `topK(fixes, k)` and `topKPerTarget(fixes, k)` return the
+  top k (`fixTopK`, default 10; the UI offers 10/25/50).
+- Each record: id, donor, target, type (add-link / make-visible), ΔPR, ΔPR L1, depth
+  before/after/Δ, the σ used and every variant, REF, ρ, cosine, prominence (existing ω, link
+  weight before and after), κ, templateReach, score, rank, targetRank, target reasons, diagnosis
+  and policy version.
+
 ### Database
 
 - Postgres 16 + Redis 7 via `docker-compose.yml` (Postgres on host port **5433**).

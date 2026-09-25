@@ -7,3 +7,4 @@ export * from "./candidates.js";
 export * from "./counterfactual.js";
 export * from "./counterfactual-inputs.js";
 export * from "./effort.js";
+export * from "./scoring.js";
