@@ -417,9 +417,8 @@ The structural stand-in for the patent's session counts. Always call it **promin
 - Each candidate: action, rank, REF, ρ, the existing link (ω, body or not, regions), the target's
   reasons, the pair's v4/v3 diagnosis, the sections and their relation, and `reasons` (one
   readable line per rule).
-- **Limitation:** orphans are never crawled, so they have no text, REF is undefined for them, and
-  they get no candidates (`hasText: false`). Rescue donors for orphans need their pages fetched
-  first.
+- Orphans are never crawled, so they have no text here (`hasText: false`, no candidates). They
+  get donors through orphan rescue (below).
 
 ### Counterfactual engine (core/src/fixes/counterfactual.ts, packages/counterfactual)
 
@@ -488,6 +487,35 @@ The structural stand-in for the patent's session counts. Always call it **promin
   before/after/Δ, the σ used and every variant, REF, ρ, cosine, prominence (existing ω, link
   weight before and after), κ, templateReach, score, rank, targetRank, target reasons, diagnosis
   and policy version.
+
+### Orphan rescue (crawler/src/rescue.ts, core/src/fixes/rescue*.ts, counterfactual/src/rescue.ts)
+
+- `new RescueFetcher({ pool, redisUrl, prefix }).run(runId, policyId)` runs after discovery,
+  with the crawl's prefix. It fetches each reconciled orphan's first raw URL once, going through
+  scope, robots.txt per hop and the shared throttle.
+  - Fetches: `purpose = 'rescue'`, one attempt, capped by `rescueMaxFetches` (never `pageCap`).
+  - Stored: 2xx HTML is extracted into `pages` (and `fetch_bodies`). Links are **not** stored.
+  - Isolation: `listPages(db, runId, "crawl")` feeds the graph, audit, text and discovery, so
+    rescue pages never change a derived artefact.
+- `buildRescueRun(db, runId, policyId, { variant, workers })` appends an `orphan-rescue` artefact
+  (`RESCUE_VERSION`). It works in two stages:
+  1. **REF shortlist** (`rescueShortlists`). The orphan's Title ∪ Body is weighted against the
+     unchanged site text model (`externalTargetWeights`: the model's tokeniser settings, its
+     boilerplate list dropped, its IDF, and the df = 0 IDF for unseen terms). A donor is admitted
+     when it is a site page with text, reachable from the home page, not a utility page, in an
+     allowed section, and has REF(u, orphan) > ε. The best `candidateMaxPerTarget` by REF are
+     kept.
+  2. **ΔPR order** (`rankRescue`). Each shortlisted donor → orphan link is simulated by the
+     counterfactual engine, on the weighted graph plus the orphan nodes, in worker threads. The
+     shortlist is ordered by ΔPR of the orphan (ties: REF, donor) and the top `rescueTopK` (5) are
+     reported.
+- Each orphan: node, raw URLs, channels, `revealedBy` (the non-link channels) with their source
+  documents, status (`scored` / `no-page` / `no-text`), the rescue fetch, rejection counts, and the
+  donors. Each donor has its rank, REF (and REF rank), ΔPR, ΔPR L1, depth after, and one readable
+  reason per rule.
+- Fixture: each orphan has a topical sentence that a reachable page covers (about.html, /blog/,
+  the home page). sitemap-orphan is the control and gets no donor. The 7% boilerplate quota drops
+  the deep pages' words on this small site, so they cannot donate.
 
 ### Database
 

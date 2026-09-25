@@ -50,7 +50,7 @@ export interface NewRun {
 }
 
 // ---------- fetches ----------
-export const FETCH_PURPOSES = ["crawl", "robots", "discovery"] as const;
+export const FETCH_PURPOSES = ["crawl", "robots", "discovery", "rescue"] as const;
 export type FetchPurpose = (typeof FETCH_PURPOSES)[number];
 
 /** One 3xx response in a redirect chain. `location` is the raw Location header value. */

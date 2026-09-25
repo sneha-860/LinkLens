@@ -8,13 +8,16 @@ import {
   diagnosis as dg,
   discovery as d,
   fixes as fx,
+  graph as gr,
   prominence as pr,
   semantic as sem,
   text as t,
   type LinkLensConfig,
 } from "@linklens/core";
 import { asQueryable, createPool } from "@linklens/db";
+import { buildRescueRun } from "@linklens/counterfactual";
 import { DiscoveryRunner, type DiscoverySummary } from "../src/discovery/runner.js";
+import { RescueFetcher } from "../src/rescue.js";
 import { CrawlOrchestrator } from "../src/orchestrator.js";
 import { startFixtureServer } from "./fixtures/server.js";
 
@@ -67,10 +70,13 @@ async function environment() {
       fetch: recordingFetch,
       config,
     });
+  const rescue = () =>
+    new RescueFetcher({ pool, redisUrl: inject("redisUrl"), prefix, fetch: recordingFetch });
   return {
     server,
     orchestrator,
     discovery,
+    rescue,
     dispatches,
     close: async () => {
       await orchestrator.close();
@@ -488,6 +494,72 @@ describe("discovery on the fixture site", () => {
       for (const e of effort.values()) {
         expect(e.kappa).toBeGreaterThanOrEqual(1);
         expect(e.templateReach).toBeGreaterThanOrEqual(1);
+      }
+    });
+
+    it("rescues the fixture orphans: donors by REF, then by ΔPR, with the revealing channels", async () => {
+      const graphBefore = (await gr.deriveGraph(db, runId, "P0")).summary;
+      const fetcher = env.rescue();
+      try {
+        expect(await fetcher.run(runId, "P0")).toEqual({
+          runId,
+          orphans: 5,
+          fetches: 5,
+          pages: 5,
+          alreadyFetched: 0,
+          capReached: false,
+        });
+        // A second run fetches nothing again.
+        expect(await fetcher.run(runId, "P0")).toMatchObject({ fetches: 0, alreadyFetched: 5 });
+      } finally {
+        await fetcher.close();
+      }
+      // Rescued pages never reach the link graph or the reconciliation.
+      expect((await gr.deriveGraph(db, runId, "P0")).summary).toEqual(graphBefore);
+      expect((await d.reconcileDiscovery(db, runId, "P0")).orphans).toEqual(rec.orphans);
+
+      const report = await buildRescueRun(db, runId, "P0", { workers: 2 });
+      expect(report.artefact).toMatchObject({
+        runId,
+        policyVersion: "P0@1.0.0",
+        kind: "orphan-rescue",
+      });
+      expect(report.counts).toMatchObject({ orphans: 5, scored: 5, noPage: 0 });
+      expect(report.baseline.orphanNodesAdded).toBe(5);
+      const of = (path: string) => {
+        const found = report.orphans.find((x) => x.node === o + path);
+        if (found === undefined) throw new Error(`no rescue entry for ${path}`);
+        return found;
+      };
+      expect(of("/orphan.html").revealedBy).toEqual(["xml_sitemap"]);
+      expect(of("/sitemap-orphan.html").revealedBy).toEqual(["robots_sitemap"]);
+      expect(of("/html-only.html").revealedBy).toEqual(["html_sitemap"]);
+      expect(of("/rss-orphan.html").revealedBy).toEqual(["feed"]);
+      expect(of("/llms-orphan.html").revealedBy).toEqual(["llms_txt"]);
+
+      const donors = (path: string) => of(path).donors.map((x) => x.donor.replace(o, ""));
+      // /about.html and /about.html?ref=nav are separate P0 nodes with the same text: equal REF,
+      // different ΔPR, so the second stage decides their order.
+      const about = of("/orphan.html").donors;
+      expect(about.map((x) => x.donor.replace(o, ""))).toEqual([
+        "/about.html",
+        "/about.html?ref=nav",
+      ]);
+      expect(about[0]?.ref).toBe(about[1]?.ref);
+      expect(about[0]?.deltaPr).toBeGreaterThan(about[1]?.deltaPr as number);
+      expect(donors("/orphan.html")).toContain("/about.html"); // internal link audits
+      expect(donors("/rss-orphan.html")).toContain("/blog/"); // post summaries
+      expect(donors("/llms-orphan.html")).toContain("/"); // redirect chains on the home page
+      expect(donors("/html-only.html")).toContain("/"); // flaky/broken/slow links on the home page
+
+      for (const orphan of report.orphans) {
+        expect(orphan.donors.length).toBeLessThanOrEqual(5);
+        orphan.donors.forEach((x, i) => {
+          expect(x.rank).toBe(i + 1);
+          expect(x.ref).toBeGreaterThan(report.params.epsilon);
+          expect(x.depthAfter).not.toBeNull();
+          if (i > 0) expect(x.deltaPr).toBeLessThanOrEqual(orphan.donors[i - 1]?.deltaPr as number);
+        });
       }
     });
 

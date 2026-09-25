@@ -74,7 +74,10 @@ export async function loadRunDocuments(
     canonicalise: (url) => policy.canonicalise(url, context),
   });
 
-  const [pages, links] = await Promise.all([listPages(db, runId), listLinkObservations(db, runId)]);
+  const [pages, links] = await Promise.all([
+    listPages(db, runId, "crawl"),
+    listLinkObservations(db, runId),
+  ]);
   const pageByFetch = new Map(pages.map((p) => [p.fetchId, p]));
   const linksByFetch = new Map<number, LinkObservationRow[]>();
   for (const l of links) {

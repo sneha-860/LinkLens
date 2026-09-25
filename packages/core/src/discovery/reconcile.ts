@@ -148,15 +148,14 @@ export interface PersistedReconciliation extends Reconciliation {
 }
 
 /**
- * Reconcile a run's discovery channels under `policyId` and persist the result as a
- * `discovery-reconciliation` artefact (run id + policy version). Reachability comes from the
+ * Reconcile a run's discovery channels under `policyId`, in memory. Reachability comes from the
  * policy's link graph, derived from the crawl with the run's stored config.
  */
-export async function reconcileDiscovery(
+export async function loadReconciliation(
   db: Queryable,
   runId: number,
   policyId: PolicyId,
-): Promise<PersistedReconciliation> {
+): Promise<Reconciliation> {
   const { observations, context, config } = await loadRunGraphInputs(db, runId);
   const policy = POLICIES[policyId];
   const { graph } = deriveGraphFromObservations(observations, policyId, context, config);
@@ -166,7 +165,7 @@ export async function reconcileDiscovery(
   );
 
   const rows = await listDiscoveryObservations(db, runId);
-  const result = reconcile({
+  return reconcile({
     runId,
     policyVersion: policy.version,
     observations: rows,
@@ -174,9 +173,18 @@ export async function reconcileDiscovery(
     canonicalise: (url) => policy.canonicalise(url, context),
     graph: reach,
   });
+}
+
+/** loadReconciliation, appended as a `discovery-reconciliation` artefact. */
+export async function reconcileDiscovery(
+  db: Queryable,
+  runId: number,
+  policyId: PolicyId,
+): Promise<PersistedReconciliation> {
+  const result = await loadReconciliation(db, runId, policyId);
   const artefact = await insertArtefact(db, {
     runId,
-    policyVersion: policy.version,
+    policyVersion: result.policyVersion,
     kind: DISCOVERY_ARTEFACT,
     payload: result as unknown as Json,
   });

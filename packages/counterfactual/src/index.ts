@@ -5,3 +5,4 @@
 export { resolveWorkers, simulateInWorkers, type PoolRun } from "./pool.js";
 export type { TimedResult } from "./protocol.js";
 export * from "./run.js";
+export * from "./rescue.js";

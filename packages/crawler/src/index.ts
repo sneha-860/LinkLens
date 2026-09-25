@@ -11,3 +11,4 @@ export * from "./redis-throttle.js";
 export * from "./orchestrator.js";
 export * from "./discovery/index.js";
 export * from "./robots-store.js";
+export * from "./rescue.js";

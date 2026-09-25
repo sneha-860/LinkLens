@@ -5,6 +5,7 @@ import type {
   ArtefactRow,
   DiscoveryObservationRow,
   FetchBodyRow,
+  FetchPurpose,
   FetchRow,
   Id,
   NewFetchBody,
@@ -227,10 +228,21 @@ export async function insertPage(db: Queryable, page: NewPage): Promise<PageRow>
   return row;
 }
 
-export async function listPages(db: Queryable, runId: Id): Promise<PageRow[]> {
+/**
+ * A run's pages, optionally only those whose fetch had `purpose` (e.g. "crawl": the link graph
+ * is built from crawl pages only, never from rescued orphan pages).
+ */
+export async function listPages(
+  db: Queryable,
+  runId: Id,
+  purpose?: FetchPurpose,
+): Promise<PageRow[]> {
   const { rows } = await db.query<PageRow>(
-    `SELECT ${PAGE_COLS} FROM pages WHERE run_id = $1 ORDER BY id`,
-    [runId],
+    `SELECT ${PAGE_COLS} FROM pages
+     WHERE run_id = $1
+       AND ($2::text IS NULL OR fetch_id IN (SELECT id FROM fetches WHERE purpose = $2))
+     ORDER BY id`,
+    [runId, purpose ?? null],
   );
   return rows;
 }

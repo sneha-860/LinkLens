@@ -8,3 +8,5 @@ export * from "./counterfactual.js";
 export * from "./counterfactual-inputs.js";
 export * from "./effort.js";
 export * from "./scoring.js";
+export * from "./rescue.js";
+export * from "./rescue-inputs.js";

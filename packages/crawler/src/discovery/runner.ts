@@ -150,7 +150,7 @@ class DiscoverySession {
   }
 
   async run(): Promise<DiscoverySummary> {
-    const pages = await q.listPages(this.db, this.runId);
+    const pages = await q.listPages(this.db, this.runId, "crawl");
     const links = await q.listLinkObservations(this.db, this.runId);
     const robots = await this.robots.policyFor(new URL(this.seedUrl));
 

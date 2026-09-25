@@ -389,7 +389,10 @@ export async function loadAudit(
           graph: reach,
         });
 
-  const [pages, fetches] = await Promise.all([listPages(db, runId), listFetches(db, runId)]);
+  const [pages, fetches] = await Promise.all([
+    listPages(db, runId, "crawl"),
+    listFetches(db, runId),
+  ]);
   const xRobots = new Map(fetches.map((f) => [f.id, f.headers["x-robots-tag"] ?? null]));
   const audit = auditStructure({
     runId,

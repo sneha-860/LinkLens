@@ -193,6 +193,13 @@ export interface LinkLensConfig {
   readonly sigmaBlendLambda: number;
   /** Fixes returned by default (top-k, globally and per target). */
   readonly fixTopK: number;
+  /** Orphan rescue: donors reported per orphan (the REF shortlist ordered by ΔPR). */
+  readonly rescueTopK: number;
+  /**
+   * Orphan rescue: max orphan pages fetched per run (their own cap: never pageCap or
+   * discoveryMaxFetches).
+   */
+  readonly rescueMaxFetches: number;
   /** Audit: a crawled page deeper than this many clicks from the seed is a "deep page". */
   readonly auditDeepPageDepth: number;
   /** Audit: a deep page deeper than this is high severity (else medium). */
@@ -274,6 +281,8 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   sigmaVariant: "refGateCosine",
   sigmaBlendLambda: 0.5,
   fixTopK: 10,
+  rescueTopK: 5,
+  rescueMaxFetches: 50,
   auditDeepPageDepth: 3,
   auditDeepPageHighDepth: 6,
   auditWeakAuthorityPercentile: 20,
@@ -354,6 +363,8 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   }
   assertUnitInterval("sigmaBlendLambda", cfg.sigmaBlendLambda);
   assertPositiveInt("fixTopK", cfg.fixTopK);
+  assertPositiveInt("rescueTopK", cfg.rescueTopK);
+  assertPositiveInt("rescueMaxFetches", cfg.rescueMaxFetches);
   assertNonNegativeInt("auditDeepPageDepth", cfg.auditDeepPageDepth);
   if (
     !Number.isInteger(cfg.auditDeepPageHighDepth) ||

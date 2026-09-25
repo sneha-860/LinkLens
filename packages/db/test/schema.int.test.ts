@@ -424,3 +424,45 @@ describe("analytics_clicks", () => {
     expect(await sqlState(q.insertAnalyticsClicks(db, [{ ...row, lineNumber: 1 }]))).toBe("23514");
   });
 });
+
+describe("rescue fetches", () => {
+  it("accept purpose 'rescue', and listPages can keep crawl pages only", async () => {
+    const { run, fetch } = await seedRun();
+    const rescue = await q.insertFetch(db, {
+      runId: run.id,
+      requestedUrl: "https://example.com/orphan",
+      statusCode: 200,
+      purpose: "rescue",
+    });
+    expect(rescue.purpose).toBe("rescue");
+    await q.insertPage(db, { runId: run.id, fetchId: fetch.id, url: "https://example.com/" });
+    await q.insertPage(db, {
+      runId: run.id,
+      fetchId: rescue.id,
+      url: "https://example.com/orphan",
+    });
+    expect((await q.listPages(db, run.id)).map((p) => p.url)).toEqual([
+      "https://example.com/",
+      "https://example.com/orphan",
+    ]);
+    expect((await q.listPages(db, run.id, "crawl")).map((p) => p.url)).toEqual([
+      "https://example.com/",
+    ]);
+    expect((await q.listPages(db, run.id, "rescue")).map((p) => p.url)).toEqual([
+      "https://example.com/orphan",
+    ]);
+  });
+
+  it("still reject unknown purposes", async () => {
+    const { run } = await seedRun();
+    expect(
+      await sqlState(
+        q.insertFetch(db, {
+          runId: run.id,
+          requestedUrl: "https://example.com/",
+          purpose: "x" as never,
+        }),
+      ),
+    ).toBe("23514");
+  });
+});

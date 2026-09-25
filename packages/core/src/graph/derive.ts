@@ -166,7 +166,7 @@ export async function loadRunGraphInputs(db: Queryable, runId: number): Promise<
   const config = makeConfig(run.config);
 
   const [pages, links, fetches] = await Promise.all([
-    listPages(db, runId),
+    listPages(db, runId, "crawl"),
     listLinkObservations(db, runId),
     listFetches(db, runId),
   ]);
