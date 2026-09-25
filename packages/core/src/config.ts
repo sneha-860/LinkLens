@@ -2,6 +2,18 @@
  * The single source of truth for every LinkLens threshold and tunable.
  * No other module may hard-code these values.
  */
+export const EMBEDDING_DTYPES = [
+  "fp32",
+  "fp16",
+  "q8",
+  "int8",
+  "uint8",
+  "q4",
+  "bnb4",
+  "q4f16",
+] as const;
+export type EmbeddingDtype = (typeof EMBEDDING_DTYPES)[number];
+
 export interface LinkLensConfig {
   /**
    * Maximum URLs admitted to a crawl's frontier (the seed included). Every admitted URL counts,
@@ -35,8 +47,14 @@ export interface LinkLensConfig {
   readonly textMinTokenLength: number;
   /** Longest n-gram generated: 1 = unigrams, 2 = unigrams + bigrams, … */
   readonly textMaxNgram: number;
-  /** Sentence-embedding model used for cosine similarity. */
+  /** Sentence-embedding model used for cosine similarity (a transformers.js model id). */
   readonly embeddingModel: string;
+  /** ONNX weights variant of the embedding model (transformers.js `dtype`). */
+  readonly embeddingDtype: EmbeddingDtype;
+  /** Embedding input = Title + the first this-many model tokens of the main body. */
+  readonly embeddingBodyTokens: number;
+  /** Texts embedded per model call. */
+  readonly embeddingBatchSize: number;
   /** PageRank damping factor. */
   readonly pagerankDamping: number;
   /** Seed for every source of randomness (determinism principle). */
@@ -131,6 +149,9 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   textMinTokenLength: 2,
   textMaxNgram: 2,
   embeddingModel: "Xenova/all-MiniLM-L6-v2",
+  embeddingDtype: "fp32",
+  embeddingBodyTokens: 256,
+  embeddingBatchSize: 16,
   pagerankDamping: 0.85,
   randomSeed: 42,
   robotsMaxBytes: 500 * 1024,
@@ -251,6 +272,11 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   assertPositiveInt("textMaxNgram", cfg.textMaxNgram);
   assertUnitInterval("pagerankDamping", cfg.pagerankDamping);
   if (cfg.userAgent.trim() === "") throw new RangeError("config.userAgent must be non-empty");
+  assertPositiveInt("embeddingBodyTokens", cfg.embeddingBodyTokens);
+  assertPositiveInt("embeddingBatchSize", cfg.embeddingBatchSize);
+  if (!EMBEDDING_DTYPES.includes(cfg.embeddingDtype)) {
+    throw new RangeError(`config.embeddingDtype must be one of ${EMBEDDING_DTYPES.join(", ")}`);
+  }
   if (cfg.embeddingModel.trim() === "")
     throw new RangeError("config.embeddingModel must be non-empty");
 

@@ -48,22 +48,22 @@ export interface PersistedTextModel extends TextModel {
   readonly artefact: ArtefactRow;
 }
 
-export interface LoadedTextModel {
-  readonly model: TextModel;
-  /** The run's stored config (used to build the model). */
+export interface RunDocuments {
+  readonly documents: RawDocument[];
+  readonly policyVersion: string;
+  /** The run's stored config. */
   readonly config: Readonly<LinkLensConfig>;
 }
 
 /**
- * The text representation of a run under `policyId`, built in memory (nothing is written).
- * Documents are the policy's crawled nodes; a node that merges several pages is represented by
- * the same page as in the link graph (the earliest fetch). Uses the run's stored config.
+ * A run's raw documents under `policyId`: one per crawled node of the policy's link graph,
+ * built from the same page as in the graph (the earliest fetch), in node order.
  */
-export async function loadTextModel(
+export async function loadRunDocuments(
   db: Queryable,
   runId: number,
   policyId: PolicyId,
-): Promise<LoadedTextModel> {
+): Promise<RunDocuments> {
   const { observations, context, config } = await loadRunGraphInputs(db, runId);
   const policy = POLICIES[policyId];
   const { graph } = buildLinkGraph({
@@ -92,10 +92,23 @@ export async function loadTextModel(
     }
   });
 
-  return {
-    model: buildTextModel({ runId, policyVersion: policy.version, documents }, config),
-    config,
-  };
+  return { documents, policyVersion: policy.version, config };
+}
+
+export interface LoadedTextModel {
+  readonly model: TextModel;
+  /** The run's stored config (used to build the model). */
+  readonly config: Readonly<LinkLensConfig>;
+}
+
+/** The text representation of a run under `policyId`, built in memory (nothing is written). */
+export async function loadTextModel(
+  db: Queryable,
+  runId: number,
+  policyId: PolicyId,
+): Promise<LoadedTextModel> {
+  const { documents, policyVersion, config } = await loadRunDocuments(db, runId, policyId);
+  return { model: buildTextModel({ runId, policyVersion, documents }, config), config };
 }
 
 /** loadTextModel, appended as a `text-representation` artefact. */

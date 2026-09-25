@@ -15,6 +15,9 @@ describe("defaultConfig", () => {
       textMinTokenLength: 2,
       textMaxNgram: 2,
       embeddingModel: "Xenova/all-MiniLM-L6-v2",
+      embeddingDtype: "fp32",
+      embeddingBodyTokens: 256,
+      embeddingBatchSize: 16,
       pagerankDamping: 0.85,
       randomSeed: 42,
       robotsMaxBytes: 512_000,
@@ -99,6 +102,9 @@ describe("makeConfig", () => {
     [{ textMinTokenLength: 0 }],
     [{ textMaxNgram: 1.5 }],
     [{ refExplainTerms: 0 }],
+    [{ embeddingBodyTokens: 0 }],
+    [{ embeddingBatchSize: 0 }],
+    [{ embeddingDtype: "fp64" as never }],
   ])("rejects invalid override %o", (overrides) => {
     expect(() => makeConfig(overrides)).toThrow(RangeError);
   });

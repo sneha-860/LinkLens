@@ -5,3 +5,4 @@
  * structural link prominence (never "popularity").
  */
 export * from "./ref.js";
+export * from "./cosine.js";

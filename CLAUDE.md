@@ -85,6 +85,7 @@ Adapted from patent **US 11,586,824 B2** (Belezko & McGoey, 2023).
 - `packages/db`: `pg` pool, `Queryable` adapter, SQL migrations (node-pg-migrate, `migrations/*.sql`),
   and integration tests against the docker-compose Postgres.
 - `packages/crawler`: fetching, robots.txt, raw observation storage.
+- `packages/embeddings`: sentence embeddings (transformers.js) in a worker thread, with a disk cache.
 - `packages/api`: Express HTTP API.
 - `packages/web`: React + Vite UI.
 - `packages/eval`: experiments E1–E8.
@@ -309,6 +310,29 @@ whenever the output can change.**
 - Runtime at 500 pages (249,500 pairs): see `src/semantic/ref.bench.ts`. It is under 1 s even
   when every pair shares terms. A very low ε on a dense site stores every pair with an
   explanation (hundreds of MB), which is why ε matters.
+
+### Semantic engine: embeddings and cosine (packages/embeddings, core/src/semantic/cosine.ts)
+
+- Model: `config.embeddingModel` (`Xenova/all-MiniLM-L6-v2`, 384-d) via `@huggingface/transformers`,
+  `embeddingDtype` weights (`fp32`), mean pooling, L2-normalised.
+- Input per document (core `embeddingInput`): the Title field (`<title>`, then `<h1>` unless it
+  repeats the title), a newline, then the body cut to its first `embeddingBodyTokens` (256) model
+  tokens (tokenizer encode → first N ids → decode). The representative pages are the same as for
+  the text representation (`loadRunDocuments`).
+- Cache: one file per embedding, `<cacheDir>/embeddings/<model>/<dtype>/<k[0..2]>/<k>.f32` (raw
+  float32 LE, written to a temporary file and then renamed into place). `k` = SHA-256 of
+  (`EMBEDDING_CACHE_VERSION`, model, dtype, pooling, normalise, body tokens, title, body). The
+  model loads only on a cache miss, so a fully cached re-run never loads it. Model files go to
+  `<cacheDir>/models` (or `modelDir`). `.cache/` is git-ignored.
+- `EmbeddingWorker.start(embeddingOptions(config, cacheDir))` runs `EmbeddingEngine` in a
+  `worker_threads` worker, so model load and inference never block the API. From TypeScript
+  sources it boots through `worker-bootstrap.mjs` (registers tsx). Requests are served in order;
+  vector buffers are transferred, not copied.
+- `buildCosineRun(db, runId, policyId, embedder)` refuses an embedder whose model/dtype/body tokens
+  differ from the run's stored config. It stores a `cosine-matrix` artefact (`COSINE_VERSION`):
+  sorted `nodes`, per-node `contentKeys`, and the strict upper triangle (`upper`, row-major,
+  `packedIndex`). Look pairs up with `cosineOf`.
+- The integration test downloads the model once (~90 MB) into `packages/embeddings/.cache/models`.
 
 ### Database
 
