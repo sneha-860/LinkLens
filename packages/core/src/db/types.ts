@@ -255,6 +255,20 @@ export interface AuditStageRow {
   error: string | null;
 }
 
+/** The job ranking an audit's fixes under every policy (mutable; one row per audit). */
+export const POLICY_JOB_STATUSES = ["running", "completed", "failed"] as const;
+export type PolicyJobStatus = (typeof POLICY_JOB_STATUSES)[number];
+export interface PolicyJobRow {
+  runId: Id;
+  status: PolicyJobStatus;
+  /** Policies that have a ranking (already there or computed by the job), in order. */
+  done: string[];
+  current: string | null;
+  error: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // ---------- artefacts ----------
 export interface ArtefactRow<P extends Json = Json> {
   id: Id;

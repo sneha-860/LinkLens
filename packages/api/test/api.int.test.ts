@@ -10,7 +10,10 @@ import { Redis } from "ioredis";
 import { createPool } from "@linklens/db";
 import type { Embedder, EmbedRequest, EmbeddingOptions } from "@linklens/embeddings";
 import { startFixtureServer } from "@linklens/crawler/testing";
+import { db as q } from "@linklens/core";
+import { asQueryable } from "@linklens/db";
 import { createApp } from "../src/app.js";
+import { RedisEventBus, type EventBus } from "../src/events.js";
 import { PipelineRunner, STAGES, type Stage } from "../src/pipeline.js";
 
 const CONFIG = {
@@ -44,8 +47,49 @@ function stubEmbedder(options: EmbeddingOptions): Embedder {
   };
 }
 
+/** The Redis bus, counting subscribers (so a test can wait for an SSE stream to listen). */
+class CountingBus implements EventBus {
+  subscribers = 0;
+  readonly inner: RedisEventBus;
+  constructor(redisUrl: string, prefix: string) {
+    this.inner = new RedisEventBus(redisUrl, prefix);
+  }
+  publish(e: Parameters<EventBus["publish"]>[0]): void {
+    this.inner.publish(e);
+  }
+  subscribe(listener: Parameters<EventBus["subscribe"]>[0]): () => void {
+    this.subscribers++;
+    const off = this.inner.subscribe(listener);
+    return () => {
+      this.subscribers--;
+      off();
+    };
+  }
+  ready(): Promise<void> {
+    return this.inner.ready();
+  }
+  close(): Promise<void> {
+    return this.inner.close();
+  }
+}
+
+/** Resolves once `bus` has a subscriber that receives events. */
+async function listening(bus: CountingBus): Promise<void> {
+  while (bus.subscribers === 0) await new Promise((r) => setTimeout(r, 10));
+  await bus.ready();
+}
+
+function gate(): { promise: Promise<void>; release: () => void } {
+  let release: () => void = () => undefined;
+  const promise = new Promise<void>((r) => {
+    release = r;
+  });
+  return { promise, release: () => release() };
+}
+
 let pool: pg.Pool;
 let redis: Redis;
+let bus: CountingBus;
 let server: Awaited<ReturnType<typeof startFixtureServer>>;
 let runner: PipelineRunner;
 let app: ReturnType<typeof createApp>;
@@ -63,8 +107,12 @@ beforeAll(async () => {
   redis = new Redis(inject("redisUrl"));
   server = await startFixtureServer();
   cacheDir = await mkdtemp(join(tmpdir(), "linklens-api-"));
+  bus = new CountingBus(inject("redisUrl"), prefix);
   runner = new PipelineRunner({
     pool,
+    // Database-only stages run in stage worker threads, as in production.
+    databaseUrl: inject("databaseUrl"),
+    bus,
     redisUrl: inject("redisUrl"),
     prefix,
     cacheDir,
@@ -119,7 +167,7 @@ async function readEvents(
 async function waitFor(id: number, statuses: string[]): Promise<Record<string, unknown>> {
   for (;;) {
     const res = await request(app).get(`/audits/${id}`);
-    if (statuses.includes(res.body.status) && !runner.isActive(id)) return res.body;
+    if (statuses.includes(res.body.status) && !(await runner.isActive(id))) return res.body;
     await new Promise((r) => setTimeout(r, 200));
   }
 }
@@ -131,18 +179,14 @@ describe("an audit through the whole pipeline", () => {
 
   beforeAll(async () => {
     o = server.origin;
-    let release: () => void = () => undefined;
-    const promise = new Promise<void>((r) => {
-      release = r;
-    });
-    crawlGate = { promise, release: () => release() };
+    crawlGate = gate();
     const res = await request(app)
       .post("/audits")
       .send({ url: `${o}/`, policy: "P0", options: { workers: 1, config: CONFIG } });
     expect(res.status).toBe(202);
     id = res.body.id;
     const stream = readEvents(`/audits/${id}/events`);
-    while (runner.listenerCount("event") === 0) await new Promise((r) => setTimeout(r, 10));
+    await listening(bus);
     crawlGate.release();
     crawlGate = null;
     events = await stream;
@@ -344,11 +388,11 @@ describe("an audit through the whole pipeline", () => {
     expect(started.status).toBe(202);
     expect(started.body.job.status).toBe("running");
     for (;;) {
-      const job = runner.policyJob(id);
+      const job = await runner.policyJob(id);
       if (job !== null && job.status !== "running") break;
       await new Promise((r) => setTimeout(r, 200));
     }
-    expect(runner.policyJob(id)).toMatchObject({
+    expect(await runner.policyJob(id)).toMatchObject({
       status: "completed",
       done: ["P0", "P1", "P2", "P3", "P4", "P5"],
     });
@@ -371,6 +415,26 @@ describe("an audit through the whole pipeline", () => {
       "P4@1.0.0",
       "P5@1.1.0",
     ]);
+  });
+
+  it("resumes a policy job that a stopped instance left running", async () => {
+    // As if an instance had died mid-job: the row says running, and nobody holds its lease.
+    await q.startPolicyJob(asQueryable(pool), id);
+    expect((await request(app).get(`/audits/${id}/sensitivity`)).body.fixesJob).toMatchObject({
+      status: "running",
+      done: [],
+    });
+    const recovered = await runner.recover();
+    expect(recovered.policyJobs).toEqual([id]);
+    for (;;) {
+      const job = await runner.policyJob(id);
+      if (job !== null && job.status !== "running") break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(await runner.policyJob(id)).toMatchObject({
+      status: "completed",
+      done: ["P0", "P1", "P2", "P3", "P4", "P5"],
+    });
   });
 
   it("serves the reconciliation: every URL's channels, orphans first, and each channel's yield", async () => {
@@ -531,6 +595,68 @@ describe("resuming", () => {
     );
     expect(rows[0].n).toBe(1); // the graph stage ran once
     expect((await request(app).post(`/audits/${id}/resume`)).status).toBe(409); // already completed
+  });
+});
+
+describe("several instances", () => {
+  it("share events and leases, and each refuses audits beyond its capacity", async () => {
+    const hold = gate();
+    const other = new PipelineRunner({
+      pool,
+      redisUrl: inject("redisUrl"),
+      prefix,
+      cacheDir,
+      embedder: stubEmbedder,
+      defaultConfig: { apiMaxConcurrentAudits: 1 },
+      beforeStage: async (_runId, stage) => {
+        if (stage === "crawl") await hold.promise;
+      },
+    });
+    const otherApp = createApp({ service: other, heartbeatMs: 1_000 });
+    try {
+      const res = await request(otherApp)
+        .post("/audits")
+        .send({
+          url: `${server.origin}/`,
+          pageCap: 10,
+          policy: "P3",
+          options: { workers: 1, config: CONFIG },
+        });
+      expect(res.status).toBe(202);
+      const id = res.body.id as number;
+      // The other instance holds the lease: this one sees the audit as active and leaves it.
+      while (!(await runner.isActive(id))) await new Promise((r) => setTimeout(r, 10));
+      expect((await request(app).get(`/audits/${id}`)).body.active).toBe(true);
+      const resume = await request(app).post(`/audits/${id}/resume`);
+      expect(resume.status).toBe(409);
+      expect(resume.body.error.code).toBe("running");
+      await runner.start(id); // returns at once: the lease is taken
+      expect(await runner.recover()).toEqual({ audits: [], policyJobs: [] });
+
+      // The other instance is at its capacity (1).
+      const busy = await request(otherApp)
+        .post("/audits")
+        .send({ url: `${server.origin}/`, options: { config: CONFIG } });
+      expect(busy.status).toBe(429);
+      expect(busy.headers["retry-after"]).toBe("30");
+      expect(busy.body.error).toMatchObject({ code: "too_many_audits", details: { limit: 1 } });
+
+      // This instance's SSE stream receives the other instance's events through Redis.
+      const stream = readEvents(`/audits/${id}/events`);
+      await listening(bus);
+      hold.release();
+      const events = await stream;
+      expect(events[0]?.event).toBe("snapshot");
+      expect(events.some((e) => e.event === "progress")).toBe(true);
+      expect(
+        events.filter((e) => e.event === "stage" && e.data["status"] === "completed"),
+      ).toHaveLength(STAGES.length);
+      expect(events.at(-1)).toMatchObject({ event: "done", data: { status: "completed" } });
+      expect(await runner.isActive(id)).toBe(false);
+    } finally {
+      hold.release();
+      await other.close();
+    }
   });
 });
 

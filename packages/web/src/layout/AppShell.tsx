@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link, NavLink, Outlet } from "react-router";
+import { SessionGate, SignOut } from "../features/session/SessionGate.js";
 
 export function AppShell() {
   return (
@@ -15,10 +16,13 @@ export function AppShell() {
             </NavLink>
             <NavLink to="/audits/new">New audit</NavLink>
           </nav>
+          <SignOut />
         </div>
       </header>
       <main className="shell-main">
-        <Outlet />
+        <SessionGate>
+          <Outlet />
+        </SessionGate>
       </main>
     </>
   );

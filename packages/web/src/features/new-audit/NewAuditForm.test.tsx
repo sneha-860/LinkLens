@@ -21,6 +21,7 @@ describe("new audit form", () => {
   it("shows errors only after submitting, and does not call the API", async () => {
     const { calls } = mockApi({});
     renderAt("/audits/new");
+    await screen.findByLabelText("Site URL"); // after the sign-in gate
     expect(screen.queryByText(/full address/)).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Start audit" }));
     expect(screen.getByText(/Enter the site's full address/)).toBeInTheDocument();
@@ -39,6 +40,7 @@ describe("new audit form", () => {
       },
     });
     renderAt("/audits/new");
+    await screen.findByLabelText("Site URL"); // after the sign-in gate
     await userEvent.type(screen.getByLabelText("Site URL"), "https://example.com/");
     await userEvent.clear(screen.getByLabelText("Page cap"));
     await userEvent.type(screen.getByLabelText("Page cap"), "120");
@@ -72,6 +74,7 @@ describe("new audit form", () => {
       },
     });
     renderAt("/audits/new");
+    await screen.findByLabelText("Site URL"); // after the sign-in gate
     await userEvent.type(screen.getByLabelText("Site URL"), "https://example.com/");
     await userEvent.click(screen.getByRole("button", { name: "Start audit" }));
     await waitFor(() =>

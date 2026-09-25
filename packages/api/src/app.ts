@@ -1,3 +1,4 @@
+import { join, resolve } from "node:path";
 import express, { type Express, type Request, type Response } from "express";
 import {
   db as q,
@@ -6,7 +7,15 @@ import {
   type canonicalise,
   type SigmaVariant,
 } from "@linklens/core";
+import {
+  clearSessionCookie,
+  credential,
+  requireAuth,
+  safeEqual,
+  setSessionCookie,
+} from "./auth.js";
 import { asyncHandler, errorHandler, HttpError, notReady } from "./errors.js";
+import type { EventListener } from "./events.js";
 import { DOCS_HTML, openApiDocument } from "./openapi.js";
 import {
   STAGES,
@@ -27,6 +36,7 @@ import {
   IssuesQuerySchema,
   PolicyQuerySchema,
   SensitivityQuerySchema,
+  SessionSchema,
 } from "./schemas.js";
 import {
   auditView,
@@ -47,13 +57,18 @@ import {
 export interface AuditService {
   readonly db: q.Queryable;
   create(input: CreateAuditInput): Promise<q.AuditRow>;
-  isActive(runId: number): boolean;
+  /** Running here or in another instance. */
+  isActive(runId: number): Promise<boolean>;
   start(runId: number): Promise<void>;
+  /** Throws CapacityError (429) when no more audits or jobs may start. */
+  assertCapacity(): void;
   rerunFrom(runId: number, stage: Stage): Promise<void>;
-  policyJob(runId: number): PolicyJob | null;
-  rankAllPolicies(runId: number): PolicyJob;
-  on(event: "event", listener: (e: PipelineEvent) => void): unknown;
-  off(event: "event", listener: (e: PipelineEvent) => void): unknown;
+  policyJob(runId: number): Promise<PolicyJob | null>;
+  rankAllPolicies(runId: number): Promise<PolicyJob>;
+  /** Pipeline events of every instance; returns the unsubscribe function. */
+  subscribe(listener: EventListener): () => void;
+  /** Resolves once subscriptions receive events. */
+  eventsReady(): Promise<void>;
 }
 
 export interface AppOptions {
@@ -61,6 +76,16 @@ export interface AppOptions {
   readonly logger?: Logger;
   /** Interval of SSE keep-alive comments (ms). */
   readonly heartbeatMs?: number;
+  /**
+   * When set, every route but /health, /openapi.json, /docs and /session needs this key (or the
+   * session cookie that POST /session sets for the dashboard).
+   */
+  readonly apiKey?: string;
+  /**
+   * The built dashboard (packages/web/dist). When set, it is served at / (with the SPA fallback)
+   * and the API moves under /api, as in development behind the Vite proxy.
+   */
+  readonly webRoot?: string;
 }
 
 const silent: Logger = { info: () => undefined, error: () => undefined };
@@ -70,23 +95,47 @@ export function createApp(options: AppOptions): Express {
   const { service } = options;
   const logger = options.logger ?? silent;
   const db = service.db;
+  const apiKey = options.apiKey === undefined || options.apiKey === "" ? null : options.apiKey;
   const app = express();
   app.disable("x-powered-by");
-  app.use(express.json({ limit: "1mb" }));
+  const api = express.Router();
+  api.use(express.json({ limit: "1mb" }));
 
-  app.get("/health", (_req, res) => {
+  api.get("/health", (_req, res) => {
     res.json({ status: "ok" });
   });
-  app.get("/openapi.json", (_req, res) => {
+  api.get("/openapi.json", (_req, res) => {
     res.json(openApiDocument());
   });
-  app.get("/docs", (_req, res) => {
+  api.get("/docs", (_req, res) => {
     res.type("html").send(DOCS_HTML);
   });
 
+  // ---------- session (the dashboard's sign-in) ----------
+
+  api.get("/session", (req, res) => {
+    res.json({
+      authRequired: apiKey !== null,
+      authenticated: apiKey === null || credential(req, apiKey) !== null,
+    });
+  });
+  api.post("/session", (req, res) => {
+    const { key } = SessionSchema.parse(req.body);
+    if (apiKey === null) return void res.status(204).end();
+    if (!safeEqual(key, apiKey)) throw new HttpError(401, "unauthorized", "wrong API key");
+    setSessionCookie(req, res, apiKey);
+    res.status(204).end();
+  });
+  api.delete("/session", (_req, res) => {
+    clearSessionCookie(res);
+    res.status(204).end();
+  });
+
+  if (apiKey !== null) api.use(requireAuth(apiKey));
+
   // ---------- audits ----------
 
-  app.post(
+  api.post(
     "/audits",
     asyncHandler(async (req, res) => {
       const body = CreateAuditSchema.parse(req.body);
@@ -111,23 +160,20 @@ export function createApp(options: AppOptions): Express {
         throw e;
       }
       const id = audit.runId;
+      const self = `${req.baseUrl}/audits/${id}`;
       res
         .status(202)
-        .location(`/audits/${id}`)
+        .location(self)
         .json({
           id,
           status: audit.status,
           policy: audit.policy,
-          links: {
-            self: `/audits/${id}`,
-            events: `/audits/${id}/events`,
-            summary: `/audits/${id}/summary`,
-          },
+          links: { self, events: `${self}/events`, summary: `${self}/summary` },
         });
     }),
   );
 
-  app.get(
+  api.get(
     "/audits",
     asyncHandler(async (_req, res) => {
       const audits = await q.listAudits(db);
@@ -145,28 +191,29 @@ export function createApp(options: AppOptions): Express {
     }),
   );
 
-  app.get(
+  api.get(
     "/audits/:id",
     asyncHandler(async (req, res) => {
       const a = await requireAudit(db, idOf(req));
-      res.json(await auditView(db, a, service.isActive(a.runId)));
+      res.json(await auditView(db, a, await service.isActive(a.runId)));
     }),
   );
 
-  app.post(
+  api.post(
     "/audits/:id/resume",
     asyncHandler(async (req, res) => {
       const a = await requireAudit(db, idOf(req));
-      if (service.isActive(a.runId))
+      if (await service.isActive(a.runId))
         throw new HttpError(409, "running", `audit ${a.runId} is already running`);
       if (a.status === "completed")
         throw new HttpError(409, "completed", `audit ${a.runId} is already completed`);
+      service.assertCapacity();
       void service.start(a.runId);
       res.status(202).json({ id: a.runId, status: "running" });
     }),
   );
 
-  app.get(
+  api.get(
     "/audits/:id/events",
     asyncHandler(async (req, res) => {
       const id = idOf(req);
@@ -175,15 +222,15 @@ export function createApp(options: AppOptions): Express {
     }),
   );
 
-  app.get(
+  api.get(
     "/audits/:id/summary",
     asyncHandler(async (req, res) => {
       const a = await requireAudit(db, idOf(req));
-      res.json(await summaryView(db, a, service.isActive(a.runId)));
+      res.json(await summaryView(db, a, await service.isActive(a.runId)));
     }),
   );
 
-  app.get(
+  api.get(
     "/audits/:id/graph",
     asyncHandler(async (req, res) => {
       const { policy } = PolicyQuerySchema.parse(req.query);
@@ -192,7 +239,7 @@ export function createApp(options: AppOptions): Express {
     }),
   );
 
-  app.get(
+  api.get(
     "/audits/:id/issues",
     asyncHandler(async (req, res) => {
       const qs = IssuesQuerySchema.parse(req.query);
@@ -206,7 +253,7 @@ export function createApp(options: AppOptions): Express {
     }),
   );
 
-  app.get(
+  api.get(
     "/audits/:id/diagnosis",
     asyncHandler(async (req, res) => {
       const qs = DiagnosisQuerySchema.parse(req.query);
@@ -215,7 +262,7 @@ export function createApp(options: AppOptions): Express {
     }),
   );
 
-  app.get(
+  api.get(
     "/audits/:id/fixes",
     asyncHandler(async (req, res) => {
       const qs = FixesQuerySchema.parse(req.query);
@@ -228,7 +275,7 @@ export function createApp(options: AppOptions): Express {
     }),
   );
 
-  app.get(
+  api.get(
     "/audits/:id/orphans",
     asyncHandler(async (req, res) => {
       const a = await requireAudit(db, idOf(req));
@@ -236,31 +283,31 @@ export function createApp(options: AppOptions): Express {
     }),
   );
 
-  app.get(
+  api.get(
     "/audits/:id/sensitivity",
     asyncHandler(async (req, res) => {
       const { k } = SensitivityQuerySchema.parse(req.query);
       const a = await requireAudit(db, idOf(req));
-      res.json(await sensitivityView(db, a, k, service.policyJob(a.runId)));
+      res.json(await sensitivityView(db, a, k, await service.policyJob(a.runId)));
     }),
   );
 
-  app.post(
+  api.post(
     "/audits/:id/sensitivity/fixes",
     asyncHandler(async (req, res) => {
       const a = await requireAudit(db, idOf(req));
-      if (a.status !== "completed" || service.isActive(a.runId)) {
+      if (a.status !== "completed" || (await service.isActive(a.runId))) {
         throw new HttpError(
           409,
           "not_ready",
           "rank fixes under other policies once the audit has completed",
         );
       }
-      res.status(202).json({ id: a.runId, job: service.rankAllPolicies(a.runId) });
+      res.status(202).json({ id: a.runId, job: await service.rankAllPolicies(a.runId) });
     }),
   );
 
-  app.get(
+  api.get(
     "/audits/:id/reconciliation",
     asyncHandler(async (req, res) => {
       const a = await requireAudit(db, idOf(req));
@@ -268,20 +315,20 @@ export function createApp(options: AppOptions): Express {
     }),
   );
 
-  app.get(
+  api.get(
     "/audits/:id/report",
     asyncHandler(async (req, res) => {
       const a = await requireAudit(db, idOf(req));
-      res.type("html").send(await reportHtml(db, a, service.isActive(a.runId)));
+      res.type("html").send(await reportHtml(db, a, await service.isActive(a.runId)));
     }),
   );
 
-  app.get(
+  api.get(
     "/audits/:id/export/:file",
     asyncHandler(async (req, res) => {
       const { id, file } = ExportFileParamsSchema.parse(req.params);
       const a = await requireAudit(db, id);
-      const bytes = (await exportFiles(db, a, service.isActive(a.runId)))[file];
+      const bytes = (await exportFiles(db, a, await service.isActive(a.runId)))[file];
       if (bytes === undefined) throw notReady(file);
       res
         .type(file.endsWith(".csv") ? "text/csv; charset=utf-8" : "application/json; charset=utf-8")
@@ -290,7 +337,7 @@ export function createApp(options: AppOptions): Express {
     }),
   );
 
-  app.post(
+  api.post(
     "/audits/:id/analytics",
     express.text({ type: ["text/csv", "text/plain", "application/csv"], limit: "20mb" }),
     asyncHandler(async (req, res) => {
@@ -304,7 +351,7 @@ export function createApp(options: AppOptions): Express {
         );
       }
       const from: Stage = "prominence";
-      const active = service.isActive(a.runId);
+      const active = await service.isActive(a.runId);
       const at = a.currentStage === null ? -1 : STAGES.indexOf(a.currentStage as Stage);
       if (active && at >= STAGES.indexOf(from)) {
         throw new HttpError(
@@ -313,6 +360,8 @@ export function createApp(options: AppOptions): Express {
           `audit ${a.runId} is past ${from}; upload once it has finished`,
         );
       }
+      // Check capacity before importing, so a refused re-run leaves nothing half done.
+      if (!active) service.assertCapacity();
       const rows = await prominence.importAnalyticsCsv(db, a.runId, req.body, name ?? null);
       // A running audit that has not reached prominence picks the clicks up by itself.
       if (!active) await service.rerunFrom(a.runId, from);
@@ -320,11 +369,11 @@ export function createApp(options: AppOptions): Express {
     }),
   );
 
-  app.get(
+  api.get(
     "/audits/:id/export",
     asyncHandler(async (req, res) => {
       const a = await requireAudit(db, idOf(req));
-      const zip = await exportBundle(db, a, service.isActive(a.runId));
+      const zip = await exportBundle(db, a, await service.isActive(a.runId));
       res
         .type("application/zip")
         .set("Content-Disposition", `attachment; filename="linklens-audit-${a.runId}.zip"`)
@@ -332,8 +381,30 @@ export function createApp(options: AppOptions): Express {
     }),
   );
 
-  app.use((_req, _res, next) => next(new HttpError(404, "not_found", "no such route")));
-  app.use(errorHandler(logger));
+  const noRoute: express.RequestHandler = (_req, _res, next) =>
+    next(new HttpError(404, "not_found", "no such route"));
+  api.use(noRoute);
+  api.use(errorHandler(logger));
+
+  if (options.webRoot === undefined) {
+    app.use(api);
+  } else {
+    const root = resolve(options.webRoot);
+    app.use("/api", api);
+    // Vite's assets have content hashes: cache them; index.html is revalidated every time.
+    app.use(
+      "/assets",
+      express.static(join(root, "assets"), { immutable: true, maxAge: "1y", fallthrough: false }),
+    );
+    app.use(express.static(root, { index: false }));
+    // SPA fallback: the dashboard's own routes (/audits/12/fixes) get index.html.
+    app.get("*", (req, res, next) => {
+      if (req.accepts("html") !== "html") return next();
+      res.set("Cache-Control", "no-cache").sendFile(join(root, "index.html"));
+    });
+    app.use(noRoute);
+    app.use(errorHandler(logger));
+  }
 
   /** Server-sent events: a snapshot, then stage/progress events until the audit is done. */
   function events(req: Request, res: Response, id: number): void {
@@ -350,7 +421,7 @@ export function createApp(options: AppOptions): Express {
     const close = () => {
       if (!open) return;
       open = false;
-      service.off("event", listener);
+      unsubscribe();
       clearInterval(heartbeat);
       res.end();
     };
@@ -360,15 +431,17 @@ export function createApp(options: AppOptions): Express {
       send(e.type, e);
       if (e.type === "done") close();
     };
-    service.on("event", listener);
+    const unsubscribe = service.subscribe(listener);
     const heartbeat = setInterval(() => {
       if (open) res.write(": ping\n\n");
     }, options.heartbeatMs ?? 15_000);
     req.on("close", close);
     void (async () => {
+      await service.eventsReady();
       const a = await requireAudit(db, id);
-      send("snapshot", await auditView(db, a, service.isActive(id)));
-      if (!service.isActive(id) && (a.status === "completed" || a.status === "failed")) {
+      const active = await service.isActive(id);
+      send("snapshot", await auditView(db, a, active));
+      if (!active && (a.status === "completed" || a.status === "failed")) {
         send("done", {
           type: "done",
           runId: id,
@@ -376,7 +449,7 @@ export function createApp(options: AppOptions): Express {
           ...(a.error === null ? {} : { error: a.error }),
         });
         close();
-      } else if (!service.isActive(id)) {
+      } else if (!active) {
         send("idle", {
           type: "idle",
           runId: id,

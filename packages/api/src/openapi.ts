@@ -3,6 +3,7 @@ import {
   AnalyticsQuerySchema,
   CreateAuditSchema,
   DiagnosisQuerySchema,
+  SessionSchema,
   FixesQuerySchema,
   IssuesQuerySchema,
   PolicyQuerySchema,
@@ -34,6 +35,12 @@ const error = { $ref: "#/components/schemas/Error" };
 const errors = {
   "400": { description: "Invalid request", content: { "application/json": { schema: error } } },
   "404": { description: "Audit not found", content: { "application/json": { schema: error } } },
+};
+const busy = {
+  "429": {
+    description: "The server already runs config.apiMaxConcurrentAudits audits (Retry-After)",
+    content: { "application/json": { schema: error } },
+  },
 };
 const notYet = {
   "409": {
@@ -71,10 +78,44 @@ export function openApiDocument(): JsonSchema {
           },
         },
         CreateAudit: schema(CreateAuditSchema),
+        Session: schema(SessionSchema),
+      },
+      securitySchemes: {
+        bearer: { type: "http", scheme: "bearer", description: "LINKLENS_API_KEY" },
+        apiKey: { type: "apiKey", in: "header", name: "X-API-Key" },
+        session: { type: "apiKey", in: "cookie", name: "linklens_session" },
       },
     },
+    // Applies when the server has LINKLENS_API_KEY; /health, the docs and /session are open.
+    security: [{ bearer: [] }, { apiKey: [] }, { session: [] }],
     paths: {
-      "/health": { get: { summary: "Liveness", responses: { "200": json("ok") } } },
+      "/health": {
+        get: { summary: "Liveness", security: [], responses: { "200": json("ok") } },
+      },
+      "/session": {
+        get: {
+          summary: "Whether an API key is required, and whether this request has it",
+          security: [],
+          responses: { "200": json("{ authRequired, authenticated }") },
+        },
+        post: {
+          summary: "Sign the dashboard in: sets an HttpOnly session cookie",
+          security: [],
+          requestBody: {
+            required: true,
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Session" } } },
+          },
+          responses: {
+            "204": { description: "Signed in (or no key is required)" },
+            "401": { description: "Wrong key", content: { "application/json": { schema: error } } },
+          },
+        },
+        delete: {
+          summary: "Sign out (clears the cookie)",
+          security: [],
+          responses: { "204": { description: "Signed out" } },
+        },
+      },
       "/audits": {
         post: {
           summary: "Start an audit",
@@ -88,6 +129,7 @@ export function openApiDocument(): JsonSchema {
           responses: {
             "202": json("The audit (queued), with links to its status and events"),
             ...errors,
+            ...busy,
           },
         },
         get: { summary: "List audits (newest first)", responses: { "200": json("Audits") } },
@@ -106,7 +148,7 @@ export function openApiDocument(): JsonSchema {
         post: {
           summary: "Resume a failed or interrupted audit from its first incomplete stage",
           parameters: [idParam],
-          responses: { "202": json("Resuming"), ...errors },
+          responses: { "202": json("Resuming"), ...errors, ...busy },
         },
       },
       "/audits/{id}/events": {
@@ -183,7 +225,7 @@ export function openApiDocument(): JsonSchema {
         post: {
           summary: "Rank fixes under every other policy in the background (for the Jaccard column)",
           parameters: [idParam],
-          responses: { "202": json("The job"), ...errors, ...notYet },
+          responses: { "202": json("The job"), ...errors, ...notYet, ...busy },
         },
       },
       "/audits/{id}/reconciliation": {
@@ -233,6 +275,7 @@ export function openApiDocument(): JsonSchema {
               description: "The audit is past prominence and still running",
               content: { "application/json": { schema: error } },
             },
+            ...busy,
           },
         },
       },
@@ -261,7 +304,7 @@ export const DOCS_HTML = `<!doctype html>
   <body>
     <div id="docs"></div>
     <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-    <script>SwaggerUIBundle({ url: "/openapi.json", dom_id: "#docs" });</script>
+    <script>SwaggerUIBundle({ url: "openapi.json", dom_id: "#docs" });</script>
   </body>
 </html>
 `;

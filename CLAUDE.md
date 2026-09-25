@@ -562,19 +562,52 @@ The structural stand-in for the patent's session counts. Always call it **promin
   - State: `audits` (policy, options, status, current stage) and `audit_stages` (per stage:
     status, start, finish, `duration_ms`, detail, error). These tables are mutable.
   - Resumable: `run` starts at the first stage that is not completed, and the crawl resumes
-    through `CrawlOrchestrator.resume`. On boot, `recover()` resumes audits a previous process
-    left running. `rerunFrom(stage)` resets that stage and every later one.
+    through `CrawlOrchestrator.resume`. On boot, `recover()` resumes the audits and policy jobs
+    a previous process left running (up to capacity; whatever a live instance holds is left to
+    it). `rerunFrom(stage)` resets that stage and every later one.
+  - Several instances (same Redis prefix) can serve one database (`leases.ts`, `events.ts`):
+    - An audit runs under a Redis lease `<prefix>:lease:audit:<id>` (policy jobs:
+      `lease:policy:<id>`), taken with SET NX, expiring after `apiAuditLeaseMs` (30 s) and
+      renewed every third of that. So each audit runs in one instance only. `isActive` (async)
+      is true while anyone holds the lease, and a crashed instance's audits can be resumed once
+      its leases expire. `close()` gives the leases back.
+    - Events go through Redis pub/sub (`<prefix>:audit-events`), so an SSE stream on any
+      instance sees every instance's events. The SSE handler subscribes, waits for
+      `eventsReady()`, and only then reads the snapshot, so no event falls in between.
+  - Capacity: at most `apiMaxConcurrentAudits` (2) audits plus policy jobs per instance. Beyond
+    that, creating, resuming, re-running (analytics upload) or ranking all policies is refused
+    with 429 `too_many_audits` and `Retry-After: 30` (`CapacityError`). The analytics upload
+    checks capacity before importing.
   - Durations are logged ("[audit N] text completed in 123 ms"). Every stage stores its
     artefacts with the audit's policy version. Extract, canonicalise and κ store small summaries
     (`extraction-summary`, `canonicalisation`, `donor-effort`); extraction itself happens during
     the crawl.
-  - Events (`stage`, `progress`, `done`) are emitted as `"event"` and stream as SSE.
+  - Events (`stage`, `progress`, `done`) go to the event bus and stream as SSE.
   - The embedder is injected: the MiniLM worker in `server.ts`, a stub in tests.
-- `createApp({ service })` takes an `AuditService`, so tests can stub it. Every input is checked
-  with zod (`schemas.ts`), queries before any database access. Errors are
+- `createApp({ service, apiKey?, webRoot? })` takes an `AuditService`, so tests can stub it. Every
+  input is checked with zod (`schemas.ts`), queries before any database access. Errors are
   `{ error: { code, message, details? } }`: 400 validation / invalid_json / invalid_config /
-  invalid_audit / invalid_csv, 404 not_found, 409 not_ready / running / completed, 413, 415 and
-  500 internal (logged, never leaked).
+  invalid_audit / invalid_csv, 401 unauthorized, 403 forbidden, 404 not_found, 409 not_ready /
+  running / completed, 413, 415, 429 too_many_audits and 500 internal (logged, never leaked).
+- Authentication (`auth.ts`), when `apiKey` (LINKLENS_API_KEY) is set:
+  - Every route except `/health`, `/openapi.json`, `/docs` and `/session` needs the key, as
+    `Authorization: Bearer <key>` or `X-API-Key`, or the session cookie. Otherwise the answer is
+    401 with `WWW-Authenticate`. Keys are compared in constant time.
+  - The cookie is for the dashboard, because EventSource, downloads and report links cannot send
+    headers. `POST /session {key}` sets `linklens_session`: HttpOnly, SameSite=Strict, Secure
+    over HTTPS. Its value is an HMAC of a fixed label under the key, never the key itself.
+    `GET /session` returns `{ authRequired, authenticated }`, and `DELETE /session` signs out.
+  - A state-changing request authenticated by the cookie with `Sec-Fetch-Site: cross-site` is
+    refused (403).
+  - Without a key the API is open, and `server.ts` logs that.
+- Serving the dashboard: with `webRoot` (LINKLENS_WEB_ROOT; by default `packages/web/dist` when
+  it is built), the API moves under `/api`, as behind the Vite proxy.
+  - `/assets` is served immutable (the files have content hashes); `index.html` is served
+    no-cache.
+  - Other GETs that accept HTML get `index.html` (the SPA fallback).
+  - The links and Location of `POST /audits` carry the mount (`req.baseUrl`), and Swagger UI
+    loads `openapi.json` relatively.
+  - `pnpm start` builds the web app and starts the API.
 - Routes (OpenAPI 3.1 at `/openapi.json`, built from the zod schemas; Swagger UI at `/docs`):
   - `POST /audits` `{ url, pageCap?, policy (default P3), options { sigma, refVariant, workers,
 config } }` returns 202 with a Location header.
@@ -602,18 +635,27 @@ config } }` returns 202 with a Location header.
   - `POST /audits/:id/analytics` (text/csv) imports clicks and re-runs from prominence.
   - `GET /audits/:id/export`: a zip of JSON and CSV (audit, summary, issues, diagnosis, fixes,
     orphans, explanations).
-- Heavy CPU stages (text, REF) run on the API's own thread; embeddings and counterfactuals run in
-  worker threads.
-- Run it: `pnpm --filter @linklens/api start` (env: DATABASE_URL or PG*, REDIS_URL, PORT,
-  LINKLENS_CACHE_DIR, LINKLENS_PREFIX). The config default User-Agent has no contact URL, so pass
-  `options.config.userAgent` until one is configured.
+- Threads: the database-only stages (`stages.ts` `DB_STAGES`: extract, canonicalise, graph,
+  reconcile, issues, text, REF, prominence, diagnosis, candidates, κ, scoring, explanations) run in
+  a `StageWorkerPool` of `apiStageWorkers` (2) long-lived worker threads, each with its own pg
+  pool. This needs `databaseUrl` in the deps; with 0 workers they run on the main thread.
+  - A stage waits for a free worker. A worker that dies fails its stage and is replaced.
+  - From TypeScript sources the workers load through `worker-bootstrap.mjs` (tsx).
+  - Crawl, discovery and rescue do I/O. Embeddings and counterfactuals have their own worker
+    threads.
+- Policy jobs are rows in `policy_jobs` (status, done, current, error; one per audit), so
+  `policyJob` (async) reads the same state on every instance, and an interrupted job resumes.
+- Run it: `pnpm --filter @linklens/api start`, or `pnpm start` with the dashboard. It reads the
+  repository's `.env`, and real variables win. Env: DATABASE_URL or PG*, REDIS_URL, PORT,
+  LINKLENS_CACHE_DIR, LINKLENS_PREFIX, LINKLENS_USER_AGENT, LINKLENS_API_KEY and
+  LINKLENS_WEB_ROOT (`none` turns the dashboard off).
 
 ### Web dashboard (packages/web)
 
 - React 18 + Vite + TypeScript, TanStack Query and React Router 7. Plain CSS: design tokens and
   namespaced classes in `styles/app.css`; no UI kit.
 - `api/`: `types.ts` holds hand-written response shapes of the API. `client.ts` is a fetch wrapper
-  that turns `{ error }` bodies into `ApiError`. `queries.ts` has the query hooks (finished
+  that turns `{ error }` bodies into `ApiError` and dispatches `linklens:unauthorized` on a 401. `queries.ts` has the query hooks (finished
   results use `staleTime: Infinity` and are invalidated when the audit finishes) plus
   `useCreateAudit`, which creates the audit and then uploads the CSV, before the pipeline reaches
   prominence. `useAuditEvents.ts` is the SSE live state (`applyEvent` is pure) with a polling
@@ -650,9 +692,14 @@ config } }` returns 202 with a Location header.
   - Canonicalisation: the sensitivity table, with a button that starts the per-policy ranking
     job. It polls while the job runs.
   - Export: the report, the zip and every single JSON/CSV file.
-- Dev: `pnpm --filter @linklens/web dev` (proxy `/api` → `localhost:3001`). The API needs
-  `LINKLENS_USER_AGENT` with a real contact URL for audits started from the form.
-- Tests: Vitest + Testing Library with mocked `fetch` and `EventSource` (`src/test/utils.tsx`).
+- Sign-in (`features/session`): `SessionGate` wraps every page. It shows `SignIn` when
+  `GET /session` says a key is needed and this browser has no session. It asks again after any
+  401, and shows the page if the session cannot be read. The key is exchanged for the cookie and
+  is not stored by the page. "Sign out" is in the header.
+- Dev: `pnpm --filter @linklens/web dev` (proxy `/api` → `localhost:3001`). In production the
+  API serves the built app itself (see above).
+- Tests: Vitest + Testing Library with mocked `fetch` and `EventSource` (`src/test/utils.tsx`;
+  `GET /session` answers "no key needed" unless a test mocks it, and is not recorded in `calls`).
   `test-setup.ts` strips the `signal` from `Request`, because jsdom's AbortSignal is not the one
   Node's Request accepts.
 

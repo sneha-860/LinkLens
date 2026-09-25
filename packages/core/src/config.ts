@@ -225,6 +225,19 @@ export interface LinkLensConfig {
   readonly auditWeakAuthorityPercentile: number;
   /** Audit: weak authority below this lower percentile is high severity (else medium). */
   readonly auditWeakAuthorityHighPercentile: number;
+  /** API: audits (and policy jobs) running at once per API process; more are refused with 429. */
+  readonly apiMaxConcurrentAudits: number;
+  /**
+   * API: an instance running an audit holds a lease in Redis for this long, renewed every third
+   * of it. Other instances see the audit as active while the lease lives, and resume it (after a
+   * crash) only once it has expired.
+   */
+  readonly apiAuditLeaseMs: number;
+  /**
+   * API: worker threads for the CPU-heavy stages (graph to explanations, except the embeddings
+   * and the counterfactual, which have their own workers); 0 = run them on the main thread.
+   */
+  readonly apiStageWorkers: number;
 }
 
 export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
@@ -308,6 +321,9 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   auditDeepPageHighDepth: 6,
   auditWeakAuthorityPercentile: 20,
   auditWeakAuthorityHighPercentile: 5,
+  apiMaxConcurrentAudits: 2,
+  apiAuditLeaseMs: 30_000,
+  apiStageWorkers: 2,
 });
 
 function assertUnitInterval(name: keyof LinkLensConfig, value: number): void {
@@ -343,6 +359,9 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   assertNonNegativeInt("retryBackoffMs", cfg.retryBackoffMs);
   assertPositiveInt("crawlConcurrency", cfg.crawlConcurrency);
   assertPositiveInt("crawlJobLockMs", cfg.crawlJobLockMs);
+  assertPositiveInt("apiMaxConcurrentAudits", cfg.apiMaxConcurrentAudits);
+  assertPositiveInt("apiAuditLeaseMs", cfg.apiAuditLeaseMs);
+  assertNonNegativeInt("apiStageWorkers", cfg.apiStageWorkers);
   assertPositiveInt("maxCrawlDelayMs", cfg.maxCrawlDelayMs);
   assertPositiveInt("robotsCacheTtlMs", cfg.robotsCacheTtlMs);
   if (cfg.robotsCacheTtlMs > 24 * 60 * 60 * 1000) {

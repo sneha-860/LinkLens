@@ -1,6 +1,9 @@
 /** Where the API is: the Vite dev proxy maps /api to the API server. */
 export const API_BASE = (import.meta.env["VITE_API_BASE"] as string | undefined) ?? "/api";
 
+/** Dispatched on `window` when the API answers 401, so the sign-in form can come back. */
+export const UNAUTHORIZED_EVENT = "linklens:unauthorized";
+
 /** An API error (`{ error: { code, message, details? } }`) or a network failure (status 0). */
 export class ApiError extends Error {
   constructor(
@@ -20,6 +23,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   } catch {
     throw new ApiError(0, "network", "cannot reach the LinkLens API");
   }
+  if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as {
       error?: { code?: string; message?: string; details?: unknown };
@@ -31,6 +35,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       body?.error?.details,
     );
   }
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 

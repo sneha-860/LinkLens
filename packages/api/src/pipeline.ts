@@ -1,24 +1,17 @@
-import { EventEmitter } from "node:events";
 import type pg from "pg";
-import {
-  audit as auditCore,
-  canonicalise,
-  db as q,
-  diagnosis,
-  discovery,
-  fixes,
-  graph,
-  makeConfig,
-  prominence,
-  semantic,
-  text,
-  type LinkLensConfig,
-  type SigmaVariant,
-} from "@linklens/core";
+import { canonicalise, db as q, fixes, makeConfig, type LinkLensConfig } from "@linklens/core";
 import { asQueryable } from "@linklens/db";
 import { CrawlOrchestrator, DiscoveryRunner, RescueFetcher } from "@linklens/crawler";
 import { buildCosineRun, type Embedder, type EmbeddingOptions } from "@linklens/embeddings";
 import { buildCounterfactualRun, buildRescueRun } from "@linklens/counterfactual";
+import { CapacityError } from "./errors.js";
+import { RedisEventBus, type EventBus, type EventListener } from "./events.js";
+import { RedisLeases, type Leases } from "./leases.js";
+import { StageWorkerPool } from "./stage-pool.js";
+import { dbStages, isDbStage, type AuditOptions, type DbStage, type StageCtx } from "./stages.js";
+
+export type { AuditOptions } from "./stages.js";
+export { CapacityError } from "./errors.js";
 
 /** The pipeline, in order. Every stage stores its artefacts with the audit's policy version. */
 export const STAGES = [
@@ -65,16 +58,6 @@ export interface PolicyJob {
   done: string[];
   current: string | null;
   error: string | null;
-}
-
-/** What an audit was asked for (stored in audits.options). */
-export interface AuditOptions {
-  readonly sigma?: SigmaVariant;
-  readonly refVariant?: semantic.RefVariant;
-  /** Counterfactual worker threads (0 = automatic). */
-  readonly workers?: number;
-  /** Config overrides for the run (stored in runs.config). */
-  readonly config?: Partial<LinkLensConfig>;
 }
 
 export type PipelineEvent =
@@ -133,11 +116,20 @@ export interface PipelineDeps {
   readonly logger?: Logger;
   /**
    * Config applied to every new audit under its own overrides (e.g. the deployment's
-   * User-Agent with a real contact URL).
+   * User-Agent with a real contact URL). Its api* settings configure this runner.
    */
   readonly defaultConfig?: Partial<LinkLensConfig>;
   /** Called before each stage runs (tests use it to inject failures). */
   readonly beforeStage?: (runId: number, stage: Stage) => Promise<void> | void;
+  /**
+   * The database URL for stage worker threads (each opens its own pool). Without it, or with
+   * config.apiStageWorkers = 0, every stage runs on the main thread.
+   */
+  readonly databaseUrl?: string;
+  /** Pipeline events (default: Redis pub/sub, shared by every instance). */
+  readonly bus?: EventBus;
+  /** Who runs which audit (default: leases in Redis). */
+  readonly leases?: Leases;
 }
 
 export interface CreateAuditInput {
@@ -147,36 +139,44 @@ export interface CreateAuditInput {
   readonly options?: AuditOptions;
 }
 
-interface Ctx {
-  readonly runId: number;
-  readonly policy: canonicalise.PolicyId;
-  readonly policyVersion: string;
-  readonly options: AuditOptions;
-  readonly config: Readonly<LinkLensConfig>;
-}
-
+type Ctx = StageCtx;
 type StageFn = (ctx: Ctx) => Promise<q.Json>;
 
 const silent: Logger = { info: () => undefined, error: () => undefined };
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
- * Runs audits through the pipeline in this process. Each stage is recorded in audit_stages
- * (status, start, finish, duration, detail); `run` starts from the first stage not completed, so
- * a failed or interrupted audit resumes where it stopped. Events (stage changes, crawl progress,
- * completion) are emitted as "event" for server-sent events.
+ * Runs audits through the pipeline. Each stage is recorded in audit_stages (status, start,
+ * finish, duration, detail); `run` starts from the first stage not completed, so a failed or
+ * interrupted audit resumes where it stopped. An audit runs under a lease (leases.ts), so with
+ * several instances each audit runs in exactly one, and every instance can tell it is active.
+ * Events (stage changes, crawl progress, completion) go to the event bus, for server-sent events.
  */
-export class PipelineRunner extends EventEmitter {
+export class PipelineRunner {
   readonly db: q.Queryable;
   readonly orchestrator: CrawlOrchestrator;
+  /** The deployment's settings (config under defaultConfig): concurrency, leases, workers. */
+  readonly settings: Readonly<LinkLensConfig>;
   private readonly logger: Logger;
+  private readonly bus: EventBus;
+  private readonly leases: Leases;
+  private readonly stagePool: StageWorkerPool | null;
   private readonly active = new Map<number, Promise<void>>();
-  private readonly policyJobs = new Map<number, PolicyJob>();
+  private readonly policyJobs = new Map<number, Promise<void>>();
 
   constructor(private readonly deps: PipelineDeps) {
-    super();
     this.db = asQueryable(deps.pool);
     this.logger = deps.logger ?? silent;
+    this.settings = makeConfig(deps.defaultConfig);
+    const prefix = deps.prefix ?? "linklens";
+    const onError = (m: string) => this.logger.error(m);
+    this.bus = deps.bus ?? new RedisEventBus(deps.redisUrl, prefix, onError);
+    this.leases =
+      deps.leases ?? new RedisLeases(deps.redisUrl, prefix, this.settings.apiAuditLeaseMs, onError);
+    this.stagePool =
+      deps.databaseUrl !== undefined && this.settings.apiStageWorkers > 0
+        ? new StageWorkerPool(this.settings.apiStageWorkers, deps.databaseUrl)
+        : null;
     this.orchestrator = new CrawlOrchestrator({
       pool: deps.pool,
       redisUrl: deps.redisUrl,
@@ -185,8 +185,20 @@ export class PipelineRunner extends EventEmitter {
     });
   }
 
+  /** Audits and policy jobs running in this instance. */
+  activeCount(): number {
+    return this.active.size + this.policyJobs.size;
+  }
+
+  /** Throws CapacityError when this instance is at config.apiMaxConcurrentAudits. */
+  assertCapacity(): void {
+    if (this.activeCount() >= this.settings.apiMaxConcurrentAudits)
+      throw new CapacityError(this.settings.apiMaxConcurrentAudits);
+  }
+
   /** Create the run and the audit, then start the pipeline in the background. */
   async create(input: CreateAuditInput): Promise<q.AuditRow> {
+    this.assertCapacity();
     const options = input.options ?? {};
     const config = {
       ...this.deps.defaultConfig,
@@ -200,85 +212,140 @@ export class PipelineRunner extends EventEmitter {
       options: options as { [key: string]: q.Json },
       stages: STAGES,
     });
-    this.start(runId);
+    void this.start(runId);
     return audit;
   }
 
-  /** Is the pipeline of this audit running in this process? */
-  isActive(runId: number): boolean {
-    return this.active.has(runId);
+  /** Is this audit's pipeline running, here or in another instance? */
+  async isActive(runId: number): Promise<boolean> {
+    return this.active.has(runId) || (await this.leases.isHeld(`audit:${runId}`));
   }
 
-  /** Run (or resume) an audit in the background; a no-op if it is already running here. */
+  /**
+   * Run (or resume) an audit in the background. A no-op if it is already running here; returns
+   * at once if another instance holds its lease.
+   */
   start(runId: number): Promise<void> {
     let p = this.active.get(runId);
     if (p === undefined) {
-      p = this.run(runId).finally(() => this.active.delete(runId));
+      p = this.leased(`audit:${runId}`, () => this.run(runId)).finally(() =>
+        this.active.delete(runId),
+      );
       this.active.set(runId, p);
     }
     return p;
   }
 
-  /** Resume every audit a previous process left running. */
-  async recover(): Promise<number[]> {
-    const ids = (await q.listRunningAudits(this.db)).map((a) => a.runId);
-    for (const id of ids) void this.start(id);
-    return ids;
+  /** Run `fn` holding the lease `key`; skip it if another instance holds the lease. */
+  private async leased(key: string, fn: () => Promise<void>): Promise<void> {
+    if (!(await this.leases.acquire(key))) {
+      this.logger.info(`${key} is running in another instance`);
+      return;
+    }
+    try {
+      await fn();
+    } finally {
+      await this.leases.release(key).catch(() => undefined);
+    }
+  }
+
+  /**
+   * Resume what a stopped instance left running (audits, then policy jobs), up to this
+   * instance's capacity; what a live instance still holds is left to it.
+   */
+  async recover(): Promise<{ audits: number[]; policyJobs: number[] }> {
+    const audits: number[] = [];
+    const policyJobs: number[] = [];
+    const room = () => this.activeCount() < this.settings.apiMaxConcurrentAudits;
+    for (const a of await q.listRunningAudits(this.db)) {
+      if (!room()) break;
+      if (await this.leases.isHeld(`audit:${a.runId}`)) continue;
+      void this.start(a.runId);
+      audits.push(a.runId);
+    }
+    for (const j of await q.listRunningPolicyJobs(this.db)) {
+      if (!room()) break;
+      if (await this.leases.isHeld(`policy:${j.runId}`)) continue;
+      void this.runPolicyJob(j.runId);
+      policyJobs.push(j.runId);
+    }
+    return { audits, policyJobs };
   }
 
   /** Re-run `stage` and everything after it (e.g. after an analytics upload). */
   async rerunFrom(runId: number, stage: Stage): Promise<void> {
+    this.assertCapacity();
     await q.resetStages(this.db, runId, STAGES.indexOf(stage));
     await q.setAuditStatus(this.db, runId, { status: "queued", currentStage: stage });
     void this.start(runId);
   }
 
-  /** The per-policy ranking job of an audit in this process, if any. */
-  policyJob(runId: number): PolicyJob | null {
-    return this.policyJobs.get(runId) ?? null;
+  /** The per-policy ranking job of an audit (stored in policy_jobs), if any. */
+  async policyJob(runId: number): Promise<PolicyJob | null> {
+    const row = await q.getPolicyJob(this.db, runId);
+    return row === null
+      ? null
+      : { status: row.status, done: row.done, current: row.current, error: row.error };
   }
 
   /**
    * Rank fixes under every policy that lacks a ranking for the audit's σ, in the background:
-   * the ranking stages run with that policy (their artefacts carry its version). A no-op while
-   * a job for the audit is running.
+   * the ranking stages run with that policy (their artefacts carry its version). The job is
+   * stored in policy_jobs, so it resumes after a restart. A no-op while it runs anywhere.
    */
-  rankAllPolicies(runId: number): PolicyJob {
-    const running = this.policyJobs.get(runId);
-    if (running?.status === "running") return running;
-    const job: PolicyJob = { status: "running", done: [], current: null, error: null };
-    this.policyJobs.set(runId, job);
-    void (async () => {
-      try {
-        for (const policy of Object.keys(canonicalise.POLICIES) as canonicalise.PolicyId[]) {
-          const ctx = await this.ctxFor(runId, policy);
-          const sigma = ctx.options.sigma ?? ctx.config.sigmaVariant;
-          const have = await q.listArtefacts(this.db, runId, {
-            kind: fixes.FIX_RANKING_ARTEFACT,
-            policyVersion: ctx.policyVersion,
-          });
-          if (!have.some((r) => (r.payload as { sigmaVariant?: string }).sigmaVariant === sigma)) {
-            job.current = policy;
-            for (const stage of RANKING_STAGES) {
-              const started = performance.now();
-              await this.stages[stage](ctx);
-              this.logger.info(
-                `[audit ${runId}] ${policy} ${stage} completed in ${(performance.now() - started).toFixed(0)} ms`,
-              );
-            }
+  async rankAllPolicies(runId: number): Promise<PolicyJob> {
+    const current = await this.policyJob(runId);
+    const running = this.policyJobs.has(runId) || (await this.leases.isHeld(`policy:${runId}`));
+    if (current !== null && current.status === "running" && running) return current;
+    this.assertCapacity();
+    const row = await q.startPolicyJob(this.db, runId);
+    void this.runPolicyJob(runId);
+    return { status: row.status, done: row.done, current: row.current, error: row.error };
+  }
+
+  /** Run (or resume) the policy job of an audit in the background; resolves when it ends. */
+  runPolicyJob(runId: number): Promise<void> {
+    let p = this.policyJobs.get(runId);
+    if (p === undefined) {
+      p = this.leased(`policy:${runId}`, () => this.policyLoop(runId)).finally(() =>
+        this.policyJobs.delete(runId),
+      );
+      this.policyJobs.set(runId, p);
+    }
+    return p;
+  }
+
+  private async policyLoop(runId: number): Promise<void> {
+    const done: string[] = [];
+    try {
+      for (const policy of Object.keys(canonicalise.POLICIES) as canonicalise.PolicyId[]) {
+        const ctx = await this.ctxFor(runId, policy);
+        const sigma = ctx.options.sigma ?? ctx.config.sigmaVariant;
+        const have = await q.listArtefacts(this.db, runId, {
+          kind: fixes.FIX_RANKING_ARTEFACT,
+          policyVersion: ctx.policyVersion,
+        });
+        if (!have.some((r) => (r.payload as { sigmaVariant?: string }).sigmaVariant === sigma)) {
+          await q.updatePolicyJob(this.db, runId, { status: "running", done, current: policy });
+          for (const stage of RANKING_STAGES) {
+            const started = performance.now();
+            await this.execute(stage, ctx);
+            this.logger.info(
+              `[audit ${runId}] ${policy} ${stage} completed in ${(performance.now() - started).toFixed(0)} ms`,
+            );
           }
-          job.done.push(policy);
         }
-        job.status = "completed";
-      } catch (e) {
-        job.status = "failed";
-        job.error = errorText(e);
-        this.logger.error(`[audit ${runId}] policy ranking failed: ${job.error}`);
-      } finally {
-        job.current = null;
+        done.push(policy);
+        await q.updatePolicyJob(this.db, runId, { status: "running", done, current: null });
       }
-    })();
-    return job;
+      await q.updatePolicyJob(this.db, runId, { status: "completed", done, current: null });
+    } catch (e) {
+      const error = errorText(e);
+      this.logger.error(`[audit ${runId}] policy ranking failed: ${error}`);
+      await q
+        .updatePolicyJob(this.db, runId, { status: "failed", done, current: null, error })
+        .catch(() => undefined);
+    }
   }
 
   private async ctxFor(runId: number, policy: canonicalise.PolicyId): Promise<Ctx> {
@@ -294,28 +361,35 @@ export class PipelineRunner extends EventEmitter {
     };
   }
 
-  /** Stop in-process work (crawls stay resumable) and disconnect. */
+  /** Listen to pipeline events (of every instance); returns the unsubscribe function. */
+  subscribe(listener: EventListener): () => void {
+    return this.bus.subscribe(listener);
+  }
+
+  /** Resolves once subscriptions receive events. */
+  eventsReady(): Promise<void> {
+    return this.bus.ready();
+  }
+
+  /**
+   * Stop in-process work and disconnect. Crawls stay resumable and the leases are given back,
+   * so another instance (or this one, restarted) resumes the audits.
+   */
   async close(): Promise<void> {
     await this.orchestrator.shutdown();
+    await this.stagePool?.close();
+    await this.leases.close();
+    await this.bus.close();
   }
 
   private emitEvent(e: PipelineEvent): void {
-    this.emit("event", e);
+    this.bus.publish(e);
   }
 
   private async run(runId: number): Promise<void> {
     const audit = await q.getAudit(this.db, runId);
     if (audit === null) throw new Error(`audit ${runId} not found`);
-    const run = await q.getRun(this.db, runId);
-    if (run === null) throw new Error(`run ${runId} not found`);
-    const policy = audit.policy as canonicalise.PolicyId;
-    const ctx: Ctx = {
-      runId,
-      policy,
-      policyVersion: canonicalise.POLICIES[policy].version,
-      options: audit.options as AuditOptions,
-      config: makeConfig(run.config),
-    };
+    const ctx = await this.ctxFor(runId, audit.policy as canonicalise.PolicyId);
     const stages = await q.listAuditStages(this.db, runId);
     await q.setAuditStatus(this.db, runId, { status: "running", error: null });
     try {
@@ -342,7 +416,7 @@ export class PipelineRunner extends EventEmitter {
     const started = performance.now();
     try {
       await this.deps.beforeStage?.(runId, stage);
-      const detail = await this.stages[stage](ctx);
+      const detail = await this.execute(stage, ctx);
       const durationMs = performance.now() - started;
       await q.finishStage(this.db, runId, stage, {
         durationMs,
@@ -362,16 +436,18 @@ export class PipelineRunner extends EventEmitter {
     }
   }
 
-  private artefact(ctx: Ctx, kind: string, payload: q.Json) {
-    return q.insertArtefact(this.db, {
-      runId: ctx.runId,
-      policyVersion: ctx.policyVersion,
-      kind,
-      payload,
-    });
+  /** Run one stage: a database-only stage (stages.ts) in a stage worker when there are any. */
+  private execute(stage: Stage, ctx: Ctx): Promise<q.Json> {
+    if (isDbStage(stage)) {
+      return this.stagePool === null
+        ? dbStages[stage](this.db, ctx)
+        : this.stagePool.run(stage, ctx);
+    }
+    return this.ownStages[stage](ctx);
   }
 
-  private readonly stages: Record<Stage, StageFn> = {
+  /** The stages that need more than the database. */
+  private readonly ownStages: Record<Exclude<Stage, DbStage>, StageFn> = {
     crawl: async (ctx) => {
       const run = await q.getRun(this.db, ctx.runId);
       if (run?.status === "completed") return { skipped: "already crawled" };
@@ -400,21 +476,6 @@ export class PipelineRunner extends EventEmitter {
       return { pagesFetched: summary.pagesFetched, admitted: summary.admitted };
     },
 
-    // Extraction happens during the crawl (every 2xx HTML page is parsed as it is fetched); this
-    // stage records what was extracted.
-    extract: async (ctx) => {
-      const [pages, links] = await Promise.all([
-        q.listPages(this.db, ctx.runId, "crawl"),
-        q.listLinkObservations(this.db, ctx.runId),
-      ]);
-      const byRegion: Record<string, number> = {};
-      for (const l of links)
-        byRegion[l.domRegion ?? "none"] = (byRegion[l.domRegion ?? "none"] ?? 0) + 1;
-      const summary = { pages: pages.length, linkObservations: links.length, byRegion };
-      await this.artefact(ctx, "extraction-summary", summary);
-      return summary;
-    },
-
     discovery: async (ctx) => {
       const runner = new DiscoveryRunner(this.shared());
       try {
@@ -423,52 +484,6 @@ export class PipelineRunner extends EventEmitter {
       } finally {
         await runner.close();
       }
-    },
-
-    canonicalise: async (ctx) => {
-      const { observations, context } = await graph.loadRunGraphInputs(this.db, ctx.runId);
-      const policy = canonicalise.POLICIES[ctx.policy];
-      const nodes = new Set(observations.pages.map((p) => policy.canonicalise(p.url, context)));
-      const summary = {
-        policyVersion: policy.version,
-        pages: observations.pages.length,
-        nodes: nodes.size,
-        merged: observations.pages.length - nodes.size,
-        redirects: context.redirects.size,
-        canonicals: context.canonicals.size,
-      };
-      await this.artefact(ctx, "canonicalisation", summary);
-      return summary;
-    },
-
-    graph: async (ctx) => {
-      const g = await graph.deriveGraph(this.db, ctx.runId, ctx.policy);
-      return { nodes: g.summary.nodes, edges: g.summary.edges, reachable: g.summary.reachable };
-    },
-
-    reconcile: async (ctx) => {
-      const r = await discovery.reconcileDiscovery(this.db, ctx.runId, ctx.policy);
-      return { inventory: r.inventory.length, orphans: r.orphans.length };
-    },
-
-    issues: async (ctx) => {
-      const a = await auditCore.auditRun(this.db, ctx.runId, ctx.policy);
-      return { total: a.summary.total, byType: a.summary.byType };
-    },
-
-    text: async (ctx) => {
-      const t = await text.buildTextRun(this.db, ctx.runId, ctx.policy);
-      return { ...t.stats };
-    },
-
-    ref: async (ctx) => {
-      const r = await semantic.buildRefRun(
-        this.db,
-        ctx.runId,
-        ctx.policy,
-        ctx.options.refVariant ?? "weighted",
-      );
-      return { ...r.stats };
     },
 
     embeddings: async (ctx) => {
@@ -487,35 +502,6 @@ export class PipelineRunner extends EventEmitter {
       }
     },
 
-    prominence: async (ctx) => {
-      const p = await prominence.buildProminenceRun(this.db, ctx.runId, ctx.policy);
-      return { edges: p.stats.edges, analytics: p.stats.analytics };
-    },
-
-    diagnosis: async (ctx) => {
-      const d = await diagnosis.buildDiagnosisRun(
-        this.db,
-        ctx.runId,
-        ctx.policy,
-        ctx.options.refVariant ?? "weighted",
-      );
-      return d.counts;
-    },
-
-    candidates: async (ctx) => {
-      const c = await fixes.buildCandidatesRun(
-        this.db,
-        ctx.runId,
-        ctx.policy,
-        ctx.options.refVariant ?? "weighted",
-      );
-      return {
-        targets: c.stats.targets,
-        candidates: c.stats.candidates,
-        byAction: c.stats.byAction,
-      };
-    },
-
     counterfactual: async (ctx) => {
       const r = await buildCounterfactualRun(this.db, ctx.runId, ctx.policy, {
         variant: ctx.options.refVariant ?? "weighted",
@@ -527,24 +513,6 @@ export class PipelineRunner extends EventEmitter {
         wallMs: r.runtime.wallMs,
         workers: r.runtime.workers,
       };
-    },
-
-    kappa: async (ctx) => {
-      const effort = await fixes.loadDonorEffort(this.db, ctx.runId, ctx.policy);
-      const nodes = [...effort.values()].sort((a, b) => (a.node < b.node ? -1 : 1));
-      await this.artefact(ctx, "donor-effort", { nodes } as unknown as q.Json);
-      return {
-        pages: nodes.length,
-        maxKappa: Math.max(1, ...nodes.map((n) => n.kappa)),
-        templatedDonors: nodes.filter((n) => n.templateReach > 1).length,
-      };
-    },
-
-    scoring: async (ctx) => {
-      const r = await fixes.buildFixRanking(this.db, ctx.runId, ctx.policy, {
-        sigmaVariant: ctx.options.sigma ?? ctx.config.sigmaVariant,
-      });
-      return { fixes: r.counts.fixes, targets: r.counts.targets, sigma: r.sigmaVariant };
     },
 
     rescue: async (ctx) => {
@@ -559,11 +527,6 @@ export class PipelineRunner extends EventEmitter {
       } finally {
         await fetcher.close();
       }
-    },
-
-    explanations: async (ctx) => {
-      const e = await fixes.buildExplanations(this.db, ctx.runId, ctx.policy);
-      return e.counts;
     },
   };
 

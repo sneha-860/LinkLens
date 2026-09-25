@@ -623,3 +623,13 @@ table.reconciliation tfoot td {
   font-size: 1.1rem;
   margin-top: 8px;
 }
+
+/* ---------- sign-in ---------- */
+.sign-in {
+  max-width: 420px;
+  margin: 48px auto;
+}
+.sign-out {
+  margin-left: auto;
+  padding: 4px 10px;
+}

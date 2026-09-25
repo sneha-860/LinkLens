@@ -33,6 +33,8 @@ export const CreateAuditSchema = z
   .strict();
 export type CreateAuditBody = z.infer<typeof CreateAuditSchema>;
 
+export const SessionSchema = z.object({ key: z.string().min(1).max(1000) }).strict();
+
 export const IdParamsSchema = z.object({ id: z.coerce.number().int().positive() });
 
 export const PolicyQuerySchema = z.object({ policy: PolicySchema.optional() }).strict();

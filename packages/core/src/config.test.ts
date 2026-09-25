@@ -84,6 +84,9 @@ describe("defaultConfig", () => {
       auditDeepPageHighDepth: 6,
       auditWeakAuthorityPercentile: 20,
       auditWeakAuthorityHighPercentile: 5,
+      apiMaxConcurrentAudits: 2,
+      apiAuditLeaseMs: 30_000,
+      apiStageWorkers: 2,
     });
   });
 
@@ -136,6 +139,9 @@ describe("makeConfig", () => {
     [{ frequentNgramMinDf: 0 }],
     [{ frequentNgramMinDocShare: 1.5 }],
     [{ crawlJobLockMs: 0 }],
+    [{ apiMaxConcurrentAudits: 0 }],
+    [{ apiAuditLeaseMs: 0 }],
+    [{ apiStageWorkers: -1 }],
     [{ textMinTokenLength: 0 }],
     [{ textMaxNgram: 1.5 }],
     [{ refExplainTerms: 0 }],

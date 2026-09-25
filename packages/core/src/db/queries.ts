@@ -17,6 +17,8 @@ import type {
   NewAnalyticsClick,
   NewArtefact,
   NewAudit,
+  PolicyJobRow,
+  PolicyJobStatus,
   NewDiscoveryObservation,
   NewFetch,
   NewLinkObservation,
@@ -456,6 +458,52 @@ export async function resetStages(db: Queryable, runId: Id, fromPosition: number
      WHERE run_id = $1 AND position >= $2`,
     [runId, fromPosition],
   );
+}
+
+// ---------- policy jobs ----------
+const POLICY_JOB_COLS = `run_id AS "runId", status, done, current, error,
+  created_at AS "createdAt", updated_at AS "updatedAt"`;
+
+/** Start (or restart) an audit's policy job: running, nothing done yet. */
+export function startPolicyJob(db: Queryable, runId: Id): Promise<PolicyJobRow> {
+  return one(
+    db,
+    `INSERT INTO policy_jobs (run_id, status) VALUES ($1, 'running')
+     ON CONFLICT (run_id) DO UPDATE SET status = 'running', done = '{}', current = NULL,
+       error = NULL, updated_at = now()
+     RETURNING ${POLICY_JOB_COLS}`,
+    [runId],
+  );
+}
+
+export async function updatePolicyJob(
+  db: Queryable,
+  runId: Id,
+  update: {
+    status: PolicyJobStatus;
+    done: readonly string[];
+    current: string | null;
+    error?: string | null;
+  },
+): Promise<void> {
+  await db.query(
+    `UPDATE policy_jobs SET status = $2, done = $3::text[], current = $4, error = $5,
+       updated_at = now()
+     WHERE run_id = $1`,
+    [runId, update.status, update.done, update.current, update.error ?? null],
+  );
+}
+
+export function getPolicyJob(db: Queryable, runId: Id): Promise<PolicyJobRow | null> {
+  return maybeOne(db, `SELECT ${POLICY_JOB_COLS} FROM policy_jobs WHERE run_id = $1`, [runId]);
+}
+
+/** Jobs left `running` (e.g. by a stopped process): candidates for resuming. */
+export async function listRunningPolicyJobs(db: Queryable): Promise<PolicyJobRow[]> {
+  const { rows } = await db.query<PolicyJobRow>(
+    `SELECT ${POLICY_JOB_COLS} FROM policy_jobs WHERE status = 'running' ORDER BY run_id`,
+  );
+  return rows;
 }
 
 // ---------- artefacts ----------

@@ -15,6 +15,15 @@ export class HttpError extends Error {
   }
 }
 
+/** Refused because this instance already runs config.apiMaxConcurrentAudits audits or jobs. */
+export class CapacityError extends Error {
+  constructor(readonly limit: number) {
+    super(
+      `this server is already running ${limit} audits or jobs; try again when one has finished`,
+    );
+  }
+}
+
 export const notFound = (what: string) => new HttpError(404, "not_found", `${what} not found`);
 export const notReady = (what: string) =>
   new HttpError(409, "not_ready", `${what} is not available yet: the pipeline has not reached it`);
@@ -34,6 +43,10 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
         .status(status)
         .json({ error: { code, message, ...(details === undefined ? {} : { details }) } });
     if (err instanceof HttpError) return send(err.status, err.code, err.message, err.details);
+    if (err instanceof CapacityError) {
+      res.set("Retry-After", "30");
+      return send(429, "too_many_audits", err.message, { limit: err.limit });
+    }
     if (err instanceof ZodError) {
       return send(
         400,
@@ -48,6 +61,7 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
     if (e.type === "entity.parse.failed")
       return send(400, "invalid_json", "the body is not valid JSON");
     if (e.type === "entity.too.large") return send(413, "too_large", "the body is too large");
+    if (e.status === 404) return send(404, "not_found", "no such file"); // express.static
     if (err instanceof RangeError) return send(400, "invalid_config", err.message);
     logger.error(`unhandled: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
     return send(500, "internal", "internal server error");

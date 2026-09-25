@@ -7,9 +7,13 @@ import type { Audit, Fix } from "../api/types.js";
 
 export type Handler = (init: RequestInit | undefined, url: URL) => unknown;
 
+/** The session of a server without an API key (what `GET /session` answers unless mocked). */
+const OPEN_SESSION = { authRequired: false, authenticated: true };
+
 /**
  * Mock `fetch`: `routes` maps "METHOD /path" (the path after /api, without the query) to a
- * response body or a handler; `{ status, body }` sends an error. Calls are recorded in order.
+ * response body or a handler; `{ status, body }` sends an error. Calls are recorded in order,
+ * except the sign-in gate's `GET /session`, which answers "no key needed" unless mocked.
  */
 export function mockApi(routesByKey: Record<string, unknown>) {
   const calls: { method: string; path: string; search: string; body: unknown }[] = [];
@@ -17,8 +21,10 @@ export function mockApi(routesByKey: Record<string, unknown>) {
     const url = new URL(String(input), "http://localhost");
     const method = (init?.method ?? "GET").toUpperCase();
     const path = url.pathname.replace(/^\/api/, "");
-    calls.push({ method, path, search: url.search, body: init?.body });
     const key = `${method} ${path}`;
+    if (key === "GET /session" && !(key in routesByKey))
+      return new Response(JSON.stringify(OPEN_SESSION), { status: 200 });
+    calls.push({ method, path, search: url.search, body: init?.body });
     if (!(key in routesByKey)) {
       return new Response(
         JSON.stringify({ error: { code: "not_found", message: `no mock for ${key}` } }),
@@ -31,7 +37,7 @@ export function mockApi(routesByKey: Record<string, unknown>) {
     if (typeof value === "function") value = (value as Handler)(init, url);
     if (value !== null && typeof value === "object" && "status" in value && "body" in value) {
       const v = value as { status: number; body: unknown };
-      return new Response(JSON.stringify(v.body), { status: v.status });
+      return new Response(v.status === 204 ? null : JSON.stringify(v.body), { status: v.status });
     }
     return new Response(JSON.stringify(value), { status: 200 });
   });

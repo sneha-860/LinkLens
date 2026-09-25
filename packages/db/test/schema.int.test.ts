@@ -50,6 +50,7 @@ describe("migrations", () => {
       "link_observations",
       "pages",
       "pgmigrations",
+      "policy_jobs",
       "runs",
       "sites",
     ]);
@@ -498,6 +499,27 @@ describe("audits", () => {
     expect(stages.map((s) => s.status)).toEqual(["completed", "pending", "pending"]);
     expect((await q.listRunningAudits(db)).map((x) => x.runId)).toContain(run.id);
     expect((await q.listAudits(db))[0]?.runId).toBe(run.id);
+  });
+
+  it("keep one policy job per audit, restartable", async () => {
+    const { run } = await seedRun();
+    await q.insertAudit(db, { runId: run.id, policy: "P3", stages: [] });
+    expect(await q.getPolicyJob(db, run.id)).toBeNull();
+    let job = await q.startPolicyJob(db, run.id);
+    expect(job).toMatchObject({ runId: run.id, status: "running", done: [], current: null });
+    await q.updatePolicyJob(db, run.id, { status: "running", done: ["P0"], current: "P1" });
+    expect((await q.listRunningPolicyJobs(db)).map((j) => j.runId)).toContain(run.id);
+    await q.updatePolicyJob(db, run.id, {
+      status: "failed",
+      done: ["P0"],
+      current: null,
+      error: "boom",
+    });
+    job = (await q.getPolicyJob(db, run.id)) as q.PolicyJobRow;
+    expect(job).toMatchObject({ status: "failed", done: ["P0"], error: "boom" });
+    expect((await q.listRunningPolicyJobs(db)).map((j) => j.runId)).not.toContain(run.id);
+    job = await q.startPolicyJob(db, run.id);
+    expect(job).toMatchObject({ status: "running", done: [], error: null });
   });
 
   it("reject an unknown policy or status", async () => {
