@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 import { Redis } from "ioredis";
 import type pg from "pg";
-import { db as q, makeConfig, type LinkLensConfig } from "@linklens/core";
+import { db as q, graph as g, makeConfig, type LinkLensConfig } from "@linklens/core";
 import { asQueryable, createPool } from "@linklens/db";
 import { CrawlOrchestrator, type CrawlProgress } from "../src/orchestrator.js";
 import { PNG, SITE_DIR, startFixtureServer, type FixtureServer } from "./fixtures/server.js";
@@ -381,6 +381,67 @@ describe("full crawl of the fixture site", () => {
     for (const key of await redis.keys(`${prefix}*`)) {
       expect(await redis.pttl(key)).toBeGreaterThan(0);
     }
+  });
+
+  describe("deriveGraph over the crawl", () => {
+    type Node = { key: string; attributes: g.NodeAttributes };
+    const nodesOf = (payload: unknown) => (payload as { nodes: Node[] }).nodes;
+    const node = (payload: unknown, key: string) => nodesOf(payload).find((n) => n.key === key);
+
+    it("persists a link-graph artefact per policy, tagged with run id and policy version", async () => {
+      const p0 = await g.deriveGraph(db, runId, "P0");
+      expect(p0.artefact).toMatchObject({ runId, policyVersion: "P0@1.0.0", kind: "link-graph" });
+      const stored = await q.listArtefacts(db, runId, {
+        policyVersion: "P0@1.0.0",
+        kind: "link-graph",
+      });
+      expect(stored).toHaveLength(1);
+      const home = node(stored[0]?.payload, `${o}/`);
+      expect(home?.attributes).toMatchObject({ depth: 0, reachable: true, crawled: true });
+      expect(node(stored[0]?.payload, `${o}/deep/6.html`)?.attributes.depth).toBe(6);
+      expect(node(stored[0]?.payload, `${o}/orphan.html`)).toBeUndefined(); // never linked
+      const total = nodesOf(stored[0]?.payload).reduce(
+        (s, n) => s + (n.attributes.pagerank ?? 0),
+        0,
+      );
+      expect(total).toBeCloseTo(1, 10);
+      expect(p0.summary).toMatchObject({ runId, seedNode: `${o}/`, pagerank: { converged: true } });
+      expect(p0.summary.externalLinks).toBeGreaterThan(0); // external.invalid, mailto:, javascript:
+    });
+
+    it("coarser policies merge nodes (P0 ≥ P1 ≥ … ≥ P5)", async () => {
+      const sizes: number[] = [];
+      for (const id of ["P0", "P1", "P2", "P3", "P4", "P5"] as const) {
+        sizes.push((await g.deriveGraph(db, runId, id)).summary.nodes);
+      }
+      expect(sizes).toEqual([...sizes].sort((a, b) => b - a));
+      expect(sizes[0]).toBeGreaterThan(sizes[5] ?? 0);
+
+      const p1 = (await q.listArtefacts(db, runId, { policyVersion: "P1@1.0.0" }))[0]?.payload;
+      const p3 = (await q.listArtefacts(db, runId, { policyVersion: "P3@1.0.0" }))[0]?.payload;
+      const p4 = (await q.listArtefacts(db, runId, { policyVersion: "P4@1.0.0" }))[0]?.payload;
+      const p5 = (await q.listArtefacts(db, runId, { policyVersion: "P5@1.0.0" }))[0]?.payload;
+      // P1: "./about.html#team" is the same node as /about.html; P3: ?ref=nav too (and https).
+      expect(node(p1, `${o}/about.html#team`)).toBeUndefined();
+      expect(node(p1, `${o}/about.html?ref=nav`)).toBeDefined();
+      const httpsO = o.replace("http://", "https://");
+      expect(node(p3, `${httpsO}/about.html?ref=nav`)).toBeUndefined();
+      expect(node(p3, `${httpsO}/about.html`)?.attributes.pages).toBe(2);
+      // P4: /old-page redirected to /moved.html
+      expect(node(p3, `${httpsO}/old-page`)).toBeDefined();
+      expect(node(p4, `${httpsO}/old-page`)).toBeUndefined();
+      // P5: post-2 declares post-1 canonical (same site, fetched 200)
+      expect(node(p4, `${httpsO}/blog/post-2.html`)).toBeDefined();
+      expect(node(p5, `${httpsO}/blog/post-2.html`)).toBeUndefined();
+      expect(node(p5, `${httpsO}/blog/post-1.html`)?.attributes.pages).toBeGreaterThanOrEqual(2);
+    });
+
+    it("is reproducible: deriving again gives an identical payload", async () => {
+      const a = await g.deriveGraph(db, runId, "P5");
+      const b = await g.deriveGraph(db, runId, "P5");
+      expect(JSON.stringify(b.artefact.payload)).toBe(JSON.stringify(a.artefact.payload));
+      expect(b.artefact.id).not.toBe(a.artefact.id); // append a new artefact each time
+    });
   });
 });
 

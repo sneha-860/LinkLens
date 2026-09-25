@@ -187,6 +187,31 @@ whenever the output can change.**
 - RFC 3986 parsing, resolution and normalisation primitives live in `core/src/url/rfc3986.ts`
   (exported as `rfc3986`). The crawler uses them for `resolved_url`.
 
+### Link graph and metrics (packages/core/src/graph)
+
+- `deriveGraph(db, runId, policyId)` loads the run's pages, link observations and fetches, and builds
+  the P4/P5 context. It derives the graph with the **run's stored config** and appends a
+  `link-graph` artefact whose payload is graphology's `export()` and whose `policy_version` is the
+  policy's version. The pure core is `deriveGraphFromObservations`.
+- Graph: graphology `MultiDirectedGraph`.
+  - Nodes: the seed, every crawled page and every internal link target (crawler scope rule), in
+    sorted order.
+  - Edges: one per link observation (`obs:<id>`), carrying observationId, domRegion, anchorText,
+    templateSignature and rel.
+  - Self-loops are dropped but counted per node. External and non-http links are left out.
+  - When a policy merges pages, a node's out-links come from its earliest-fetched page only
+    (`representativeFetchId`); the rest are counted as `duplicatePageLinks`.
+- Metrics (node attributes; algorithms in `metrics.ts`, visited in a fixed order):
+  - PageRank: weighted by edge multiplicity, `pagerankDamping`. Dangling mass is spread uniformly.
+    Power iteration until the L1 change is < `pagerankTolerance` or `pagerankMaxIterations`
+    (`converged` is reported).
+  - BFS `depth` from the seed (null if unreachable), `reachable`.
+  - `inDegree`/`outDegree` count observations; `inNeighbours`/`outNeighbours` count distinct nodes.
+  - `sccId` (iterative Tarjan; ids ordered by smallest member), `inLargestScc` (ties go to the
+    component with the smallest member).
+  - Betweenness: Brandes, unweighted, directed. Exact up to `betweennessExactMaxNodes` (300); above
+    that, `betweennessSamples` sources are drawn with `randomSeed` and the result is scaled by N/k.
+
 ### Database
 
 - Postgres 16 + Redis 7 via `docker-compose.yml` (Postgres on host port **5433**).

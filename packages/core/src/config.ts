@@ -73,6 +73,14 @@ export interface LinkLensConfig {
    * keeps its P4 node, as does any page in a canonical cycle (RFC 6596 §5: avoid chains).
    */
   readonly canonicalMaxHops: number;
+  /** PageRank stops when the L1 change between iterations falls below this. */
+  readonly pagerankTolerance: number;
+  /** PageRank stops after this many iterations even if not converged (reported in the artefact). */
+  readonly pagerankMaxIterations: number;
+  /** Betweenness is exact up to this many nodes; above it, it is estimated from sampled sources. */
+  readonly betweennessExactMaxNodes: number;
+  /** Number of source nodes sampled (with randomSeed) when betweenness is estimated. */
+  readonly betweennessSamples: number;
 }
 
 export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
@@ -102,6 +110,10 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   followNofollow: true,
   storeRawHtml: true,
   canonicalMaxHops: 3,
+  pagerankTolerance: 1e-10,
+  pagerankMaxIterations: 1_000,
+  betweennessExactMaxNodes: 300,
+  betweennessSamples: 100,
 });
 
 function assertUnitInterval(name: keyof LinkLensConfig, value: number): void {
@@ -143,6 +155,12 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   }
   assertPositiveInt("robotsUnreachableGraceDays", cfg.robotsUnreachableGraceDays);
   assertPositiveInt("canonicalMaxHops", cfg.canonicalMaxHops);
+  if (!(cfg.pagerankTolerance > 0 && cfg.pagerankTolerance < 1)) {
+    throw new RangeError("config.pagerankTolerance must be in (0, 1)");
+  }
+  assertPositiveInt("pagerankMaxIterations", cfg.pagerankMaxIterations);
+  assertPositiveInt("betweennessExactMaxNodes", cfg.betweennessExactMaxNodes);
+  assertPositiveInt("betweennessSamples", cfg.betweennessSamples);
   for (const flag of [
     "includeSubdomains",
     "robotsTreat429AsUnreachable",

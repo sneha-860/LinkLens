@@ -30,6 +30,10 @@ describe("defaultConfig", () => {
       followNofollow: true,
       storeRawHtml: true,
       canonicalMaxHops: 3,
+      pagerankTolerance: 1e-10,
+      pagerankMaxIterations: 1_000,
+      betweennessExactMaxNodes: 300,
+      betweennessSamples: 100,
     });
   });
 
@@ -71,6 +75,9 @@ describe("makeConfig", () => {
     [{ robotsCacheTtlMs: 25 * 60 * 60 * 1000 }],
     [{ robotsUnreachableGraceDays: 0 }],
     [{ canonicalMaxHops: 0 }],
+    [{ pagerankTolerance: 0 }],
+    [{ pagerankMaxIterations: 0 }],
+    [{ betweennessSamples: 0 }],
   ])("rejects invalid override %o", (overrides) => {
     expect(() => makeConfig(overrides)).toThrow(RangeError);
   });

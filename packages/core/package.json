@@ -14,5 +14,11 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "graphology": "^0.26.0"
+  },
+  "devDependencies": {
+    "graphology-types": "^0.24.8"
   }
 }
