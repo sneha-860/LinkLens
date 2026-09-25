@@ -3,6 +3,9 @@ import { TERMINAL_RUN_STATUSES } from "./types.js";
 import type {
   AnalyticsClickRow,
   ArtefactRow,
+  AuditRow,
+  AuditStageRow,
+  AuditStatus,
   DiscoveryObservationRow,
   FetchBodyRow,
   FetchPurpose,
@@ -13,6 +16,7 @@ import type {
   LinkObservationRow,
   NewAnalyticsClick,
   NewArtefact,
+  NewAudit,
   NewDiscoveryObservation,
   NewFetch,
   NewLinkObservation,
@@ -332,6 +336,125 @@ export async function listAnalyticsClicks(db: Queryable, runId: Id): Promise<Ana
     [runId],
   );
   return rows;
+}
+
+// ---------- audits ----------
+const AUDIT_COLS = `a.run_id AS "runId", a.policy, a.options, a.status,
+  a.current_stage AS "currentStage", a.error, a.created_at AS "createdAt",
+  a.updated_at AS "updatedAt", s.root_url AS "rootUrl"`;
+const AUDIT_FROM = `audits a JOIN runs r ON r.id = a.run_id JOIN sites s ON s.id = r.site_id`;
+const STAGE_COLS = `run_id AS "runId", stage, position, status, started_at AS "startedAt",
+  finished_at AS "finishedAt", duration_ms AS "durationMs", detail, error`;
+
+/** Insert an audit for an existing run, with one pending row per stage (in order). */
+export async function insertAudit(db: Queryable, audit: NewAudit): Promise<AuditRow> {
+  await db.query(`INSERT INTO audits (run_id, policy, options) VALUES ($1, $2, $3::jsonb)`, [
+    audit.runId,
+    audit.policy,
+    JSON.stringify(audit.options ?? {}),
+  ]);
+  if (audit.stages.length > 0) {
+    await db.query(
+      `INSERT INTO audit_stages (run_id, stage, position)
+       SELECT $1, stage, ord::int - 1 FROM unnest($2::text[]) WITH ORDINALITY AS t(stage, ord)`,
+      [audit.runId, audit.stages],
+    );
+  }
+  return (await getAudit(db, audit.runId)) as AuditRow;
+}
+
+export function getAudit(db: Queryable, runId: Id): Promise<AuditRow | null> {
+  return maybeOne(db, `SELECT ${AUDIT_COLS} FROM ${AUDIT_FROM} WHERE a.run_id = $1`, [runId]);
+}
+
+/** Newest first. */
+export async function listAudits(db: Queryable): Promise<AuditRow[]> {
+  const { rows } = await db.query<AuditRow>(
+    `SELECT ${AUDIT_COLS} FROM ${AUDIT_FROM} ORDER BY a.run_id DESC`,
+  );
+  return rows;
+}
+
+/** Audits left `running` (e.g. by a stopped process): candidates for resuming. */
+export async function listRunningAudits(db: Queryable): Promise<AuditRow[]> {
+  const { rows } = await db.query<AuditRow>(
+    `SELECT ${AUDIT_COLS} FROM ${AUDIT_FROM} WHERE a.status = 'running' ORDER BY a.run_id`,
+  );
+  return rows;
+}
+
+export async function setAuditStatus(
+  db: Queryable,
+  runId: Id,
+  update: { status: AuditStatus; currentStage?: string | null; error?: string | null },
+): Promise<void> {
+  await db.query(
+    `UPDATE audits SET status = $2,
+       current_stage = CASE WHEN $3::boolean THEN $4 ELSE current_stage END,
+       error = $5, updated_at = now()
+     WHERE run_id = $1`,
+    [
+      runId,
+      update.status,
+      update.currentStage !== undefined,
+      update.currentStage ?? null,
+      update.error ?? null,
+    ],
+  );
+}
+
+export async function listAuditStages(db: Queryable, runId: Id): Promise<AuditStageRow[]> {
+  const { rows } = await db.query<AuditStageRow>(
+    `SELECT ${STAGE_COLS} FROM audit_stages WHERE run_id = $1 ORDER BY position`,
+    [runId],
+  );
+  return rows;
+}
+
+export async function startStage(db: Queryable, runId: Id, stage: string): Promise<void> {
+  await db.query(
+    `UPDATE audit_stages SET status = 'running', started_at = now(), finished_at = NULL,
+       duration_ms = NULL, error = NULL
+     WHERE run_id = $1 AND stage = $2`,
+    [runId, stage],
+  );
+}
+
+export async function finishStage(
+  db: Queryable,
+  runId: Id,
+  stage: string,
+  result: { durationMs: number; detail: { [key: string]: Json } },
+): Promise<void> {
+  await db.query(
+    `UPDATE audit_stages SET status = 'completed', finished_at = now(), duration_ms = $3,
+       detail = $4::jsonb, error = NULL
+     WHERE run_id = $1 AND stage = $2`,
+    [runId, stage, result.durationMs, JSON.stringify(result.detail)],
+  );
+}
+
+export async function failStage(
+  db: Queryable,
+  runId: Id,
+  stage: string,
+  result: { durationMs: number; error: string },
+): Promise<void> {
+  await db.query(
+    `UPDATE audit_stages SET status = 'failed', finished_at = now(), duration_ms = $3, error = $4
+     WHERE run_id = $1 AND stage = $2`,
+    [runId, stage, result.durationMs, result.error],
+  );
+}
+
+/** Set the stage at `fromPosition` and every later one back to pending (to re-run them). */
+export async function resetStages(db: Queryable, runId: Id, fromPosition: number): Promise<void> {
+  await db.query(
+    `UPDATE audit_stages SET status = 'pending', started_at = NULL, finished_at = NULL,
+       duration_ms = NULL, detail = '{}'::jsonb, error = NULL
+     WHERE run_id = $1 AND position >= $2`,
+    [runId, fromPosition],
+  );
 }
 
 // ---------- artefacts ----------

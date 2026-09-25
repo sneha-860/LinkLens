@@ -2,8 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
-    "types": ["node"]
+    "rootDir": ".",
+    "types": ["node"],
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false
   },
-  "include": ["src"]
+  "include": ["src", "test", "vitest.config.ts", "vitest.integration.config.ts"]
 }

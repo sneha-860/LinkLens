@@ -89,7 +89,7 @@ For each pair with REF > ε or a link, with threshold α (`config.alpha`):
 - `packages/crawler`: fetching, robots.txt, raw observation storage.
 - `packages/embeddings`: sentence embeddings (transformers.js) in a worker thread, with a disk cache.
 - `packages/counterfactual`: fix simulation in parallel worker threads (pure engine in core).
-- `packages/api`: Express HTTP API.
+- `packages/api`: Express HTTP API and the pipeline runner.
 - `packages/web`: React + Vite UI.
 - `packages/eval`: experiments E1–E8.
 - `analysis/`: Python statistics (not part of the pnpm workspace).
@@ -544,6 +544,47 @@ The structural stand-in for the patent's session counts. Always call it **promin
   severity, recommendation, and a per-case sentence (v1 says it is never simulated).
 - Tests: snapshot tests (inline for the key sentences, plus a file snapshot of the full output)
   on the four-case example, and end-to-end runs on the counterfactual and crawler fixtures.
+
+### HTTP API and pipeline runner (packages/api)
+
+- `PipelineRunner` runs an audit through 18 stages in order: crawl → extract → discovery →
+  canonicalise → graph → reconcile → issues → text → REF → embeddings → prominence → diagnosis →
+  candidates → counterfactual → κ → scoring → rescue → explanations.
+  - State: `audits` (policy, options, status, current stage) and `audit_stages` (per stage:
+    status, start, finish, `duration_ms`, detail, error). These tables are mutable.
+  - Resumable: `run` starts at the first stage that is not completed, and the crawl resumes
+    through `CrawlOrchestrator.resume`. On boot, `recover()` resumes audits a previous process
+    left running. `rerunFrom(stage)` resets that stage and every later one.
+  - Durations are logged ("[audit N] text completed in 123 ms"). Every stage stores its
+    artefacts with the audit's policy version. Extract, canonicalise and κ store small summaries
+    (`extraction-summary`, `canonicalisation`, `donor-effort`); extraction itself happens during
+    the crawl.
+  - Events (`stage`, `progress`, `done`) are emitted as `"event"` and stream as SSE.
+  - The embedder is injected: the MiniLM worker in `server.ts`, a stub in tests.
+- `createApp({ service })` takes an `AuditService`, so tests can stub it. Every input is checked
+  with zod (`schemas.ts`), queries before any database access. Errors are
+  `{ error: { code, message, details? } }`: 400 validation / invalid_json / invalid_config /
+  invalid_audit / invalid_csv, 404 not_found, 409 not_ready / running / completed, 413, 415 and
+  500 internal (logged, never leaked).
+- Routes (OpenAPI 3.1 at `/openapi.json`, built from the zod schemas; Swagger UI at `/docs`):
+  - `POST /audits` `{ url, pageCap?, policy (default P3), options { sigma, refVariant, workers,
+config } }` returns 202 with a Location header.
+  - `GET /audits`, `GET /audits/:id` (status, crawl progress, each stage and its duration),
+    `POST /audits/:id/resume`, `GET /audits/:id/events` (SSE: snapshot, stage, progress, done;
+    closes when done).
+  - `GET /audits/:id/summary`, `/graph?policy=` (another policy is derived on demand),
+    `/issues?policy=&type=&severity=`, `/diagnosis?case=`, `/fixes?sigma=&k=10|25|50&scope=` (a
+    ranking for another σ is computed from the stored counterfactual and stored), `/orphans`, and
+    `/sensitivity` (all six policies: size, reachability, orphans, issues, top-10 PageRank Jaccard
+    in P3 form).
+  - `POST /audits/:id/analytics` (text/csv) imports clicks and re-runs from prominence.
+  - `GET /audits/:id/export`: a zip of JSON and CSV (audit, summary, issues, diagnosis, fixes,
+    orphans, explanations).
+- Heavy CPU stages (text, REF) run on the API's own thread; embeddings and counterfactuals run in
+  worker threads.
+- Run it: `pnpm --filter @linklens/api start` (env: DATABASE_URL or PG*, REDIS_URL, PORT,
+  LINKLENS_CACHE_DIR, LINKLENS_PREFIX). The config default User-Agent has no contact URL, so pass
+  `options.config.userAgent` until one is configured.
 
 ### Database
 

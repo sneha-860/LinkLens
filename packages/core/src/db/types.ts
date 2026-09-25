@@ -215,6 +215,43 @@ export interface NewAnalyticsClick {
   lineNumber: number;
 }
 
+// ---------- audits (pipeline state; mutable) ----------
+export const AUDIT_STATUSES = ["queued", "running", "completed", "failed"] as const;
+export type AuditStatus = (typeof AUDIT_STATUSES)[number];
+export const STAGE_STATUSES = ["pending", "running", "completed", "failed"] as const;
+export type StageStatus = (typeof STAGE_STATUSES)[number];
+
+export interface AuditRow {
+  runId: Id;
+  policy: string;
+  options: { [key: string]: Json };
+  status: AuditStatus;
+  currentStage: string | null;
+  error: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  /** The site's root URL (joined from sites). */
+  rootUrl: string;
+}
+export interface NewAudit {
+  runId: Id;
+  policy: string;
+  options?: { [key: string]: Json };
+  /** Stage names in pipeline order; one pending row each. */
+  stages: readonly string[];
+}
+export interface AuditStageRow {
+  runId: Id;
+  stage: string;
+  position: number;
+  status: StageStatus;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  durationMs: number | null;
+  detail: { [key: string]: Json };
+  error: string | null;
+}
+
 // ---------- artefacts ----------
 export interface ArtefactRow<P extends Json = Json> {
   id: Id;

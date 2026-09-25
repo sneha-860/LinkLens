@@ -42,6 +42,8 @@ describe("migrations", () => {
     expect(rows.map((r) => r.tablename)).toEqual([
       "analytics_clicks",
       "artefacts",
+      "audit_stages",
+      "audits",
       "discovery_observations",
       "fetch_bodies",
       "fetches",
@@ -464,5 +466,44 @@ describe("rescue fetches", () => {
         }),
       ),
     ).toBe("23514");
+  });
+});
+
+describe("audits", () => {
+  it("track an audit and its stages in order, resettable from a stage", async () => {
+    const { run } = await seedRun();
+    const a = await q.insertAudit(db, {
+      runId: run.id,
+      policy: "P3",
+      options: { sigma: "blended" },
+      stages: ["crawl", "graph", "text"],
+    });
+    expect(a).toMatchObject({ runId: run.id, policy: "P3", status: "queued", currentStage: null });
+    expect(a.rootUrl).toMatch(/^https?:/);
+    await q.setAuditStatus(db, run.id, { status: "running", currentStage: "crawl" });
+    await q.startStage(db, run.id, "crawl");
+    await q.finishStage(db, run.id, "crawl", { durationMs: 12.5, detail: { pages: 3 } });
+    await q.startStage(db, run.id, "graph");
+    await q.failStage(db, run.id, "graph", { durationMs: 1, error: "boom" });
+    let stages = await q.listAuditStages(db, run.id);
+    expect(stages.map((s) => [s.stage, s.position, s.status])).toEqual([
+      ["crawl", 0, "completed"],
+      ["graph", 1, "failed"],
+      ["text", 2, "pending"],
+    ]);
+    expect(stages[0]).toMatchObject({ durationMs: 12.5, detail: { pages: 3 }, error: null });
+    expect(stages[1]?.error).toBe("boom");
+    await q.resetStages(db, run.id, 1);
+    stages = await q.listAuditStages(db, run.id);
+    expect(stages.map((s) => s.status)).toEqual(["completed", "pending", "pending"]);
+    expect((await q.listRunningAudits(db)).map((x) => x.runId)).toContain(run.id);
+    expect((await q.listAudits(db))[0]?.runId).toBe(run.id);
+  });
+
+  it("reject an unknown policy or status", async () => {
+    const { run } = await seedRun();
+    expect(await sqlState(q.insertAudit(db, { runId: run.id, policy: "P9", stages: [] }))).toBe(
+      "23514",
+    );
   });
 });
