@@ -2,7 +2,13 @@ import { randomBytes } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
 import { Redis } from "ioredis";
 import type pg from "pg";
-import { audit as a, db as q, discovery as d, type LinkLensConfig } from "@linklens/core";
+import {
+  audit as a,
+  db as q,
+  discovery as d,
+  text as t,
+  type LinkLensConfig,
+} from "@linklens/core";
 import { asQueryable, createPool } from "@linklens/db";
 import { DiscoveryRunner, type DiscoverySummary } from "../src/discovery/runner.js";
 import { CrawlOrchestrator } from "../src/orchestrator.js";
@@ -317,6 +323,39 @@ describe("discovery on the fixture site", () => {
         policyVersion: "P0@1.0.0",
         kind: "structural-audit",
       });
+    });
+
+    it("builds the text representation from stored fields and regions", async () => {
+      const model = await t.buildTextRun(db, runId, "P0");
+      expect(model.artefact).toMatchObject({
+        runId,
+        policyVersion: "P0@1.0.0",
+        kind: "text-representation",
+      });
+      const pages = await q.listPages(db, runId);
+      expect(model.documents).toHaveLength(new Set(pages.map((p) => p.url)).size);
+      const byPath = (path: string) => {
+        const found = model.documents.find((x) => x.node === o + path);
+        if (found === undefined) throw new Error(`no text document for ${path}`);
+        return found;
+      };
+      const terms = (x: t.TextDocument) => t.FIELDS.flatMap((f) => Object.keys(x.fields[f]));
+
+      const home = byPath("/");
+      expect(home.fields.links).toHaveProperty("deep chain");
+      expect(home.donor).toContain("deep chain");
+      // "Team" is only in <nav>, "External" only in <footer>: in no field.
+      expect(terms(home)).not.toContain("team");
+      expect(terms(home)).not.toContain("extern");
+
+      const post = byPath("/blog/post-1.html");
+      expect(post.fields.links).toHaveProperty("author");
+      expect(post.fields.links).toHaveProperty("back blog");
+      // "Home" is only in the breadcrumb, header nav and footer nav.
+      expect(terms(post)).not.toContain("home");
+
+      const stored = await q.listArtefacts(db, runId, { kind: "text-representation" });
+      expect((stored[0]?.payload as unknown as t.TextModel).stats).toEqual(model.stats);
     });
 
     it("works under a coarser policy (P3 nodes)", async () => {

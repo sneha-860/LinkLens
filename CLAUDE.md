@@ -266,6 +266,28 @@ whenever the output can change.**
 - The summary has counts by type, severity and rule, `nodesWithIssues`, `pagesAudited`, and the
   thresholds used (including the computed PageRank cut-offs).
 
+### Text representation (packages/core/src/text)
+
+- `buildTextRun(db, runId, policyId)` appends a `text-representation` artefact. The pure core is
+  `buildTextModel`. Its documents are the policy's crawled nodes, each represented by the same page
+  as in the link graph (`representativeFetchId`). `TEXT_VERSION` (`text@1.0.0`) is stored in the
+  payload. **Bump it whenever the output can change.**
+- Fields: **Title** = `<title>` and `<h1>`. **Links** = anchor texts of the page's own outgoing
+  links whose `dom_region` is `main` or `body`; anchors pointing to the page are never used.
+  **Body** = stored `body_text`, from which the extractor already stripped chrome using the region
+  classifier that writes `dom_region`.
+- Tokenising: NFKC, then lower-case, then apostrophes inside words are removed. The text is split
+  into phrases at punctuation, and n-grams never cross a phrase or go from one field string to the
+  next. Numbers, stop-words (`stopword` eng) and tokens shorter than `textMinTokenLength` are
+  dropped, and a dropped stop-word does not break a phrase. What remains is Porter-stemmed
+  (`stemmer`), then n-grams are built up to `textMaxNgram` (unigrams + bigrams).
+- Boilerplate: document frequency is computed over the site (any field). The top
+  `frequentNgramDropPct` of distinct n-grams by DF are dropped (ties: higher total count, then the
+  term), but only n-grams in at least `frequentNgramMinDf` documents.
+- TF-IDF per field: tf is the raw count; idf = `ln((1+N)/(1+df)) + 1`.
+- Views: donor `S_A = Links ∪ Body` and target `S_B = Title ∪ Body` (B's own anchors are
+  excluded). Each is stored as a sorted term set. `viewWeights` sums the field weights.
+
 ### Database
 
 - Postgres 16 + Redis 7 via `docker-compose.yml` (Postgres on host port **5433**).

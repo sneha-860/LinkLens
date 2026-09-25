@@ -16,9 +16,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "graphology": "^0.26.0"
+    "graphology": "^0.26.0",
+    "stemmer": "^2.0.1",
+    "stopword": "^3.1.5"
   },
   "devDependencies": {
+    "@types/stopword": "^2.0.3",
     "graphology-types": "^0.24.8"
   }
 }

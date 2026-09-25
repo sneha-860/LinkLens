@@ -10,6 +10,9 @@ describe("defaultConfig", () => {
       epsilon: 0.2,
       alpha: 0.1,
       frequentNgramDropPct: 0.07,
+      frequentNgramMinDf: 2,
+      textMinTokenLength: 2,
+      textMaxNgram: 2,
       embeddingModel: "Xenova/all-MiniLM-L6-v2",
       pagerankDamping: 0.85,
       randomSeed: 42,
@@ -91,6 +94,9 @@ describe("makeConfig", () => {
     [{ auditDeepPageHighDepth: 2 }],
     [{ auditWeakAuthorityPercentile: 101 }],
     [{ auditWeakAuthorityHighPercentile: 30 }],
+    [{ frequentNgramMinDf: 0 }],
+    [{ textMinTokenLength: 0 }],
+    [{ textMaxNgram: 1.5 }],
   ])("rejects invalid override %o", (overrides) => {
     expect(() => makeConfig(overrides)).toThrow(RangeError);
   });

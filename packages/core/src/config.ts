@@ -16,8 +16,20 @@ export interface LinkLensConfig {
   readonly epsilon: number;
   /** Semantic/structural blend weight α. Exact role TBD. */
   readonly alpha: number;
-  /** Share of the most frequent site-wide n-grams dropped before TF-IDF (boilerplate removal). */
+  /**
+   * Share (0–1) of the site's distinct n-grams dropped before TF-IDF, most frequent first by
+   * document frequency: site-specific boilerplate removal.
+   */
   readonly frequentNgramDropPct: number;
+  /**
+   * Only n-grams in at least this many documents may be dropped as boilerplate, so a small site
+   * never loses page-unique terms to the frequentNgramDropPct quota.
+   */
+  readonly frequentNgramMinDf: number;
+  /** Tokens shorter than this (in characters, before stemming) are discarded. */
+  readonly textMinTokenLength: number;
+  /** Longest n-gram generated: 1 = unigrams, 2 = unigrams + bigrams, … */
+  readonly textMaxNgram: number;
   /** Sentence-embedding model used for cosine similarity. */
   readonly embeddingModel: string;
   /** PageRank damping factor. */
@@ -109,6 +121,9 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   epsilon: 0.2,
   alpha: 0.1,
   frequentNgramDropPct: 0.07,
+  frequentNgramMinDf: 2,
+  textMinTokenLength: 2,
+  textMaxNgram: 2,
   embeddingModel: "Xenova/all-MiniLM-L6-v2",
   pagerankDamping: 0.85,
   randomSeed: 42,
@@ -224,6 +239,9 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   assertUnitInterval("epsilon", cfg.epsilon);
   assertUnitInterval("alpha", cfg.alpha);
   assertUnitInterval("frequentNgramDropPct", cfg.frequentNgramDropPct);
+  assertPositiveInt("frequentNgramMinDf", cfg.frequentNgramMinDf);
+  assertPositiveInt("textMinTokenLength", cfg.textMinTokenLength);
+  assertPositiveInt("textMaxNgram", cfg.textMaxNgram);
   assertUnitInterval("pagerankDamping", cfg.pagerankDamping);
   if (cfg.userAgent.trim() === "") throw new RangeError("config.userAgent must be non-empty");
   if (cfg.embeddingModel.trim() === "")
