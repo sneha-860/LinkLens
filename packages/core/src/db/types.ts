@@ -130,6 +130,8 @@ export interface PageRow {
   lang: string | null;
   /** meta robots nofollow/none on this page (recorded; links are still all observed). */
   nofollow: boolean;
+  /** The document base set by <base href> (resolved), or null when the page has none. */
+  baseHref: string | null;
 }
 export interface NewPage {
   runId: Id;
@@ -144,6 +146,7 @@ export interface NewPage {
   paragraphs?: string[];
   lang?: string | null;
   nofollow?: boolean;
+  baseHref?: string | null;
 }
 
 // ---------- link_observations (append-only) ----------

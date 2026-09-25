@@ -6,7 +6,7 @@ import { PipelineRunner, type Logger } from "./pipeline.js";
 
 // Environment: DATABASE_URL (or the PG* variables; see @linklens/db), REDIS_URL, PORT,
 // LINKLENS_CACHE_DIR (embeddings and model files), LINKLENS_PREFIX (Redis key prefix),
-// LINKLENS_USER_AGENT (default User-Agent for new audits; it needs a (+https://…) contact URL).
+// LINKLENS_USER_AGENT (overrides config.userAgent for new audits; needs a (+https://…) contact URL).
 const env = process.env;
 const logger: Logger = {
   info: (m) => console.log(`${new Date().toISOString()} ${m}`),

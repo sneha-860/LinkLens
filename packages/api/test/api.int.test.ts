@@ -369,7 +369,7 @@ describe("an audit through the whole pipeline", () => {
       "P2@1.0.0",
       "P3@1.0.0",
       "P4@1.0.0",
-      "P5@1.0.0",
+      "P5@1.1.0",
     ]);
   });
 
@@ -554,10 +554,10 @@ describe("errors against a real database", () => {
     }
   });
 
-  it("refuses an audit whose User-Agent has no contact URL (the default config)", async () => {
+  it("refuses an audit whose User-Agent has no contact URL", async () => {
     const res = await request(app)
       .post("/audits")
-      .send({ url: `${server.origin}/` });
+      .send({ url: `${server.origin}/`, options: { config: { userAgent: "LinkLensBot/0.1" } } });
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("invalid_audit");
     expect(res.body.error.message).toMatch(/userAgent/);

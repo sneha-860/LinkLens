@@ -26,7 +26,7 @@ export const P1_VERSION = "P1@1.0.0";
 export const P2_VERSION = "P2@1.0.0";
 export const P3_VERSION = "P3@1.0.0";
 export const P4_VERSION = "P4@1.0.0";
-export const P5_VERSION = "P5@1.0.0";
+export const P5_VERSION = "P5@1.1.0";
 
 export type Canonicaliser = (url: string, context: CanonicalContext) => string;
 

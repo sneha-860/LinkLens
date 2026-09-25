@@ -64,12 +64,15 @@ export function structuralStep(el: Element): string {
  * gets the same signature on every page, and all links inside it share it.
  * Returns 16 hex chars of SHA-1.
  */
-export function templateSignature(el: Element): string {
+export function templateSignature(el: Element): string | null {
   const chain: string[] = [];
   for (let node = parentElement(el); node !== null; node = parentElement(node)) {
     if (node.name === "body" || node.name === "html") break;
     chain.push(structuralStep(node));
   }
+  // A link directly under <body> has no block around it: no template to recognise (an empty
+  // chain would give every such page the same signature).
+  if (chain.length === 0) return null;
   const text = chain.reverse().join(">");
   return createHash("sha1").update(text).digest("hex").slice(0, 16);
 }

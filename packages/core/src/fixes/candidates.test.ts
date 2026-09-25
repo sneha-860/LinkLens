@@ -138,7 +138,7 @@ const REFS: [string, number][] = [
 ];
 const ref: RefMatrix = {
   version: "ref@1.1.0",
-  textVersion: "text@1.0.0",
+  textVersion: "text@1.1.0",
   runId: 1,
   policyVersion: "P0@1.0.0",
   variant: "weighted",

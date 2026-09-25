@@ -26,8 +26,12 @@ describe("checkUserAgent", () => {
     expect(checkUserAgent("LinkLensBot/0.1 (+https://example.org/linklens)")).toEqual([]);
   });
 
-  it("flags the placeholder contact in the default config", () => {
-    expect(checkUserAgent(defaultConfig.userAgent)).toEqual([
+  it("accepts the default config's UA (contact: the project repository)", () => {
+    expect(checkUserAgent(defaultConfig.userAgent)).toEqual([]);
+  });
+
+  it("flags a placeholder contact", () => {
+    expect(checkUserAgent("LinkLensBot/0.1 (+contact URL)")).toEqual([
       "missing contact URL in the form (+https://…)",
     ]);
   });

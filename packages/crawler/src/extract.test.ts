@@ -75,6 +75,13 @@ describe("extractPage: links", () => {
     const abs = extractPage('<base href="https://cdn.e.com/x/"><a href="y#z">y</a>', PAGE);
     expect(abs.links[0]?.resolvedUrl).toBe("https://cdn.e.com/x/y#z");
   });
+
+  it("records the document base it used (null without <base href>)", () => {
+    expect(extractPage('<base href="../other/"><a href="y">y</a>', PAGE).baseHref).toBe(
+      "https://e.com/other/",
+    );
+    expect(extractPage('<a href="y">y</a>', PAGE).baseHref).toBeNull();
+  });
 });
 
 describe("extractPage: dom_path and template_signature", () => {
@@ -158,8 +165,15 @@ describe("extractPage: page content", () => {
       "We never normalise raw data.",
       "Read the blog.",
     ]);
+    // One line per block: n-grams never run from one block into the next.
     expect(p.bodyText).toBe(
-      "About us Served for both /about.html and /about.html?ref=nav; the canonical tag is stored raw. We audit internal links. We never normalise raw data. Read the blog.",
+      [
+        "About us",
+        "Served for both /about.html and /about.html?ref=nav; the canonical tag is stored raw.",
+        "We audit internal links.",
+        "We never normalise raw data.",
+        "Read the blog.",
+      ].join("\n"),
     );
     for (const chrome of ["Elsewhere", "Home"]) expect(p.bodyText).not.toContain(chrome);
   });

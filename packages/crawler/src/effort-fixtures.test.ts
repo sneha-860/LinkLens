@@ -77,11 +77,15 @@ describe("templateReach(u) on the fixture site", () => {
     expect(of("blog/post-1.html").templates.map((t) => t.pages)).toEqual([1, 1]);
   });
 
-  it("counts every page with a link directly under <body> as sharing one signature", () => {
-    // A bare <body><a> has an empty ancestor chain, so its signature is the same on every such
-    // page: the six deep pages, post-2, moved, nofollow-page and orphan. They are unrelated
-    // pages, not a shared template (a limitation of structure-only signatures).
-    expect(of("deep/3.html")).toMatchObject({ kappa: 1, templateReach: 10 });
-    expect(of("blog/post-2.html").templateReach).toBe(10);
+  it("gives links directly under <body> no signature, so unrelated pages are not a template", () => {
+    // The six deep pages, post-2, moved, nofollow-page and orphan all have bare <body><a>
+    // links: no block, no template, so their reach is the page itself.
+    expect(of("deep/3.html")).toMatchObject({
+      kappa: 1,
+      templateReach: 1,
+      templates: [],
+      bodyLinks: 2,
+    });
+    expect(of("blog/post-2.html").templateReach).toBe(1);
   });
 });

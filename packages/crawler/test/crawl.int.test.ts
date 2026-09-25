@@ -427,7 +427,7 @@ describe("full crawl of the fixture site", () => {
       const p1 = (await q.listArtefacts(db, runId, { policyVersion: "P1@1.0.0" }))[0]?.payload;
       const p3 = (await q.listArtefacts(db, runId, { policyVersion: "P3@1.0.0" }))[0]?.payload;
       const p4 = (await q.listArtefacts(db, runId, { policyVersion: "P4@1.0.0" }))[0]?.payload;
-      const p5 = (await q.listArtefacts(db, runId, { policyVersion: "P5@1.0.0" }))[0]?.payload;
+      const p5 = (await q.listArtefacts(db, runId, { policyVersion: "P5@1.1.0" }))[0]?.payload;
       // P1: "./about.html#team" is the same node as /about.html; P3: ?ref=nav too (and https).
       expect(node(p1, `${o}/about.html#team`)).toBeUndefined();
       expect(node(p1, `${o}/about.html?ref=nav`)).toBeDefined();

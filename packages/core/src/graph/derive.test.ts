@@ -163,7 +163,7 @@ describe("deriveGraphFromObservations", () => {
       { maxCanonicalHops: 3 },
     );
     const { graph, summary } = derive("P5", ctx);
-    expect(summary.policyVersion).toBe("P5@1.0.0");
+    expect(summary.policyVersion).toBe("P5@1.1.0");
     expect(graph.hasNode(`${S}/b`)).toBe(false); // canonicalised into /a
     expect(graph.getNodeAttribute(`${S}/a`, "pages")).toBe(3);
   });

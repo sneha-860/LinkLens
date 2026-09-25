@@ -18,9 +18,10 @@ export const STOP_WORDS: ReadonlySet<string> = new Set(
 
 /**
  * Characters that end a phrase: n-grams never span them. Anything that is not a letter, digit,
- * whitespace, hyphen or apostrophe ("Home | Acme", "apples, pears", "end. Start").
+ * horizontal whitespace, hyphen or apostrophe ("Home | Acme", "apples, pears", "end. Start"),
+ * including line breaks, which separate the blocks of body_text.
  */
-const PHRASE_BREAK = /[^\p{L}\p{M}\p{N}\s'’-]+/u;
+const PHRASE_BREAK = /[^\p{L}\p{M}\p{N}\p{Zs}\t'’-]+/u;
 /** Word separators inside a phrase. */
 const WORD_BREAK = /[^\p{L}\p{M}\p{N}]+/u;
 const NUMERIC = /^\p{N}+$/u;

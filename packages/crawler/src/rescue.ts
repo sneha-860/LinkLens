@@ -158,6 +158,7 @@ export class RescueFetcher {
         paragraphs: page.paragraphs,
         lang: page.lang,
         nofollow: page.nofollow,
+        baseHref: page.baseHref,
       });
       pages += 1;
     }

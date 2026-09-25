@@ -373,7 +373,7 @@ describe("discovery on the fixture site", () => {
       for (const variant of ["weighted", "unweighted"] as const) {
         const m = await sem.buildRefRun(db, runId, "P0", variant);
         expect(m.artefact).toMatchObject({ runId, policyVersion: "P0@1.0.0", kind: "ref-matrix" });
-        expect(m).toMatchObject({ variant, epsilon: 0.2, textVersion: "text@1.0.0" });
+        expect(m).toMatchObject({ variant, epsilon: 0.2, textVersion: "text@1.1.0" });
         expect(m.nodes).toEqual(text.model.documents.map((x) => x.node));
         expect(m.stats.kept).toBeGreaterThan(0);
         const sums = new Map<number, number>();

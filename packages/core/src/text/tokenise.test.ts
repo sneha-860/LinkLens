@@ -60,6 +60,16 @@ describe("ngrams / terms", () => {
     ]);
   });
 
+  it("never forms a bigram across a line break (the blocks of body_text)", () => {
+    expect(terms("About the author\nBack to blog", opts)).toEqual([
+      "author",
+      "back",
+      "blog",
+      "back blog",
+    ]);
+    expect(terms("blue\twhale  songs", opts)).toContain("blue whale");
+  });
+
   it("keeps repeats (term frequency)", () => {
     expect(terms("whale whale", opts)).toEqual(["whale", "whale", "whale whale"]);
   });

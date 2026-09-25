@@ -5,8 +5,11 @@ import { p3, p4 } from "./policies.js";
 export interface CanonicalObservations {
   /** Observed redirects: absolute source URL → absolute target URL (raw strings). */
   readonly redirects?: Iterable<readonly [from: string, to: string]>;
-  /** Pages and their rel=canonical href as written (resolved here against the page URL). */
-  readonly canonicals?: Iterable<readonly [pageUrl: string, href: string]>;
+  /**
+   * Pages and their rel=canonical href as written, resolved here against the page's document
+   * base (its <base href>, resolved) or, without one, the page URL.
+   */
+  readonly canonicals?: Iterable<readonly [pageUrl: string, href: string, base?: string | null]>;
   /** Absolute URLs whose fetch ended in a 2xx response. */
   readonly fetchedOk?: Iterable<string>;
 }
@@ -68,16 +71,16 @@ export function buildCanonicalContext(
   const fetchedOk = new Set<string>();
   for (const url of obs.fetchedOk ?? []) fetchedOk.add(p4(url, withRedirects));
 
+  const resolved: (readonly [string, string])[] = [];
+  for (const [page, href, base] of obs.canonicals ?? []) {
+    try {
+      resolved.push([page, resolveReference(base ?? page, href)]);
+    } catch {
+      // page URL (or base) not absolute: skip
+    }
+  }
   const canonicals = chooseEdges(
-    mapEdges(obs.canonicals, (page, href) => {
-      let target: string;
-      try {
-        target = resolveReference(page, href);
-      } catch {
-        return null; // page URL not absolute
-      }
-      return [p4(page, withRedirects), p4(target, withRedirects)];
-    }),
+    mapEdges(resolved, (page, target) => [p4(page, withRedirects), p4(target, withRedirects)]),
   );
   return { ...withRedirects, canonicals, fetchedOk };
 }
@@ -94,6 +97,8 @@ export interface FetchFacts {
 export interface PageFacts {
   readonly url: string;
   readonly metaCanonical: string | null;
+  /** The document base set by <base href> (resolved), or null / absent: the page URL. */
+  readonly baseHref?: string | null;
 }
 
 /**
@@ -124,6 +129,6 @@ export function observationsFromRows(
   }
   const canonicals = pages
     .filter((p) => p.metaCanonical !== null)
-    .map((p) => [p.url, p.metaCanonical as string] as const);
+    .map((p) => [p.url, p.metaCanonical as string, p.baseHref ?? null] as const);
   return { redirects, canonicals, fetchedOk };
 }

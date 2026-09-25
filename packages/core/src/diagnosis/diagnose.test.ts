@@ -38,7 +38,7 @@ const entry = (s: string, t: string, ref: number, rho: number) => ({
 });
 const refM: RefMatrix = {
   version: "ref@1.1.0",
-  textVersion: "text@1.0.0",
+  textVersion: "text@1.1.0",
   runId: 7,
   policyVersion: "P0@1.0.0",
   variant: "weighted",

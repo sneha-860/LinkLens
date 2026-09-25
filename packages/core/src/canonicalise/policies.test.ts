@@ -309,6 +309,28 @@ describe("P5: P4 + follow rel=canonical (same-site, fetched OK), guarded", () =>
     expect([...rowCtx.fetchedOk].sort()).toEqual([`${S}/p`, `${S}/q`]);
   });
 
+  it("resolves a relative rel=canonical against the page's <base href>", () => {
+    const fetched = [`${S}/docs/v2/page`, `${S}/docs/v2/`, `${S}/docs/`].map((u) => ({
+      requestedUrl: u,
+      finalUrl: u,
+      statusCode: 200,
+      redirectChain: [],
+    }));
+    const withBase = buildCanonicalContext(
+      observationsFromRows(fetched, [
+        // <base href="/docs/v2/"> with <link rel=canonical href="./"> means /docs/v2/, not /docs/.
+        { url: `${S}/docs/v2/page`, metaCanonical: "./", baseHref: `${S}/docs/v2/` },
+      ]),
+      { maxCanonicalHops: 3 },
+    );
+    expect(p5(`${S}/docs/v2/page`, withBase)).toBe(`${S}/docs/v2`);
+    const noBase = buildCanonicalContext(
+      observationsFromRows(fetched, [{ url: `${S}/docs/v2/page`, metaCanonical: "../" }]),
+      { maxCanonicalHops: 3 },
+    );
+    expect(p5(`${S}/docs/v2/page`, noBase)).toBe(`${S}/docs`);
+  });
+
   it("sameSite compares P3 node origins", () => {
     expect(sameSite("https://e.com/a", "https://e.com/b")).toBe(true);
     expect(sameSite("https://e.com/a", "https://e.com:8443/b")).toBe(false);

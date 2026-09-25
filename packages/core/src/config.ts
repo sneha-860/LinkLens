@@ -68,6 +68,11 @@ export interface LinkLensConfig {
    * never loses page-unique terms to the frequentNgramDropPct quota.
    */
   readonly frequentNgramMinDf: number;
+  /**
+   * …and on at least this share of the documents: boilerplate is on most pages, so a topic
+   * shared by a few pages is never dropped to fill the quota.
+   */
+  readonly frequentNgramMinDocShare: number;
   /** Tokens shorter than this (in characters, before stemming) are discarded. */
   readonly textMinTokenLength: number;
   /** Longest n-gram generated: 1 = unigrams, 2 = unigrams + bigrams, … */
@@ -215,12 +220,13 @@ export interface LinkLensConfig {
 export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   pageCap: 500,
   crawlDelayMs: 500,
-  userAgent: "LinkLensBot/0.1 (+contact URL)",
+  userAgent: "LinkLensBot/0.1 (+https://github.com/sneha-860/LinkLens)",
   epsilon: 0.2,
   refExplainTerms: 10,
   alpha: 0.1,
   frequentNgramDropPct: 0.07,
   frequentNgramMinDf: 2,
+  frequentNgramMinDocShare: 0.5,
   textMinTokenLength: 2,
   textMaxNgram: 2,
   embeddingModel: "Xenova/all-MiniLM-L6-v2",
@@ -409,6 +415,7 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   assertUnitInterval("frequentNgramDropPct", cfg.frequentNgramDropPct);
   assertPositiveInt("refExplainTerms", cfg.refExplainTerms);
   assertPositiveInt("frequentNgramMinDf", cfg.frequentNgramMinDf);
+  assertUnitInterval("frequentNgramMinDocShare", cfg.frequentNgramMinDocShare);
   assertPositiveInt("textMinTokenLength", cfg.textMinTokenLength);
   assertPositiveInt("textMaxNgram", cfg.textMaxNgram);
   assertUnitInterval("pagerankDamping", cfg.pagerankDamping);

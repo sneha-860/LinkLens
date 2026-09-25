@@ -145,7 +145,7 @@ describe("site-specific boilerplate removal", () => {
     expect(m.stats.documents).toBe(20);
     expect(m.stats.kept + m.stats.dropped).toBe(m.stats.vocabulary);
     expect(m.stats.dfCutoff).toBe(m.dropped.at(-1)?.df);
-    expect(m.version).toBe("text@1.0.0");
+    expect(m.version).toBe("text@1.1.0");
     expect(m.policyVersion).toBe("P0@1.0.0");
   });
 
@@ -156,6 +156,41 @@ describe("site-specific boilerplate removal", () => {
     );
     expect(kept.dropped).toEqual([]);
     expect(doc(kept, "/whale").fields.title).toHaveProperty("acm widget");
+  });
+});
+
+describe("boilerplate needs to be on most pages", () => {
+  // 20 pages: the "acme" footer is on all 20; a shared topic ("glacier trek") is on 3; every
+  // page also has its own words. The 7% quota is larger than the boilerplate.
+  const docs: RawDocument[] = Array.from({ length: 20 }, (_, i) => ({
+    node: `${S}/p${String(i).padStart(2, "0")}`,
+    fetchId: i + 1,
+    url: `${S}/p${i}`,
+    title: [`page ${"abcdefghijklmnopqrst"[i]}${"klmnopqrstuvwxyzabcd"[i]}`],
+    links: [],
+    body: [
+      `${i < 3 ? "Glacier trek. " : ""}${Array.from({ length: 8 }, (_, k) => `word${"abcdefgh"[k]}${"qrstuvwxyzabcdefghij"[i]}x`).join(" ")}.`,
+      "Acme footer text.",
+    ],
+  }));
+  const m = buildTextModel({ runId: 1, policyVersion: "P0@1.0.0", documents: docs }, config);
+
+  it("drops what is on at least half the pages, and nothing a few pages share", () => {
+    const dropped = m.dropped.map((d) => d.term);
+    expect(dropped).toEqual(expect.arrayContaining(["acm", "footer", "acm footer"]));
+    expect(dropped).not.toContain("glacier");
+    expect(dropped).not.toContain("glacier trek");
+    expect(m.params.minDocsToDrop).toBe(10);
+    for (const d of m.dropped) expect(d.df).toBeGreaterThanOrEqual(10);
+    expect(m.stats.dropped).toBeLessThan(Math.floor(0.07 * m.stats.vocabulary));
+  });
+
+  it("keeps the old behaviour with a share of 0", () => {
+    const loose = buildTextModel(
+      { runId: 1, policyVersion: "P0@1.0.0", documents: docs },
+      makeConfig({ frequentNgramMinDocShare: 0 }),
+    );
+    expect(loose.dropped.map((d) => d.term)).toContain("glacier");
   });
 });
 

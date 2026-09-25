@@ -2,7 +2,7 @@ import type { LinkLensConfig } from "../config.js";
 import { STOP_WORDS, terms, type TokeniseOptions } from "./tokenise.js";
 
 /** Bump whenever the output can change (tokeniser, stop-words, stemmer, weighting, drop rule). */
-export const TEXT_VERSION = "text@1.0.0";
+export const TEXT_VERSION = "text@1.1.0";
 
 export const FIELDS = ["title", "links", "body"] as const;
 export type Field = (typeof FIELDS)[number];
@@ -59,6 +59,9 @@ export interface TextModel {
   readonly params: {
     readonly frequentNgramDropPct: number;
     readonly frequentNgramMinDf: number;
+    readonly frequentNgramMinDocShare: number;
+    /** The effective minimum: max(frequentNgramMinDf, ⌈share × documents⌉). */
+    readonly minDocsToDrop: number;
     readonly minTokenLength: number;
     readonly maxNgram: number;
     readonly stopWords: number;
@@ -134,7 +137,11 @@ export function buildTextModel(
   input: TextModelInput,
   config: Pick<
     LinkLensConfig,
-    "frequentNgramDropPct" | "frequentNgramMinDf" | "textMinTokenLength" | "textMaxNgram"
+    | "frequentNgramDropPct"
+    | "frequentNgramMinDf"
+    | "frequentNgramMinDocShare"
+    | "textMinTokenLength"
+    | "textMaxNgram"
   >,
 ): TextModel {
   const opts: TokeniseOptions = {
@@ -170,7 +177,12 @@ export function buildTextModel(
     for (const t of inDoc) df.set(t, (df.get(t) ?? 0) + 1);
   }
 
-  const dropped = frequentTerms(df, cf, config.frequentNgramDropPct, config.frequentNgramMinDf);
+  // Only n-grams on enough pages count as boilerplate (never a topic a few pages share).
+  const minDocs = Math.max(
+    config.frequentNgramMinDf,
+    Math.ceil(config.frequentNgramMinDocShare * docs.length),
+  );
+  const dropped = frequentTerms(df, cf, config.frequentNgramDropPct, minDocs);
   const drop = new Set(dropped.map((d) => d.term));
   const n = docs.length;
   const idf = new Map<string, number>();
@@ -206,6 +218,8 @@ export function buildTextModel(
     params: {
       frequentNgramDropPct: config.frequentNgramDropPct,
       frequentNgramMinDf: config.frequentNgramMinDf,
+      frequentNgramMinDocShare: config.frequentNgramMinDocShare,
+      minDocsToDrop: minDocs,
       minTokenLength: config.textMinTokenLength,
       maxNgram: config.textMaxNgram,
       stopWords: STOP_WORDS.size,

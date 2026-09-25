@@ -527,6 +527,7 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
       paragraphs: page.paragraphs,
       lang: page.lang,
       nofollow: page.nofollow,
+      baseHref: page.baseHref,
     });
     await q.insertLinkObservations(
       this.db,

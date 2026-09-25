@@ -24,8 +24,11 @@ export interface ExtractedLink {
   readonly domRegion: DomRegion;
   /** Short CSS-like path, e.g. "nav#primary>ul>li:nth-of-type(2)>a". */
   readonly domPath: string;
-  /** Hash of the ancestor structure; equal for the same link block across pages. */
-  readonly templateSignature: string;
+  /**
+   * Hash of the ancestor structure; equal for the same link block across pages. null for a
+   * link directly under <body> (no block, so no template).
+   */
+  readonly templateSignature: string | null;
   /** 0-based position among the document's <a href> elements. */
   readonly positionIndex: number;
 }
@@ -37,10 +40,15 @@ export interface ExtractedPage {
   /** href of the first <link rel="canonical"> exactly as written. */
   readonly metaCanonical: string | null;
   readonly metaRobots: string | null;
-  /** Main content text: nav/header/footer/aside/breadcrumb/pagination stripped. */
+  /**
+   * Main content text: nav/header/footer/aside/breadcrumb/pagination stripped; one line per
+   * block element ("\n" between blocks), whitespace collapsed within each.
+   */
   readonly bodyText: string | null;
   /** <p> and <li> texts of the main content, in document order. */
   readonly paragraphs: string[];
+  /** The document base when a <base href> sets one (resolved), else null (the page URL). */
+  readonly baseHref: string | null;
   readonly lang: string | null;
   readonly links: ExtractedLink[];
   /** meta robots says nofollow (or none). Recorded only: links are still all observed. */
@@ -51,19 +59,30 @@ const SKIP_TEXT = new Set(["script", "style", "noscript", "template", "head", "s
 const BLOCK =
   /^(p|div|li|ul|ol|dl|dt|dd|h[1-6]|br|tr|td|th|table|section|article|header|footer|nav|aside|main|blockquote|pre|figure|figcaption|form)$/;
 
-const collapse = (s: string) => s.replace(/\s+/g, " ").trim();
+/** Marks a block boundary while text is gathered (a private-use character, never in input). */
+const BLOCK_BREAK = "\uE000";
+/** Collapse whitespace (block marks included) into single spaces. */
+const collapse = (s: string) => s.replace(/[\s\uE000]+/g, " ").trim();
+/** Collapse whitespace inside each block; blocks are separated by "\n" (a phrase break). */
+const collapseBlocks = (s: string) =>
+  s
+    .split(BLOCK_BREAK)
+    .map(collapse)
+    .filter((line) => line !== "")
+    .join("\n");
 const orNull = (s: string) => (s === "" ? null : s);
 
 /**
  * Text of a subtree, including img alt, skipping script/style/etc. and any subtree `skip` rejects.
- * Block elements are padded so words from adjacent blocks do not run together.
+ * Block elements are delimited, so words from adjacent blocks never run together and
+ * body_text keeps one line per block.
  */
 function textOf(node: AnyNode, skip: (el: Element) => boolean = () => false): string {
   if (isText(node)) return node.data;
   if (!isTag(node) || SKIP_TEXT.has(node.name) || skip(node)) return "";
   if (node.name === "img") return ` ${node.attribs["alt"] ?? ""} `;
   const inner = node.children.map((c) => textOf(c, skip)).join("");
-  return BLOCK.test(node.name) ? ` ${inner} ` : inner;
+  return BLOCK.test(node.name) ? `${BLOCK_BREAK}${inner}${BLOCK_BREAK}` : inner;
 }
 
 const isChrome = (el: Element) => {
@@ -156,7 +175,8 @@ export function extractPage(html: string, pageUrl: string): ExtractedPage {
     headings,
     metaCanonical: canonical ?? null,
     metaRobots: robots ?? null,
-    bodyText: root !== undefined ? orNull(collapse(textOf(root, isChrome))) : null,
+    bodyText: root !== undefined ? orNull(collapseBlocks(textOf(root, isChrome))) : null,
+    baseHref: baseHref === undefined ? null : base,
     paragraphs: root !== undefined ? paragraphsOf(root) : [],
     lang: $("html").attr("lang") ?? null,
     links,
