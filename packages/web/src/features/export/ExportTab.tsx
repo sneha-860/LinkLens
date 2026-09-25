@@ -1,50 +1,70 @@
-import { exportUrl } from "../../api/client.js";
+import { exportFileUrl, exportUrl, reportUrl } from "../../api/client.js";
 import { useCurrentAudit } from "../../pages/AuditPage.js";
 import { Card } from "../../ui/ui.js";
 
-const FILES: [string, string][] = [
-  ["audit.json", "Status and every stage with its duration"],
-  ["summary.json", "The headline numbers"],
-  ["issues.json / .csv", "Structural issues with their evidence"],
-  ["diagnosis.json / .csv", "Every pair's case (v1–v4) with its explanation"],
-  ["fixes.json / .csv", "Ranked fixes with scores and explanations"],
-  ["orphans.json / .csv", "Orphans, the channels that found them and their rescue donors"],
-  ["explanations.json", "Every explanation in full"],
+/** [name, contents, has CSV] */
+const TABLES: [string, string, boolean][] = [
+  ["issues", "Structural issues with their evidence", true],
+  ["diagnosis", "Every pair's case (v1–v4) with its explanation", true],
+  ["fixes", "Ranked fixes with scores and explanations", true],
+  ["orphans", "Orphans, the channels that found them and their rescue donors", true],
+  ["summary", "The headline numbers", false],
+  ["audit", "Status and every stage with its duration", false],
+  ["explanations", "Every explanation in full", false],
 ];
 
 export function ExportTab() {
   const audit = useCurrentAudit();
+  const id = audit.id;
   return (
-    <Card title="Export">
-      <p style={{ marginTop: 0 }}>
-        Everything this audit has produced so far, as one zip of JSON and CSV files. CSV files open
-        in a spreadsheet.
-      </p>
-      <p>
-        <a
-          className="btn btn-primary"
-          href={exportUrl(audit.id)}
-          download={`linklens-audit-${audit.id}.zip`}
-        >
-          Download linklens-audit-{audit.id}.zip
+    <div className="grid grid-2">
+      <Card title="Report">
+        <p style={{ marginTop: 0 }}>
+          A printable summary: issues, the top fixes with their explanations, the diagnosis and the
+          orphans. Print it or save it as PDF from the browser.
+        </p>
+        <a className="btn btn-primary" href={reportUrl(id)} target="_blank" rel="noreferrer">
+          Open printable report
         </a>
-      </p>
-      <table>
-        <thead>
-          <tr>
-            <th>File</th>
-            <th>Contents</th>
-          </tr>
-        </thead>
-        <tbody>
-          {FILES.map(([name, what]) => (
-            <tr key={name}>
-              <td className="mono">{name}</td>
-              <td>{what}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Card>
+      </Card>
+      <Card title="Everything">
+        <p style={{ marginTop: 0 }}>All the files below in one zip.</p>
+        <a className="btn btn-primary" href={exportUrl(id)} download={`linklens-audit-${id}.zip`}>
+          Download linklens-audit-{id}.zip
+        </a>
+      </Card>
+      <div style={{ gridColumn: "1 / -1" }}>
+        <Card title="Single files">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Contents</th>
+                <th>Download</th>
+              </tr>
+            </thead>
+            <tbody>
+              {TABLES.map(([name, what, csv]) => (
+                <tr key={name}>
+                  <td className="mono">{name}</td>
+                  <td>{what}</td>
+                  <td className="row">
+                    <a href={exportFileUrl(id, `${name}.json`)} download>
+                      JSON
+                    </a>
+                    {csv && (
+                      <a href={exportFileUrl(id, `${name}.csv`)} download>
+                        CSV
+                      </a>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="field-hint">A file the pipeline has not produced yet is not available.</p>
+        </Card>
+      </div>
+    </div>
   );
 }

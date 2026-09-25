@@ -311,20 +311,97 @@ describe("an audit through the whole pipeline", () => {
     expect(donor?.explanation.lines[0]).toContain("found only via the XML sitemap");
   });
 
-  it("compares the six policies on the run", async () => {
+  it("compares the six policies on the run (sizes, Spearman of PageRank, depth shift)", async () => {
     const res = await request(app).get(`/audits/${id}/sensitivity`);
-    expect(res.body.baselinePolicy).toBe("P0");
-    expect(res.body.policies.map((p: { policy: string }) => p.policy)).toEqual([
-      "P0",
-      "P1",
-      "P2",
-      "P3",
-      "P4",
-      "P5",
+    expect(res.body).toMatchObject({
+      baselinePolicy: "P0",
+      k: 10,
+      sigma: "refGateCosine",
+      fixesJob: null,
+    });
+    const rows = res.body.policies as Record<string, unknown>[];
+    expect(rows.map((p) => p["policy"])).toEqual(["P0", "P1", "P2", "P3", "P4", "P5"]);
+    const nodes = rows.map((p) => p["nodes"] as number);
+    for (let i = 1; i < nodes.length; i++)
+      expect(nodes[i]).toBeLessThanOrEqual(nodes[i - 1] as number);
+    // The baseline against itself.
+    expect(rows[0]).toMatchObject({
+      pagerankSpearman: 1,
+      meanDepthShift: 0,
+      meanAbsDepthShift: 0,
+      topFixesJaccard: 1,
+    });
+    for (const r of rows.slice(1)) {
+      expect(r["pagerankSpearman"]).toBeGreaterThan(0.5);
+      expect(r["topFixesJaccard"]).toBeNull(); // no ranking under that policy yet
+    }
+    const bad = await request(app).get(`/audits/${id}/sensitivity?k=7`);
+    expect(bad.status).toBe(400);
+  });
+
+  it("ranks fixes under every other policy in the background for the Jaccard column", async () => {
+    const started = await request(app).post(`/audits/${id}/sensitivity/fixes`);
+    expect(started.status).toBe(202);
+    expect(started.body.job.status).toBe("running");
+    for (;;) {
+      const job = runner.policyJob(id);
+      if (job !== null && job.status !== "running") break;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    expect(runner.policyJob(id)).toMatchObject({
+      status: "completed",
+      done: ["P0", "P1", "P2", "P3", "P4", "P5"],
+    });
+    const res = await request(app).get(`/audits/${id}/sensitivity?k=25`);
+    expect(res.body.fixesJob.status).toBe("completed");
+    for (const r of res.body.policies) {
+      expect(r.fixesRanked).toBeGreaterThanOrEqual(0);
+      expect(r.topFixesJaccard).toBeGreaterThanOrEqual(0);
+      expect(r.topFixesJaccard).toBeLessThanOrEqual(1);
+    }
+    const { rows } = await pool.query<{ policy_version: string }>(
+      "SELECT DISTINCT policy_version FROM artefacts WHERE run_id = $1 AND kind = 'fix-ranking' ORDER BY 1",
+      [id],
+    );
+    expect(rows.map((r) => r.policy_version)).toEqual([
+      "P0@1.0.0",
+      "P1@1.0.0",
+      "P2@1.0.0",
+      "P3@1.0.0",
+      "P4@1.0.0",
+      "P5@1.0.0",
     ]);
-    const nodes = res.body.policies.map((p: { nodes: number }) => p.nodes);
-    for (let i = 1; i < nodes.length; i++) expect(nodes[i]).toBeLessThanOrEqual(nodes[i - 1]);
-    expect(res.body.policies[0].top10JaccardVsBaseline).toBe(1);
+  });
+
+  it("serves the reconciliation: every URL's channels, orphans first, and each channel's yield", async () => {
+    const res = await request(app).get(`/audits/${id}/reconciliation`);
+    expect(res.status).toBe(200);
+    expect(res.body.orphans).toBe(5);
+    const first = res.body.inventory.slice(0, 5);
+    for (const e of first) expect(e.orphan).toBe(true);
+    const orphan = res.body.inventory.find((e: { node: string }) => e.node === `${o}/orphan.html`);
+    expect(orphan.channels).toEqual(["xml_sitemap"]);
+    expect(res.body.channels.llms_txt.exclusive).toBeGreaterThanOrEqual(1);
+  });
+
+  it("serves single export files and a printable, escaped HTML report", async () => {
+    const csv = await request(app).get(`/audits/${id}/export/fixes.csv`);
+    expect(csv.status).toBe(200);
+    expect(csv.headers["content-type"]).toMatch(/text\/csv/);
+    expect(csv.headers["content-disposition"]).toBe(
+      `attachment; filename="linklens-audit-${id}-fixes.csv"`,
+    );
+    expect(csv.text.split("\r\n")[0]).toMatch(/^rank,target_rank,type,/);
+    const js = await request(app).get(`/audits/${id}/export/orphans.json`);
+    expect(js.body.orphans).toHaveLength(5);
+    expect((await request(app).get(`/audits/${id}/export/secrets.txt`)).status).toBe(400);
+
+    const report = await request(app).get(`/audits/${id}/report`);
+    expect(report.headers["content-type"]).toMatch(/text\/html/);
+    for (const h of ["Issues", "Top ", "Diagnosis", "Orphans", "Pipeline"])
+      expect(report.text).toContain(`<h2>${h}`);
+    expect(report.text).toContain("window.print()");
+    expect(report.text).not.toMatch(/<script/i);
   });
 
   it("exports a zip of JSON and CSV files", async () => {

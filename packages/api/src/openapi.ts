@@ -6,6 +6,8 @@ import {
   FixesQuerySchema,
   IssuesQuerySchema,
   PolicyQuerySchema,
+  SensitivityQuerySchema,
+  EXPORT_FILES,
 } from "./schemas.js";
 import { STAGES } from "./pipeline.js";
 
@@ -165,8 +167,57 @@ export function openApiDocument(): JsonSchema {
       "/audits/{id}/sensitivity": {
         get: {
           summary: "Compare all six canonicalisation policies on this run (E1)",
+          description:
+            "Per policy: size, reachability, orphans, issues, mean depth; against the audit's policy " +
+            "(in P3 form): Spearman of PageRank, mean depth shift and the Jaccard of the top-k fixes " +
+            "(once fixes are ranked under that policy; see POST …/sensitivity/fixes).",
+          parameters: [idParam, ...queryParams(SensitivityQuerySchema)],
+          responses: {
+            "200": json("One row per policy, and the fix-ranking job"),
+            ...errors,
+            ...notYet,
+          },
+        },
+      },
+      "/audits/{id}/sensitivity/fixes": {
+        post: {
+          summary: "Rank fixes under every other policy in the background (for the Jaccard column)",
           parameters: [idParam],
-          responses: { "200": json("One row per policy"), ...errors, ...notYet },
+          responses: { "202": json("The job"), ...errors, ...notYet },
+        },
+      },
+      "/audits/{id}/reconciliation": {
+        get: {
+          summary:
+            "Discovery inventory: each URL's channels, orphans first, and each channel's yield",
+          parameters: [idParam],
+          responses: { "200": json("Inventory and channel statistics"), ...errors, ...notYet },
+        },
+      },
+      "/audits/{id}/report": {
+        get: {
+          summary: "A printable HTML report",
+          parameters: [idParam],
+          responses: { "200": { description: "HTML", content: { "text/html": {} } }, ...errors },
+        },
+      },
+      "/audits/{id}/export/{file}": {
+        get: {
+          summary: "One file of the export",
+          parameters: [
+            idParam,
+            {
+              name: "file",
+              in: "path",
+              required: true,
+              schema: { type: "string", enum: [...EXPORT_FILES] },
+            },
+          ],
+          responses: {
+            "200": { description: "The file", content: { "application/json": {}, "text/csv": {} } },
+            ...errors,
+            ...notYet,
+          },
         },
       },
       "/audits/{id}/analytics": {

@@ -6,32 +6,38 @@ import {
   type canonicalise,
   type SigmaVariant,
 } from "@linklens/core";
-import { asyncHandler, errorHandler, HttpError } from "./errors.js";
+import { asyncHandler, errorHandler, HttpError, notReady } from "./errors.js";
 import { DOCS_HTML, openApiDocument } from "./openapi.js";
 import {
   STAGES,
   type CreateAuditInput,
   type Logger,
   type PipelineEvent,
+  type PolicyJob,
   type Stage,
 } from "./pipeline.js";
+import { reportHtml } from "./report.js";
 import {
   AnalyticsQuerySchema,
   CreateAuditSchema,
   DiagnosisQuerySchema,
+  ExportFileParamsSchema,
   FixesQuerySchema,
   IdParamsSchema,
   IssuesQuerySchema,
   PolicyQuerySchema,
+  SensitivityQuerySchema,
 } from "./schemas.js";
 import {
   auditView,
   diagnosisView,
   exportBundle,
+  exportFiles,
   fixesView,
   graphView,
   issuesView,
   orphansView,
+  reconciliationView,
   requireAudit,
   sensitivityView,
   summaryView,
@@ -44,6 +50,8 @@ export interface AuditService {
   isActive(runId: number): boolean;
   start(runId: number): Promise<void>;
   rerunFrom(runId: number, stage: Stage): Promise<void>;
+  policyJob(runId: number): PolicyJob | null;
+  rankAllPolicies(runId: number): PolicyJob;
   on(event: "event", listener: (e: PipelineEvent) => void): unknown;
   off(event: "event", listener: (e: PipelineEvent) => void): unknown;
 }
@@ -231,8 +239,54 @@ export function createApp(options: AppOptions): Express {
   app.get(
     "/audits/:id/sensitivity",
     asyncHandler(async (req, res) => {
+      const { k } = SensitivityQuerySchema.parse(req.query);
       const a = await requireAudit(db, idOf(req));
-      res.json(await sensitivityView(db, a));
+      res.json(await sensitivityView(db, a, k, service.policyJob(a.runId)));
+    }),
+  );
+
+  app.post(
+    "/audits/:id/sensitivity/fixes",
+    asyncHandler(async (req, res) => {
+      const a = await requireAudit(db, idOf(req));
+      if (a.status !== "completed" || service.isActive(a.runId)) {
+        throw new HttpError(
+          409,
+          "not_ready",
+          "rank fixes under other policies once the audit has completed",
+        );
+      }
+      res.status(202).json({ id: a.runId, job: service.rankAllPolicies(a.runId) });
+    }),
+  );
+
+  app.get(
+    "/audits/:id/reconciliation",
+    asyncHandler(async (req, res) => {
+      const a = await requireAudit(db, idOf(req));
+      res.json(await reconciliationView(db, a));
+    }),
+  );
+
+  app.get(
+    "/audits/:id/report",
+    asyncHandler(async (req, res) => {
+      const a = await requireAudit(db, idOf(req));
+      res.type("html").send(await reportHtml(db, a, service.isActive(a.runId)));
+    }),
+  );
+
+  app.get(
+    "/audits/:id/export/:file",
+    asyncHandler(async (req, res) => {
+      const { id, file } = ExportFileParamsSchema.parse(req.params);
+      const a = await requireAudit(db, id);
+      const bytes = (await exportFiles(db, a, service.isActive(a.runId)))[file];
+      if (bytes === undefined) throw notReady(file);
+      res
+        .type(file.endsWith(".csv") ? "text/csv; charset=utf-8" : "application/json; charset=utf-8")
+        .set("Content-Disposition", `attachment; filename="linklens-audit-${a.runId}-${file}"`)
+        .send(Buffer.from(bytes));
     }),
   );
 

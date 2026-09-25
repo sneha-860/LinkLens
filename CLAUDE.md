@@ -577,6 +577,19 @@ config } }` returns 202 with a Location header.
     ranking for another σ is computed from the stored counterfactual and stored), `/orphans`, and
     `/sensitivity` (all six policies: size, reachability, orphans, issues, top-10 PageRank Jaccard
     in P3 form).
+  - `GET /audits/:id/reconciliation`: the discovery inventory, each URL's channels (orphans
+    first) and each channel's total, exclusive (marginal yield) and orphan counts.
+  - `/sensitivity?k=` compares each policy with the audit's, pages matched in P3 form (a P3
+    page's PageRank is the sum of its merged nodes', its depth the smallest). Columns: nodes,
+    orphans, issues, mean depth, Spearman of PageRank, mean (and mean absolute) depth shift, and
+    the Jaccard of the top-k fixes as (donor, target) pairs.
+  - `POST /audits/:id/sensitivity/fixes` fills the Jaccard column by running `RANKING_STAGES`
+    (graph … scoring) under every policy that lacks a ranking for the audit's σ. It runs in the
+    background (`PipelineRunner.rankAllPolicies`, status in `fixesJob`), and its artefacts carry
+    each policy's version.
+  - `GET /audits/:id/report`: a printable HTML report. It is rendered server-side, every value
+    goes through `esc`, and there are no scripts beyond the print button.
+    `GET /audits/:id/export/:file` serves one file of the export.
   - `POST /audits/:id/analytics` (text/csv) imports clicks and re-runs from prominence.
   - `GET /audits/:id/export`: a zip of JSON and CSV (audit, summary, issues, diagnosis, fixes,
     orphans, explanations).
@@ -616,6 +629,18 @@ config } }` returns 202 with a Location header.
     (region, count, anchors), and the fixes that target it. Fixes exist only under the audit's
     policy. "Preview fix" overlays the suggested edge, dashed, adding its end points if the cap
     hid them.
+- Result tabs:
+  - Fixes: the top k from the API, sortable client-side (`sortFixes`: score, ΔPR, Δdepth, σ, κ,
+    type; a newly reachable page counts as the largest depth gain). Each row expands into an
+    `ExplanationCard`.
+  - Diagnosis: case count cards (they filter), a table sorted by severity, and an SVG scatter.
+    ρ (or raw REF) is plotted against ω with α lines (ε when on REF), at most 3000 points,
+    evenly strided.
+  - Orphans: the reconciliation table (URL × six channels, a footer with totals, marginal yield
+    and orphans) plus the rescue donors.
+  - Canonicalisation: the sensitivity table, with a button that starts the per-policy ranking
+    job. It polls while the job runs.
+  - Export: the report, the zip and every single JSON/CSV file.
 - Dev: `pnpm --filter @linklens/web dev` (proxy `/api` → `localhost:3001`). The API needs
   `LINKLENS_USER_AGENT` with a real contact URL for audits started from the form.
 - Tests: Vitest + Testing Library with mocked `fetch` and `EventSource` (`src/test/utils.tsx`).

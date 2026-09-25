@@ -62,3 +62,31 @@ export const FixesQuerySchema = z
 export const AnalyticsQuerySchema = z
   .object({ name: z.string().min(1).max(200).optional().describe("Label for the uploaded file") })
   .strict();
+
+export const SensitivityQuerySchema = z
+  .object({
+    k: z.coerce
+      .number()
+      .pipe(z.union([z.literal(10), z.literal(25), z.literal(50)]))
+      .default(10)
+      .describe("Top k fixes compared between policies (Jaccard)"),
+  })
+  .strict();
+
+export const EXPORT_FILES = [
+  "audit.json",
+  "summary.json",
+  "issues.json",
+  "issues.csv",
+  "diagnosis.json",
+  "diagnosis.csv",
+  "fixes.json",
+  "fixes.csv",
+  "orphans.json",
+  "orphans.csv",
+  "explanations.json",
+] as const;
+export const ExportFileParamsSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  file: z.enum(EXPORT_FILES),
+});

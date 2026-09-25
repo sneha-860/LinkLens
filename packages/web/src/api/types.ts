@@ -230,11 +230,42 @@ export interface SensitivityRow {
   largestScc: number;
   orphans: number;
   issues: number;
-  top10JaccardVsBaseline: number;
+  meanDepth: number | null;
+  /** Against the audit's policy, in P3 form. */
+  pagerankSpearman: number | null;
+  meanDepthShift: number | null;
+  meanAbsDepthShift: number | null;
+  /** null until fixes are ranked under this policy. */
+  fixesRanked: number | null;
+  topFixesJaccard: number | null;
+}
+export interface PolicyJob {
+  status: "running" | "completed" | "failed";
+  done: string[];
+  current: string | null;
+  error: string | null;
 }
 export interface SensitivityResponse {
   baselinePolicy: Policy;
+  sigma: SigmaVariant;
+  k: number;
+  fixesJob: PolicyJob | null;
   policies: SensitivityRow[];
+}
+
+export interface InventoryEntry {
+  node: string;
+  channels: Channel[];
+  urls: string[];
+  reachable: boolean;
+  depth: number | null;
+  orphan: boolean;
+}
+export interface ReconciliationResponse {
+  policy: Policy;
+  orphans: number;
+  channels: Record<Channel, ChannelStats>;
+  inventory: InventoryEntry[];
 }
 
 /** Server-sent events of /audits/:id/events (besides the "snapshot", which is an Audit). */

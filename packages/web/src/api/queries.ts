@@ -11,6 +11,7 @@ import type {
   GraphResponse,
   IssuesResponse,
   OrphansResponse,
+  ReconciliationResponse,
   Policy,
   SensitivityResponse,
   SigmaVariant,
@@ -84,11 +85,28 @@ export const useIssues = (id: number, policy: Policy) =>
     ...results,
   });
 
-export const useSensitivity = (id: number, enabled = true) =>
+export const useSensitivity = (id: number, k: 10 | 25 | 50, enabled = true) =>
   useQuery({
-    queryKey: [...keys.audit(id), "sensitivity"],
-    queryFn: () => api<SensitivityResponse>(`/audits/${id}/sensitivity`),
+    queryKey: [...keys.audit(id), "sensitivity", k],
+    queryFn: () => api<SensitivityResponse>(`/audits/${id}/sensitivity?k=${k}`),
     enabled,
+    retry: false,
+    // Poll while fixes are being ranked under the other policies.
+    refetchInterval: (q) => (q.state.data?.fixesJob?.status === "running" ? 2_000 : false),
+  });
+
+export function useRankPolicies(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<{ job: unknown }>(`/audits/${id}/sensitivity/fixes`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...keys.audit(id), "sensitivity"] }),
+  });
+}
+
+export const useReconciliation = (id: number) =>
+  useQuery({
+    queryKey: [...keys.audit(id), "reconciliation"],
+    queryFn: () => api<ReconciliationResponse>(`/audits/${id}/reconciliation`),
     ...results,
   });
 

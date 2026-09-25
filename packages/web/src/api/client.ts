@@ -45,4 +45,7 @@ export const postCsv = <T>(path: string, csv: string) =>
   api<T>(path, { method: "POST", headers: { "Content-Type": "text/csv" }, body: csv });
 
 export const exportUrl = (id: number) => `${API_BASE}/audits/${id}/export`;
+export const exportFileUrl = (id: number, file: string) =>
+  `${API_BASE}/audits/${id}/export/${file}`;
+export const reportUrl = (id: number) => `${API_BASE}/audits/${id}/report`;
 export const eventsUrl = (id: number) => `${API_BASE}/audits/${id}/events`;

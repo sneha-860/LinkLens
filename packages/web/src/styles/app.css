@@ -539,3 +539,87 @@ dl.props dd {
 .legend-preview {
   border-top: 3px dashed #3d5afe;
 }
+
+/* ---------- tables, cards and charts of the result tabs ---------- */
+.sort-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.explain-row > td {
+  background: var(--bg);
+}
+.explain-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+}
+.explain-card .explanation {
+  color: var(--text);
+  margin-top: 0;
+}
+dl.props-inline {
+  margin-top: 8px;
+  font-size: 0.85rem;
+}
+.stat-button {
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  border-top-width: 4px;
+}
+.stat-active {
+  outline: 2px solid var(--accent);
+}
+.scatter {
+  margin: 0;
+}
+.scatter svg {
+  width: 100%;
+  max-width: 720px;
+  height: auto;
+}
+.scatter-grid line {
+  stroke: var(--border);
+}
+.scatter-grid text,
+.scatter-axis {
+  fill: var(--muted);
+  font-size: 11px;
+}
+.scatter-threshold {
+  stroke: var(--text);
+  stroke-dasharray: 6 4;
+  stroke-width: 1.2;
+}
+.scatter-epsilon {
+  stroke: var(--accent);
+}
+.table-scroll {
+  overflow-x: auto;
+}
+table.reconciliation th.tick,
+table.reconciliation td.tick {
+  text-align: center;
+  white-space: nowrap;
+}
+table.reconciliation td.tick {
+  color: var(--success);
+  font-weight: 700;
+}
+table.reconciliation tfoot th,
+table.reconciliation tfoot td {
+  border-top: 2px solid var(--border);
+  color: var(--muted);
+  font-weight: 600;
+}
+.section-title {
+  font-size: 1.1rem;
+  margin-top: 8px;
+}

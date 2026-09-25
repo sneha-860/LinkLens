@@ -43,6 +43,30 @@ export const STAGES = [
 ] as const;
 export type Stage = (typeof STAGES)[number];
 
+/** The stages that rank fixes under a policy (no crawl, discovery, rescue or explanations). */
+export const RANKING_STAGES: readonly Stage[] = [
+  "graph",
+  "reconcile",
+  "issues",
+  "text",
+  "ref",
+  "embeddings",
+  "prominence",
+  "diagnosis",
+  "candidates",
+  "counterfactual",
+  "scoring",
+];
+
+/** Background ranking of fixes under every other policy (for the sensitivity table). */
+export interface PolicyJob {
+  status: "running" | "completed" | "failed";
+  /** Policies with a ranking (already there or computed by this job). */
+  done: string[];
+  current: string | null;
+  error: string | null;
+}
+
 /** What an audit was asked for (stored in audits.options). */
 export interface AuditOptions {
   readonly sigma?: SigmaVariant;
@@ -147,6 +171,7 @@ export class PipelineRunner extends EventEmitter {
   readonly orchestrator: CrawlOrchestrator;
   private readonly logger: Logger;
   private readonly active = new Map<number, Promise<void>>();
+  private readonly policyJobs = new Map<number, PolicyJob>();
 
   constructor(private readonly deps: PipelineDeps) {
     super();
@@ -206,6 +231,67 @@ export class PipelineRunner extends EventEmitter {
     await q.resetStages(this.db, runId, STAGES.indexOf(stage));
     await q.setAuditStatus(this.db, runId, { status: "queued", currentStage: stage });
     void this.start(runId);
+  }
+
+  /** The per-policy ranking job of an audit in this process, if any. */
+  policyJob(runId: number): PolicyJob | null {
+    return this.policyJobs.get(runId) ?? null;
+  }
+
+  /**
+   * Rank fixes under every policy that lacks a ranking for the audit's σ, in the background:
+   * the ranking stages run with that policy (their artefacts carry its version). A no-op while
+   * a job for the audit is running.
+   */
+  rankAllPolicies(runId: number): PolicyJob {
+    const running = this.policyJobs.get(runId);
+    if (running?.status === "running") return running;
+    const job: PolicyJob = { status: "running", done: [], current: null, error: null };
+    this.policyJobs.set(runId, job);
+    void (async () => {
+      try {
+        for (const policy of Object.keys(canonicalise.POLICIES) as canonicalise.PolicyId[]) {
+          const ctx = await this.ctxFor(runId, policy);
+          const sigma = ctx.options.sigma ?? ctx.config.sigmaVariant;
+          const have = await q.listArtefacts(this.db, runId, {
+            kind: fixes.FIX_RANKING_ARTEFACT,
+            policyVersion: ctx.policyVersion,
+          });
+          if (!have.some((r) => (r.payload as { sigmaVariant?: string }).sigmaVariant === sigma)) {
+            job.current = policy;
+            for (const stage of RANKING_STAGES) {
+              const started = performance.now();
+              await this.stages[stage](ctx);
+              this.logger.info(
+                `[audit ${runId}] ${policy} ${stage} completed in ${(performance.now() - started).toFixed(0)} ms`,
+              );
+            }
+          }
+          job.done.push(policy);
+        }
+        job.status = "completed";
+      } catch (e) {
+        job.status = "failed";
+        job.error = errorText(e);
+        this.logger.error(`[audit ${runId}] policy ranking failed: ${job.error}`);
+      } finally {
+        job.current = null;
+      }
+    })();
+    return job;
+  }
+
+  private async ctxFor(runId: number, policy: canonicalise.PolicyId): Promise<Ctx> {
+    const audit = await q.getAudit(this.db, runId);
+    const run = await q.getRun(this.db, runId);
+    if (audit === null || run === null) throw new Error(`audit ${runId} not found`);
+    return {
+      runId,
+      policy,
+      policyVersion: canonicalise.POLICIES[policy].version,
+      options: audit.options as AuditOptions,
+      config: makeConfig(run.config),
+    };
   }
 
   /** Stop in-process work (crawls stay resumable) and disconnect. */

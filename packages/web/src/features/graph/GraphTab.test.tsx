@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GraphResponse } from "../../api/types.js";
 import { audit, fix, mockApi, renderAt } from "../../test/utils.js";
 import type { CytoscapeViewProps } from "./CytoscapeView.js";
@@ -24,6 +24,11 @@ vi.mock("./CytoscapeView.js", () => ({
   ),
 }));
 
+// Warm the lazily imported (mocked) canvas module, so the first test does not pay for resolving
+// it under a loaded test run.
+beforeAll(async () => {
+  await import("./CytoscapeView.js");
+});
 beforeEach(() => vi.stubGlobal("EventSource", undefined));
 afterEach(() => vi.unstubAllGlobals());
 
