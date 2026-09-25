@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
 import { Redis } from "ioredis";
 import type pg from "pg";
-import { db as q, discovery as d, type LinkLensConfig } from "@linklens/core";
+import { audit as a, db as q, discovery as d, type LinkLensConfig } from "@linklens/core";
 import { asQueryable, createPool } from "@linklens/db";
 import { DiscoveryRunner, type DiscoverySummary } from "../src/discovery/runner.js";
 import { CrawlOrchestrator } from "../src/orchestrator.js";
@@ -287,6 +287,36 @@ describe("discovery on the fixture site", () => {
       });
       const stored = await q.listArtefacts(db, runId, { kind: "discovery-reconciliation" });
       expect((stored[0]?.payload as { orphans: string[] }).orphans).toEqual(rec.orphans);
+    });
+
+    it("feeds the structural audit (issues + summary artefact)", async () => {
+      const audit = await a.auditRun(db, runId, "P0");
+      const nodes = (type: string, rule?: string) =>
+        audit.issues
+          .filter((i) => i.type === type && (rule === undefined || i.rule === rule))
+          .map((i) => i.node.replace(o, ""))
+          .sort();
+      expect(nodes("orphan")).toEqual(rec.orphans.map((n) => n.replace(o, "")).sort());
+      expect(nodes("deep-page")).toEqual(["/deep/4.html", "/deep/5.html", "/deep/6.html"]);
+      expect(nodes("noindex-nofollow-conflict", "noindex-in-sitemap")).toEqual([
+        "/blog/post-2.html",
+      ]);
+      expect(nodes("noindex-nofollow-conflict", "nofollow-sole-path")).toEqual([
+        "/nofollow-page.html",
+      ]);
+      expect(nodes("noindex-nofollow-conflict", "internal-nofollow")).toEqual([
+        "/nofollow-target.html",
+      ]);
+      expect(audit.summary).toMatchObject({
+        runId,
+        policyVersion: "P0@1.0.0",
+        total: audit.issues.length,
+      });
+      expect(audit.artefact).toMatchObject({
+        runId,
+        policyVersion: "P0@1.0.0",
+        kind: "structural-audit",
+      });
     });
 
     it("works under a coarser policy (P3 nodes)", async () => {

@@ -92,6 +92,14 @@ export interface LinkLensConfig {
   readonly sitemapMaxUrls: number;
   /** Store the raw bytes of discovery documents (sitemaps, feeds, llms.txt) in fetch_bodies. */
   readonly storeDiscoveryBodies: boolean;
+  /** Audit: a crawled page deeper than this many clicks from the seed is a "deep page". */
+  readonly auditDeepPageDepth: number;
+  /** Audit: a deep page deeper than this is high severity (else medium). */
+  readonly auditDeepPageHighDepth: number;
+  /** Audit: PageRank below this percentile of crawled pages (0–100) is "weak authority". */
+  readonly auditWeakAuthorityPercentile: number;
+  /** Audit: weak authority below this lower percentile is high severity (else medium). */
+  readonly auditWeakAuthorityHighPercentile: number;
 }
 
 export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
@@ -129,6 +137,10 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   sitemapMaxDepth: 3,
   sitemapMaxUrls: 50_000,
   storeDiscoveryBodies: true,
+  auditDeepPageDepth: 3,
+  auditDeepPageHighDepth: 6,
+  auditWeakAuthorityPercentile: 20,
+  auditWeakAuthorityHighPercentile: 5,
 });
 
 function assertUnitInterval(name: keyof LinkLensConfig, value: number): void {
@@ -179,6 +191,21 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   assertPositiveInt("discoveryMaxFetches", cfg.discoveryMaxFetches);
   assertNonNegativeInt("sitemapMaxDepth", cfg.sitemapMaxDepth);
   assertPositiveInt("sitemapMaxUrls", cfg.sitemapMaxUrls);
+  assertNonNegativeInt("auditDeepPageDepth", cfg.auditDeepPageDepth);
+  if (
+    !Number.isInteger(cfg.auditDeepPageHighDepth) ||
+    cfg.auditDeepPageHighDepth < cfg.auditDeepPageDepth
+  ) {
+    throw new RangeError("config.auditDeepPageHighDepth must be an integer ≥ auditDeepPageDepth");
+  }
+  for (const k of ["auditWeakAuthorityPercentile", "auditWeakAuthorityHighPercentile"] as const) {
+    if (!(cfg[k] >= 0 && cfg[k] <= 100)) throw new RangeError(`config.${k} must be in [0, 100]`);
+  }
+  if (cfg.auditWeakAuthorityHighPercentile > cfg.auditWeakAuthorityPercentile) {
+    throw new RangeError(
+      "config.auditWeakAuthorityHighPercentile must be ≤ auditWeakAuthorityPercentile",
+    );
+  }
   for (const flag of [
     "includeSubdomains",
     "robotsTreat429AsUnreachable",

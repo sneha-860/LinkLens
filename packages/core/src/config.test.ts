@@ -38,6 +38,10 @@ describe("defaultConfig", () => {
       sitemapMaxDepth: 3,
       sitemapMaxUrls: 50_000,
       storeDiscoveryBodies: true,
+      auditDeepPageDepth: 3,
+      auditDeepPageHighDepth: 6,
+      auditWeakAuthorityPercentile: 20,
+      auditWeakAuthorityHighPercentile: 5,
     });
   });
 
@@ -84,6 +88,9 @@ describe("makeConfig", () => {
     [{ betweennessSamples: 0 }],
     [{ discoveryMaxFetches: 0 }],
     [{ sitemapMaxDepth: -1 }],
+    [{ auditDeepPageHighDepth: 2 }],
+    [{ auditWeakAuthorityPercentile: 101 }],
+    [{ auditWeakAuthorityHighPercentile: 30 }],
   ])("rejects invalid override %o", (overrides) => {
     expect(() => makeConfig(overrides)).toThrow(RangeError);
   });

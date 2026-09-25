@@ -6,4 +6,5 @@ export * as semantic from "./semantic/index.js";
 export * as diagnosis from "./diagnosis/index.js";
 export * as fixes from "./fixes/index.js";
 export * as db from "./db/index.js";
+export * as audit from "./audit/index.js";
 export * as rfc3986 from "./url/index.js";

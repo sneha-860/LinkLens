@@ -245,6 +245,27 @@ whenever the output can change.**
   - per-channel `total`, `exclusive` (marginal yield) and `orphans`
 - The P4/P5 context uses only `crawl` fetches, so discovery never changes a derived graph.
 
+### Structural audit (packages/core/src/audit)
+
+- `auditRun(db, runId, policyId)` derives the policy's graph and reconciliation in memory, runs the
+  rules, and appends a `structural-audit` artefact `{ summary, issues }`. The pure core is
+  `auditStructure`.
+- Issue record: `{ id, type, rule?, node, severity (high|medium|low), evidence, policyVersion }`.
+  Page-level rules apply to crawled pages only, using each node's representative page.
+
+| Type                      | Rule                                                                                                                 | Severity                                                        |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| orphan                    | reconciled orphan, with `channels`/`sources`                                                                         | high if a sitemap lists it, else medium                         |
+| deep-page                 | depth > `auditDeepPageDepth` (3)                                                                                     | high if > `auditDeepPageHighDepth` (6), else medium             |
+| weak-authority            | PageRank < `auditWeakAuthorityPercentile` (20th, linear interpolation) of crawled pages                              | high if < `auditWeakAuthorityHighPercentile` (5th), else medium |
+| outside-largest-scc       | reachable, not in the largest SCC                                                                                    | low                                                             |
+| dead-end                  | no internal out-links                                                                                                | medium                                                          |
+| noindex-nofollow-conflict | `noindex-in-sitemap` (high); `canonical-to-noindex` (high); `nofollow-sole-path` (medium); `internal-nofollow` (low) | per rule                                                        |
+
+- noindex/nofollow come from meta robots **or** the `X-Robots-Tag` header (`none` = both).
+- The summary has counts by type, severity and rule, `nodesWithIssues`, `pagesAudited`, and the
+  thresholds used (including the computed PageRank cut-offs).
+
 ### Database
 
 - Postgres 16 + Redis 7 via `docker-compose.yml` (Postgres on host port **5433**).
