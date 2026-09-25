@@ -44,12 +44,13 @@ export class RobotsStore {
   }
 
   private async load(url: URL): Promise<RobotsPolicy> {
-    const robotsUrl = new URL("/robots.txt", url);
-    await this.throttle.acquire(robotsUrl);
-    // fetchRobots issues its first request synchronously; mark the dispatch once it is out.
-    const pending = fetchRobots(url, { config: this.config, fetch: this.fetchImpl });
-    await this.throttle.dispatched(robotsUrl);
-    const { policy: fetched, record } = await pending;
+    // Every request, redirect hops included, waits on the per-host throttle (each hop's host).
+    const { policy: fetched, record } = await fetchRobots(url, {
+      config: this.config,
+      fetch: this.fetchImpl,
+      beforeRequest: (hop) => this.throttle.acquire(hop),
+      afterDispatch: async (hop) => this.throttle.dispatched(hop),
+    });
     await q.insertFetch(this.db, {
       runId: this.runId,
       requestedUrl: record.requestedUrl,

@@ -130,6 +130,33 @@ describe("fetchRobots: redirects (RFC 9309 §2.3.1.2)", () => {
     expect(record.finalUrl).toBe("https://cdn.example.net/robots-final.txt");
   });
 
+  it("throttles every request, each redirect hop included, in order", async () => {
+    const f = fakeFetch({
+      "https://www.example.com/robots.txt": redirect("https://cdn.example.net/r.txt", 301),
+      "https://cdn.example.net/r.txt": redirect("/robots-final.txt", 302),
+      "https://cdn.example.net/robots-final.txt": text("user-agent: *\ndisallow: /x"),
+    });
+    const log: string[] = [];
+    await fetchRobots(site, {
+      config,
+      fetch: f,
+      beforeRequest: async (url) => {
+        log.push(`acquire ${url} (requests so far: ${f.calls.length})`);
+      },
+      afterDispatch: async (url) => {
+        log.push(`dispatched ${url} (requests so far: ${f.calls.length})`);
+      },
+    });
+    expect(log).toEqual([
+      "acquire https://www.example.com/robots.txt (requests so far: 0)",
+      "dispatched https://www.example.com/robots.txt (requests so far: 1)",
+      "acquire https://cdn.example.net/r.txt (requests so far: 1)",
+      "dispatched https://cdn.example.net/r.txt (requests so far: 2)",
+      "acquire https://cdn.example.net/robots-final.txt (requests so far: 2)",
+      "dispatched https://cdn.example.net/robots-final.txt (requests so far: 3)",
+    ]);
+  });
+
   it("follows exactly robotsMaxRedirects (5) hops", async () => {
     const routes: Record<string, () => Response> = {};
     for (let i = 0; i < 5; i++) {

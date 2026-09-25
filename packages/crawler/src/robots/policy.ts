@@ -82,6 +82,12 @@ export interface FetchRobotsOptions {
   /** Injected for tests; defaults to global fetch. */
   readonly fetch?: typeof fetch;
   readonly now?: () => Date;
+  /**
+   * Called before every request, redirect hops included (the per-host throttle's acquire), and
+   * once the request has been sent (its dispatched), so each hop is rate-limited.
+   */
+  readonly beforeRequest?: (url: string) => Promise<unknown>;
+  readonly afterDispatch?: (url: string) => Promise<unknown>;
 }
 
 export interface FetchRobotsResult {
@@ -95,7 +101,13 @@ const isRedirect = (s: number) => s === 301 || s === 302 || s === 303 || s === 3
 /** Fetch and interpret `<origin>/robots.txt` per RFC 9309 §2.3. Never throws for network errors. */
 export async function fetchRobots(
   siteUrl: string | URL,
-  { config, fetch: fetchImpl = fetch, now = () => new Date() }: FetchRobotsOptions,
+  {
+    config,
+    fetch: fetchImpl = fetch,
+    now = () => new Date(),
+    beforeRequest,
+    afterDispatch,
+  }: FetchRobotsOptions,
 ): Promise<FetchRobotsResult> {
   const requestedUrl = new URL("/robots.txt", siteUrl).toString();
   const fetchedAt = now();
@@ -113,11 +125,14 @@ export async function fetchRobots(
   let url = requestedUrl;
   try {
     for (;;) {
-      const res = await fetchImpl(url, {
+      await beforeRequest?.(url);
+      const pending = fetchImpl(url, {
         headers: requestHeaders(config),
         redirect: "manual",
         signal: AbortSignal.timeout(config.robotsFetchTimeoutMs),
       });
+      await afterDispatch?.(url);
+      const res = await pending;
       const status = res.status;
 
       if (isRedirect(status)) {

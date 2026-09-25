@@ -108,6 +108,8 @@ For each pair with REF > ε or a link, with threshold α (`config.alpha`):
   - Unreachable for `robotsUnreachableGraceDays` (30), judged from earlier runs' robots.txt fetches:
     allow all (§2.3.1.4).
   - Cached per origin for at most `robotsCacheTtlMs` (24 h, §2.4). A failed load is never cached.
+  - Every robots.txt request, each redirect hop included, waits on the per-host throttle
+    (`fetchRobots` hooks `beforeRequest` / `afterDispatch`).
   - `Sitemap:` lines are collected raw with line numbers; they are a discovery channel.
 - Politeness: consecutive dispatches to a host are at least `max(config.crawlDelayMs, robots Crawl-delay)`
   apart, in real time, across every process and run. `RedisHostThrottle` has two phases:
@@ -155,11 +157,15 @@ For each pair with REF > ε or a link, with threshold α (`config.alpha`):
   tags/ARIA roles, then class/id words. `<header>`/`<footer>` inside sectioning content are not
   chrome. The nearest region wins, except that a nav inside a footer or aside reports the outer one.
 - `dom_path`: short CSS-like path from the nearest ancestor with an id (`tag#id`), or from `<body>`.
-- `template_signature`: 16 hex chars of SHA-1 over the ancestor chain (tag, digit-free id,
+- `template_signature`: null for a link directly under `<body>` (no block, no template); otherwise
+  16 hex chars of SHA-1 over the ancestor chain (tag, digit-free id,
   structural classes). Positions, digits and state classes (active/current/is-*) are dropped, so the
   same block matches across pages.
 - `body_text` and `paragraphs` (`<p>` and `<li>`) come from `<main>`/`[role=main]`, else `<body>`,
-  with nav/header/footer/aside/breadcrumb/pagination stripped.
+  with nav/header/footer/aside/breadcrumb/pagination stripped. `body_text` has one line per block
+  element (the tokeniser treats line breaks as phrase breaks).
+- `base_href`: the document base a `<base href>` sets (resolved), else null. P5 resolves
+  rel=canonical against it.
 - 5xx, network errors and timeouts are retried up to `fetchMaxRetries` times with exponential
   backoff. 4xx is never retried.
 - `pageCap` counts every admitted URL, whatever its outcome.
@@ -167,7 +173,9 @@ For each pair with REF > ε or a link, with threshold α (`config.alpha`):
   frontier keys and sets the run to `cancelled`.
 - `detach()` / `CrawlOrchestrator.shutdown()` stop the worker but keep the Redis state; the run stays
   `running`. `resume(runId)` continues it, and marks it `failed` if the Redis state is gone. Jobs
-  in flight in a crashed process are re-queued by BullMQ's stalled-job check.
+  in flight in a crashed process are re-queued by BullMQ's stalled-job check once their lock
+  (`crawlJobLockMs`, also the stalled-check interval) expires; this is tested with a simulated
+  crash.
 - Events: `progress` (pagesFetched, a Redis counter that survives restarts; queueSize, admitted,
   url, depth, outcome), `done`, `error`.
 
@@ -289,7 +297,8 @@ whenever the output can change.**
   (`stemmer`), then n-grams are built up to `textMaxNgram` (unigrams + bigrams).
 - Boilerplate: document frequency is computed over the site (any field). The top
   `frequentNgramDropPct` of distinct n-grams by DF are dropped (ties: higher total count, then the
-  term), but only n-grams in at least `frequentNgramMinDf` documents.
+  term), but only n-grams in at least max(`frequentNgramMinDf`, ⌈`frequentNgramMinDocShare` × N⌉)
+  documents (default: half the pages), so a topic that a few pages share is never dropped.
 - TF-IDF per field: tf is the raw count; idf = `ln((1+N)/(1+df)) + 1`.
 - Views: donor `S_A = Links ∪ Body` and target `S_B = Title ∪ Body` (B's own anchors are
   excluded). Each is stored as a sorted term set. `viewWeights` sums the field weights.

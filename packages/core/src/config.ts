@@ -105,6 +105,11 @@ export interface LinkLensConfig {
   readonly fetchMaxRetries: number;
   /** Base delay for exponential retry backoff: base, 2×base, 4×base, … */
   readonly retryBackoffMs: number;
+  /**
+   * BullMQ job lock for a crawl job (ms), also the stalled-job check interval: after a crash, the
+   * job that was in flight is re-queued by a resumed run once its lock expires.
+   */
+  readonly crawlJobLockMs: number;
   /** Jobs processed concurrently per run. 1 keeps BFS order and fetch order deterministic. */
   readonly crawlConcurrency: number;
   /** Also crawl subdomains of the seed host (seed host minus a leading "www."). */
@@ -243,6 +248,7 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   maxBodyBytes: 10 * 1024 * 1024,
   fetchMaxRetries: 2,
   retryBackoffMs: 1_000,
+  crawlJobLockMs: 30_000,
   crawlConcurrency: 1,
   includeSubdomains: false,
   maxCrawlDelayMs: 60_000,
@@ -330,6 +336,7 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   assertNonNegativeInt("fetchMaxRetries", cfg.fetchMaxRetries);
   assertNonNegativeInt("retryBackoffMs", cfg.retryBackoffMs);
   assertPositiveInt("crawlConcurrency", cfg.crawlConcurrency);
+  assertPositiveInt("crawlJobLockMs", cfg.crawlJobLockMs);
   assertPositiveInt("maxCrawlDelayMs", cfg.maxCrawlDelayMs);
   assertPositiveInt("robotsCacheTtlMs", cfg.robotsCacheTtlMs);
   if (cfg.robotsCacheTtlMs > 24 * 60 * 60 * 1000) {

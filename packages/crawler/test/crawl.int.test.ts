@@ -585,6 +585,61 @@ describe("isolated runs", () => {
   describe("detach and resume", () => {
     beforeEach(() => setupEnv());
 
+    it("resumes after a crash: the job in flight is re-queued once its lock expires", async () => {
+      const o = server.origin;
+      const hang = `${o}/deep/3.html`;
+      let hung = false;
+      // The request for /deep/3.html never answers: the process "dies" in the middle of it.
+      const crashingFetch: typeof fetch = (input, init) => {
+        const url = input instanceof Request ? input.url : input.toString();
+        if (url === hang) {
+          hung = true;
+          return new Promise<Response>(() => undefined);
+        }
+        return recordingFetch(input, init);
+      };
+      const crashing = new CrawlOrchestrator({
+        pool,
+        redisUrl: inject("redisUrl"),
+        prefix,
+        fetch: crashingFetch,
+      });
+      const { runId } = await crashing.createRun(`${o}/`, {
+        config: { ...BASE_CONFIG, crawlJobLockMs: 1_500 },
+      });
+      const first = await crashing.start(runId);
+      first.on("error", () => undefined); // the dead process's connection errors
+      while (!hung) await new Promise((r) => setTimeout(r, 20));
+
+      // Simulated crash: the worker stops without releasing the job's lock, Redis is cut.
+      await (first as unknown as { worker: { close(force: boolean): Promise<void> } }).worker.close(
+        true,
+      );
+      (crashing as unknown as { redis: Redis }).redis.disconnect();
+      expect((await q.getRun(db, runId))?.status).toBe("running");
+
+      const second = newOrchestrator();
+      try {
+        const started = Date.now();
+        const summary = await (await second.resume(runId)).done;
+        expect(summary).toMatchObject({
+          status: "completed",
+          pagesFetched: TOTAL_URLS,
+          admitted: TOTAL_URLS,
+        });
+        expect(Date.now() - started).toBeLessThan(20_000); // the lock expired, not the default 30 s
+      } finally {
+        await second.close();
+      }
+      const fetches = crawlFetches(await q.listFetches(db, runId));
+      expect(new Set(fetches.map((f) => f.requestedUrl))).toEqual(
+        new Set(ALL_PATHS.map((p) => o + p)),
+      );
+      // The crashed attempt wrote nothing; the resumed run fetched /deep/3.html once.
+      expect(fetches.filter((f) => f.requestedUrl === hang)).toHaveLength(1);
+      expect((await q.getRun(db, runId))?.status).toBe("completed");
+    });
+
     it("a detached run keeps its Redis state and resumes where it stopped", async () => {
       const o = server.origin;
       const { runId } = await orchestrator.createRun(`${o}/`, { config: BASE_CONFIG });

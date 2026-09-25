@@ -325,6 +325,10 @@ export class CrawlHandle extends EventEmitter<HandleEvents> {
         connection: this.redis,
         prefix: this.settings.prefix,
         concurrency: this.config.crawlConcurrency,
+        // After a crash, the in-flight job's lock expires and a resumed worker's stalled check
+        // puts it back in the queue.
+        lockDuration: this.config.crawlJobLockMs,
+        stalledInterval: this.config.crawlJobLockMs,
         autorun: false,
       },
     );
