@@ -360,14 +360,13 @@ export interface PersistedAudit extends StructuralAudit {
 
 /**
  * Audit a run under `policyId`: derive the policy's graph and reconciliation in memory (from the
- * run's stored config), run the rules, and append a `structural-audit` artefact
- * (run id + policy version) holding the summary and the issues.
+ * run's stored config) and run the rules. Nothing is written.
  */
-export async function auditRun(
+export async function loadAudit(
   db: Queryable,
   runId: number,
   policyId: PolicyId,
-): Promise<PersistedAudit> {
+): Promise<StructuralAudit> {
   const { observations, context, config } = await loadRunGraphInputs(db, runId);
   const policy = POLICIES[policyId];
   const canonicalise = (url: string) => policy.canonicalise(url, context);
@@ -407,9 +406,19 @@ export async function auditRun(
     canonicalise,
     config,
   });
+  return audit;
+}
+
+/** loadAudit, appended as a `structural-audit` artefact (run id + policy version). */
+export async function auditRun(
+  db: Queryable,
+  runId: number,
+  policyId: PolicyId,
+): Promise<PersistedAudit> {
+  const audit = await loadAudit(db, runId, policyId);
   const artefact = await insertArtefact(db, {
     runId,
-    policyVersion: policy.version,
+    policyVersion: audit.summary.policyVersion,
     kind: STRUCTURAL_AUDIT_ARTEFACT,
     payload: audit as unknown as Json,
   });

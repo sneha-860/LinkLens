@@ -7,6 +7,7 @@ import {
   db as q,
   diagnosis as dg,
   discovery as d,
+  fixes as fx,
   prominence as pr,
   semantic as sem,
   text as t,
@@ -451,6 +452,32 @@ describe("discovery on the fixture site", () => {
       }
       const stored = await q.listArtefacts(db, runId, { kind: "diagnosis" });
       expect((stored[0]?.payload as unknown as dg.DiagnosisReport).counts).toEqual(counts);
+    });
+
+    it("generates admissible fix candidates, each with its reasons", async () => {
+      const list = await fx.buildCandidatesRun(db, runId, "P0");
+      expect(list.artefact).toMatchObject({
+        runId,
+        policyVersion: "P0@1.0.0",
+        kind: "fix-candidates",
+      });
+      // Orphans were never crawled: no text, so REF (and therefore any donor) is undefined.
+      const orphanTargets = list.targets.filter((t) => t.reasons.includes("orphan"));
+      expect(orphanTargets.length).toBe(rec.orphans.length);
+      for (const t of orphanTargets) expect(t).toMatchObject({ hasText: false, kept: 0 });
+      expect(list.stats.targetsByReason["deep-page"]).toBe(3);
+
+      const isUtility = fx.utilityMatcher(list.params.candidateUtilityPatterns);
+      for (const c of list.candidates) {
+        expect(c.donor).not.toBe(c.target);
+        expect(c.ref).toBeGreaterThan(list.epsilon);
+        expect(isUtility(c.donor)).toBeNull();
+        expect(c.section.relation).not.toBeNull();
+        if (c.action === "make-visible") expect(c.existingLink?.omega).toBeLessThan(list.alpha);
+        expect(c.reasons.length).toBeGreaterThanOrEqual(6);
+      }
+      for (const t of list.targets) expect(t.kept).toBeLessThanOrEqual(30);
+      expect(list.stats.candidates).toBe(list.candidates.length);
     });
 
     it("works under a coarser policy (P3 nodes)", async () => {

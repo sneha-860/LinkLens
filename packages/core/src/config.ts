@@ -156,6 +156,23 @@ export interface LinkLensConfig {
   readonly prominenceSitewideShare: number;
   /** …and its links are multiplied by this. */
   readonly prominenceSitewideDiscount: number;
+  /** Fix candidates: at most this many donors per target, highest REF(u,v) first. */
+  readonly candidateMaxPerTarget: number;
+  /**
+   * Fix candidates: a donor whose URL path + query matches any of these (case-insensitive
+   * regular expressions) is a utility page (login, cart, account, search, tag archive) and never
+   * a donor.
+   */
+  readonly candidateUtilityPatterns: readonly string[];
+  /**
+   * Fix candidates: block donors by section. A page's section is its first path segment when
+   * the path has at least two segments ("/blog/post" → "blog"); shallower pages are top level.
+   */
+  readonly candidateSectionBlocking: boolean;
+  /** Sections that may donate to each other, e.g. [["blog", "news"]]. */
+  readonly candidateSiblingSections: readonly (readonly string[])[];
+  /** Top-level pages (home, /about) may donate to, and receive from, any section. */
+  readonly candidateTopLevelIsSibling: boolean;
   /** Audit: a crawled page deeper than this many clicks from the seed is a "deep page". */
   readonly auditDeepPageDepth: number;
   /** Audit: a deep page deeper than this is high severity (else medium). */
@@ -220,6 +237,18 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   prominencePositionDecay: 0.1,
   prominenceSitewideShare: 0.5,
   prominenceSitewideDiscount: 0.3,
+  candidateMaxPerTarget: 30,
+  candidateUtilityPatterns: Object.freeze([
+    "(^|/)(log-?in|sign-?in|log-?out|sign-?out|register|sign-?up)([/.?]|$)",
+    "(^|/)(cart|basket|checkout)([/.?]|$)",
+    "(^|/)(my-?)?(account|profile)s?([/.?]|$)",
+    "(^|/)search([/.?]|$)",
+    "[?&](q|s|query|search)=",
+    "(^|/)tags?/",
+  ]),
+  candidateSectionBlocking: true,
+  candidateSiblingSections: Object.freeze([]),
+  candidateTopLevelIsSibling: true,
   auditDeepPageDepth: 3,
   auditDeepPageHighDepth: 6,
   auditWeakAuthorityPercentile: 20,
@@ -274,6 +303,25 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   assertPositiveInt("discoveryMaxFetches", cfg.discoveryMaxFetches);
   assertNonNegativeInt("sitemapMaxDepth", cfg.sitemapMaxDepth);
   assertPositiveInt("sitemapMaxUrls", cfg.sitemapMaxUrls);
+  assertPositiveInt("candidateMaxPerTarget", cfg.candidateMaxPerTarget);
+  if (!Array.isArray(cfg.candidateUtilityPatterns)) {
+    throw new RangeError("config.candidateUtilityPatterns must be an array of regular expressions");
+  }
+  for (const p of cfg.candidateUtilityPatterns) {
+    try {
+      new RegExp(p, "i");
+    } catch {
+      throw new RangeError(`config.candidateUtilityPatterns: invalid regular expression ${p}`);
+    }
+  }
+  if (
+    !Array.isArray(cfg.candidateSiblingSections) ||
+    !cfg.candidateSiblingSections.every(
+      (g) => Array.isArray(g) && g.every((x) => typeof x === "string" && x !== ""),
+    )
+  ) {
+    throw new RangeError("config.candidateSiblingSections must be an array of section-name arrays");
+  }
   assertNonNegativeInt("auditDeepPageDepth", cfg.auditDeepPageDepth);
   if (
     !Number.isInteger(cfg.auditDeepPageHighDepth) ||
@@ -295,6 +343,8 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
     "followNofollow",
     "storeRawHtml",
     "storeDiscoveryBodies",
+    "candidateSectionBlocking",
+    "candidateTopLevelIsSibling",
   ] as const) {
     if (typeof cfg[flag] !== "boolean") throw new RangeError(`config.${flag} must be a boolean`);
   }

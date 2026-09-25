@@ -392,6 +392,34 @@ The structural stand-in for the patent's session counts. Always call it **promin
 - Order: case (v4, v3, v1, v2), then severity (highest first), then source and target. `counts`
   has each case, `unclassified`, `skippedNoText` and `pairs`.
 
+### Fix candidates (packages/core/src/fixes/candidates.ts)
+
+- `buildCandidatesRun(db, runId, policyId, variant)` computes the audit, REF matrix, prominence
+  and diagnosis in memory with the run's stored config. It appends a `fix-candidates` artefact
+  (`CANDIDATES_VERSION`). The pure core is `generateCandidates`.
+- Targets (`candidateTargets`): the audit's orphan, deep-page and weak-authority nodes, and the
+  targets of v4/v3 diagnoses, with every reason kept.
+- Donor u for target v is admitted when, in order (the first failure is what the target's
+  `rejected` counts):
+  1. u is a same-site HTML page with text (a REF node) and u ≠ v (`self`);
+  2. u is not a utility page: `candidateUtilityPatterns`, case-insensitive regexes on path + query
+     (login, cart, account, search, tag archives) (`utility`);
+  3. with `candidateSectionBlocking`, the sections are the same, siblings
+     (`candidateSiblingSections`), or one is top level (`candidateTopLevelIsSibling`) (`section`).
+     A section is the first path segment when the path has ≥ 2 segments (`/blog/x`, `/blog/`);
+     `/`, `/about` and `/blog` are top level;
+  4. REF(u,v) > ε (`ref-not-above-epsilon`);
+  5. no body link u→v → **add-link** (a chrome-only link also counts as none), or a body link
+     with ω(u,v) < α → **make-visible**. A body link with ω ≥ α is already prominent
+     (`prominent-link`).
+- At most `candidateMaxPerTarget` (30) per target, by REF (ties by donor); the rest are `capped`.
+- Each candidate: action, rank, REF, ρ, the existing link (ω, body or not, regions), the target's
+  reasons, the pair's v4/v3 diagnosis, the sections and their relation, and `reasons` (one
+  readable line per rule).
+- **Limitation:** orphans are never crawled, so they have no text, REF is undefined for them, and
+  they get no candidates (`hasText: false`). Rescue donors for orphans need their pages fetched
+  first.
+
 ### Database
 
 - Postgres 16 + Redis 7 via `docker-compose.yml` (Postgres on host port **5433**).
