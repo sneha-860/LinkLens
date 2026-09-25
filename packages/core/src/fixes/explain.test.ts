@@ -4,6 +4,7 @@ import { diagnose } from "../diagnosis/diagnose.js";
 import { computeProminence, type PageLinks } from "../prominence/weights.js";
 import { refMatrix } from "../semantic/ref.js";
 import { buildTextModel, type RawDocument } from "../text/model.js";
+import { SurfaceForms } from "../text/surface.js";
 import {
   explainAll,
   explainFix,
@@ -143,6 +144,12 @@ const rescue: RescuedOrphan = {
     },
   ],
 };
+// The words behind the stems ("turtl nest" was written "turtle nesting").
+const surfaces = new SurfaceForms(
+  docs,
+  new Set(ref.entries.flatMap((e) => e.matched.map((m) => m.term))),
+  { minTokenLength: config.textMinTokenLength, maxNgram: config.textMaxNgram },
+);
 const input: ExplainInput = {
   fixes: [
     fix("/turtle", "add-link", [0.1, 0.13], [2, 1], 1), // v4: missing
@@ -160,6 +167,7 @@ const input: ExplainInput = {
     { type: "orphan", node: `${S}/whale-songs`, evidence: { channels: ["xml_sitemap"] } },
   ],
   matched: (u, v) => entry(u, v)?.matched ?? [],
+  surface: (term, nodes) => surfaces.of(term, nodes),
   edges: prominence.edges,
   effort: new Map([
     [`${S}/ocean`, { kappa: 2, templateReach: 4 }],
@@ -175,12 +183,12 @@ describe("fix explanations", () => {
   it("explain an added link to a deep, weak, missing target", () => {
     const e = all.fixes[0];
     expect(e?.sentence).toMatchInlineSnapshot(
-      `"Add a link from /ocean to /turtle: the target is 5 clicks from the home page (deeper than 3); REF 1.00 on 'nest', 'turtl'; predicted PageRank +3.00e-2 (+30.0%); κ 2."`,
+      `"Add a link from /ocean to /turtle: the target is 5 clicks from the home page (deeper than 3); REF 1.00 on 'nesting', 'turtle'; predicted PageRank +3.00e-2 (+30.0%); κ 2."`,
     );
     expect(e?.lines).toMatchInlineSnapshot(`
       [
         "Why the target: /turtle is 5 clicks from the home page (deeper than 3); is in the bottom 20% by PageRank (1.20e-3 < 1.80e-3); is missing a link from 1 related page (v4).",
-        "Why this donor: REF(u,v) 1.00 > ε 0.2, on 'nest', 'turtl', 'turtl nest'; cosine 0.80.",
+        "Why this donor: REF(u,v) 1.00 > ε 0.2, on 'nesting', 'turtle', 'turtle nesting'; cosine 0.80.",
         "There is no link from /ocean to /turtle yet.",
         "Predicted: PageRank +3.00e-2 (+30.0%); /turtle goes from 2 to 1 click deep (-1).",
         "Effort: κ 2 (2 body link blocks); its widest body block is a template on 4 pages.",
@@ -208,12 +216,12 @@ describe("fix explanations", () => {
 
   it("explain an orphan rescue (found only via the XML sitemap)", () => {
     expect(all.rescues[0]?.sentence).toMatchInlineSnapshot(
-      `"Add a link from /whale to /whale-songs: the target is linked from nowhere and was found only via the XML sitemap; REF 0.61 on 'whale', 'fact'; predicted PageRank +3.00e-2 (+150.0%); κ 1."`,
+      `"Add a link from /whale to /whale-songs: the target is linked from nowhere and was found only via the XML sitemap; REF 0.61 on 'whale', 'facts'; predicted PageRank +3.00e-2 (+150.0%); κ 1."`,
     );
     expect(all.rescues[0]?.lines).toMatchInlineSnapshot(`
       [
         "Why the target: /whale-songs is linked from nowhere and was found only via the XML sitemap.",
-        "Why this donor: REF(u,v) 0.61 > ε 0.2, on 'whale', 'fact', 'whale fact'; no embedding cosine.",
+        "Why this donor: REF(u,v) 0.61 > ε 0.2, on 'whale', 'facts', 'whale facts'; no embedding cosine.",
         "There is no link from /whale to /whale-songs yet.",
         "Predicted: PageRank +3.00e-2 (+150.0%); /whale-songs becomes reachable, 2 clicks from the home page.",
         "Effort: κ 1 (1 body link block); its body blocks are unique to the page.",
@@ -261,13 +269,13 @@ describe("diagnosis explanations", () => {
 
   it("explain each case", () => {
     expect(of("v4", "/turtle")?.sentence).toMatchInlineSnapshot(
-      `"/ocean → /turtle is missing (v4): /ocean covers /turtle's topic (ρ 0.33 > α 0.1; REF 1.00 on 'nest', 'turtl', 'turtl nest') but does not link to it. Recommendation: add a link (severity 0.33)."`,
+      `"/ocean → /turtle is missing (v4): /ocean covers /turtle's topic (ρ 0.33 > α 0.1; REF 1.00 on 'nesting', 'turtle', 'turtle nesting') but does not link to it. Recommendation: add a link (severity 0.33)."`,
     );
     expect(of("v3", "/shark")?.sentence).toMatchInlineSnapshot(
       `"/ocean → /shark is buried (v3): /ocean covers /shark's topic (ρ 0.33 > α 0.1; REF 1.00 on 'shark', 'shark teeth', 'teeth') but links to it only from the footer with ω 0.05 < α 0.1. Recommendation: make the link more visible (severity 0.28)."`,
     );
     expect(of("v2", "/whale")?.sentence).toMatchInlineSnapshot(
-      `"/ocean → /whale is good (v2): /ocean covers /whale's topic (ρ 0.33 > α 0.1; REF 1.00 on 'fact', 'whale', 'whale fact') and links to it prominently from the main content (ω 0.50 ≥ α 0.1). No action needed."`,
+      `"/ocean → /whale is good (v2): /ocean covers /whale's topic (ρ 0.33 > α 0.1; REF 1.00 on 'facts', 'whale', 'whale facts') and links to it prominently from the main content (ω 0.50 ≥ α 0.1). No action needed."`,
     );
     expect(of("v1", "/cake")?.sentence).toMatchInlineSnapshot(
       `"/ocean → /cake is misleading or low-value (v1): it links prominently from the main content (ω 0.45 ≥ α 0.1) but the pages are not related (ρ 0.00 ≤ α 0.1; REF 0.00). Recommendation: flag for review or removal (never simulated; severity 0.45)."`,
@@ -346,6 +354,20 @@ describe("edge cases", () => {
     );
     expect(needs.map((n) => n.kind)).toEqual(["orphan", "weak-authority", "v3"]);
     expect(needs[0]).toEqual({ kind: "orphan", revealedBy: ["feed", "llms_txt"] });
+  });
+});
+
+describe("words", () => {
+  it("quote the stems when no surface lookup is given, and the words when it is", () => {
+    const { surface: _unused, ...withoutSurface } = input;
+    const stems = explainAll(withoutSurface);
+    const f = stems.fixes[0];
+    expect(f?.sentence).toContain("on 'nest', 'turtl'");
+    expect(all.fixes[0]?.donorEvidence.matched.map((m) => [m.term, m.words])).toEqual([
+      ["nest", "nesting"],
+      ["turtl", "turtle"],
+      ["turtl nest", "turtle nesting"],
+    ]);
   });
 });
 

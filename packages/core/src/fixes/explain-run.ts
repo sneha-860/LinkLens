@@ -5,7 +5,9 @@ import type { ArtefactRow, Json, Queryable } from "../db/types.js";
 import { diagnose } from "../diagnosis/diagnose.js";
 import { loadProminence } from "../prominence/run.js";
 import { refMatrix, type RefVariant } from "../semantic/ref.js";
-import { loadTextModel } from "../text/run.js";
+import { buildTextModel } from "../text/model.js";
+import { loadRunDocuments } from "../text/run.js";
+import { SurfaceForms } from "../text/surface.js";
 import { loadDonorEffort } from "./effort.js";
 import {
   EXPLAIN_VERSION,
@@ -53,23 +55,41 @@ export async function buildExplanations(
   const rescue = (rescueRow?.payload ?? null) as unknown as { orphans: RescuedOrphan[] } | null;
   const refVariant = ranking?.sources.refVariant ?? "weighted";
 
-  const [{ model, config }, prominence, audit, effort] = await Promise.all([
-    loadTextModel(db, runId, policyId),
+  const [{ documents, config }, prominence, audit, effort] = await Promise.all([
+    loadRunDocuments(db, runId, policyId),
     loadProminence(db, runId, policyId),
     loadAudit(db, runId, policyId),
     loadDonorEffort(db, runId, policyId),
   ]);
+  const model = buildTextModel({ runId, policyVersion, documents }, config);
   const ref = refMatrix(model, refVariant, config);
   const { diagnoses } = diagnose({ ref, prominence }, config);
   const index = new Map(ref.nodes.map((n, i) => [n, i]));
   const entries = new Map(ref.entries.map((e) => [`${e.source} ${e.target}`, e]));
+
+  const matched = (u: string, v: string) =>
+    entries.get(`${index.get(u)} ${index.get(v)}`)?.matched ?? [];
+
+  // The words behind the stems, counted only for the terms that will be quoted.
+  const quoted = new Set<string>();
+  const want = (ts: readonly { term: string }[]) => {
+    for (const t of ts.slice(0, config.explainTerms)) quoted.add(t.term);
+  };
+  for (const f of ranking?.fixes ?? []) want(matched(f.donor, f.target));
+  for (const o of rescue?.orphans ?? []) for (const d of o.donors) want(d.matched);
+  for (const d of diagnoses) want(d.matched);
+  const surfaces = new SurfaceForms(documents, quoted, {
+    minTokenLength: config.textMinTokenLength,
+    maxNgram: config.textMaxNgram,
+  });
 
   const explained = explainAll({
     fixes: ranking?.fixes ?? [],
     rescues: rescue?.orphans ?? [],
     diagnoses,
     issues: audit.issues,
-    matched: (u, v) => entries.get(`${index.get(u)} ${index.get(v)}`)?.matched ?? [],
+    matched,
+    surface: (term, nodes) => surfaces.of(term, nodes),
     edges: prominence.edges,
     effort,
     alpha: config.alpha,

@@ -542,8 +542,10 @@ The structural stand-in for the patent's session counts. Always call it **promin
     - deep page (depth > threshold);
     - weak authority (bottom N% by PageRank, value < threshold);
     - v4/v3, with how many pages diagnosed it.
-  - `donorEvidence`: REF, the top `explainTerms` (5) matched n-grams (Porter stems, as matched)
-    and cosine (null for orphans, which are not embedded).
+  - `donorEvidence`: REF, the top `explainTerms` (5) matched n-grams and cosine (null for
+    orphans, which are not embedded). Each n-gram keeps its `term` (Porter stems, as matched) and
+    adds `words`, the surface form that the lines and sentence quote ("turtle nesting", not
+    "turtl nest").
   - `link`: exists, ω and regions (e.g. "only from the footer").
   - `impact`: PR before and after, ΔPR and ΔPR % (null when PR before is 0), depth before, after
     and Δ.
@@ -551,6 +553,13 @@ The structural stand-in for the patent's session counts. Always call it **promin
   - `case`: the pair's v1–v4 label, or why there is none.
 - Diagnosis record (`explainDiagnosis`): case, ρ, ω, α, REF, matched n-grams, link regions,
   severity, recommendation, and a per-case sentence (v1 says it is never simulated).
+- Words (`text/surface.ts`, `SurfaceForms`): `wordPhrases` keeps each word as written next to its
+  stem.
+  - The run counts surface forms only for the terms it will quote, in every field of every
+    document.
+  - `of(term, [target, donor])` returns the most frequent form in the target's text, else the
+    donor's, else the site's, else the stem. A tie goes to the shorter form, then the smaller.
+  - Without a lookup, explanations quote the stems (explain@1.1.0 added the words).
 - Tests: snapshot tests (inline for the key sentences, plus a file snapshot of the full output)
   on the four-case example, and end-to-end runs on the counterfactual and crawler fixtures.
 

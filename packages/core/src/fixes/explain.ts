@@ -12,7 +12,7 @@ import type { RescuedOrphan } from "./rescue.js";
 import type { FixRecord } from "./scoring.js";
 
 /** Bump whenever any template, number format or field can change. */
-export const EXPLAIN_VERSION = "explain@1.0.0";
+export const EXPLAIN_VERSION = "explain@1.1.0";
 export const EXPLANATIONS_ARTEFACT = "explanations";
 
 // ---------- deterministic formatting ----------
@@ -30,7 +30,16 @@ export const sci = (x: number, signed = false) =>
   `${signed && x >= 0 ? "+" : ""}${x.toExponential(2)}`;
 /** One-decimal percentage, signed. */
 export const pct = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(1)}%`;
-const quote = (terms: readonly MatchedTerm[]) => terms.map((t) => `'${t.term}'`).join(", ");
+/** A matched n-gram with the words behind its stems (e.g. term "run shoe", words "running shoes"). */
+export interface ExplainedTerm extends MatchedTerm {
+  readonly words: string;
+}
+/** How a stemmed term was written; the default leaves the stems. */
+export type Surface = (term: string) => string;
+const asWritten: Surface = (term) => term;
+const withWords = (terms: readonly MatchedTerm[], surface: Surface): ExplainedTerm[] =>
+  terms.map((t) => ({ term: t.term, contribution: t.contribution, words: surface(t.term) }));
+const quote = (terms: readonly ExplainedTerm[]) => terms.map((t) => `'${t.words}'`).join(", ");
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 const CHANNEL_NAMES: Readonly<Record<DiscoveryChannel, string>> = {
@@ -136,8 +145,8 @@ export interface FixExplanation {
   readonly needs: TargetNeed[];
   readonly donorEvidence: {
     readonly ref: number;
-    /** The top matched n-grams behind REF, largest share first. */
-    readonly matched: MatchedTerm[];
+    /** The top matched n-grams behind REF, largest share first, with their words. */
+    readonly matched: ExplainedTerm[];
     /** null when a page has no embedding (e.g. an orphan). */
     readonly cosine: number | null;
   };
@@ -191,6 +200,8 @@ export interface FixExplanationInput {
   readonly score: number | null;
   readonly rank: number | null;
   readonly explainTerms: number;
+  /** The words of a matched term (the target's, then the donor's, then the site's). */
+  readonly surface?: Surface;
 }
 
 function depthPhrase(before: number | null, after: number | null): string {
@@ -202,7 +213,7 @@ function depthPhrase(before: number | null, after: number | null): string {
 
 /** Pure: the explanation of one fix (or orphan rescue) from its evidence. */
 export function explainFix(x: FixExplanationInput): FixExplanation {
-  const matched = x.matched.slice(0, x.explainTerms);
+  const matched = withWords(x.matched.slice(0, x.explainTerms), x.surface ?? asWritten);
   const deltaPrPct = x.prBefore > 0 ? (100 * x.deltaPr) / x.prBefore : null;
   const donor = shortUrl(x.donor);
   const target = shortUrl(x.target);
@@ -288,7 +299,7 @@ export interface DiagnosisExplanation {
   readonly omega: number;
   readonly alpha: number;
   readonly ref: number;
-  readonly matched: MatchedTerm[];
+  readonly matched: ExplainedTerm[];
   readonly link: { readonly exists: boolean; readonly regions: ProminenceEdge["regions"] };
   readonly severity: number;
   readonly recommendation: Diagnosis["recommendation"];
@@ -313,10 +324,11 @@ export function explainDiagnosis(
   > & { readonly edge: Pick<ProminenceEdge, "regions"> | null },
   alpha: number,
   explainTerms: number,
+  surface: Surface = asWritten,
 ): DiagnosisExplanation {
   const u = shortUrl(d.source);
   const v = shortUrl(d.target);
-  const matched = d.matched.slice(0, explainTerms);
+  const matched = withWords(d.matched.slice(0, explainTerms), surface);
   const on = matched.length > 0 ? ` on ${quote(matched)}` : "";
   const where = d.edge === null ? "" : ` from ${regionList(d.edge.regions)}`;
   const related = `${u} covers ${v}'s topic (ρ ${f2(d.rho)} > α ${alpha}; REF ${f2(d.ref)}${on})`;
@@ -359,6 +371,11 @@ export interface ExplainInput {
   readonly alpha: number;
   readonly epsilon: number;
   readonly explainTerms: number;
+  /**
+   * How a stemmed term was written, looked up in `nodes` in order (text.SurfaceForms.of);
+   * without it, explanations quote the stems.
+   */
+  readonly surface?: (term: string, nodes: readonly string[]) => string;
 }
 
 export interface Explanations {
@@ -373,6 +390,11 @@ export function explainAll(input: ExplainInput): Explanations {
   const edges = new Map(input.edges.map((e) => [key(e.source, e.target), e]));
   const diagnosed = new Map(input.diagnoses.map((d) => [key(d.source, d.target), d.case]));
   const effortOf = (n: string) => input.effort.get(n) ?? { kappa: 1, templateReach: 1 };
+  // A pair's terms are quoted in the target's words, else the donor's (REF's S_B is the target).
+  const surfaceFor = (u: string, v: string): Surface => {
+    const lookUp = input.surface;
+    return lookUp === undefined ? asWritten : (term) => lookUp(term, [v, u]);
+  };
 
   const fixes = input.fixes.map((f) =>
     explainFix({
@@ -400,6 +422,7 @@ export function explainAll(input: ExplainInput): Explanations {
       score: f.score,
       rank: f.rank,
       explainTerms: input.explainTerms,
+      surface: surfaceFor(f.donor, f.target),
     }),
   );
 
@@ -430,6 +453,7 @@ export function explainAll(input: ExplainInput): Explanations {
         score: null,
         rank: d.rank,
         explainTerms: input.explainTerms,
+        surface: surfaceFor(d.donor, o.node),
       }),
     ),
   );
@@ -439,6 +463,7 @@ export function explainAll(input: ExplainInput): Explanations {
       { ...d, edge: edges.get(key(d.source, d.target)) ?? null },
       input.alpha,
       input.explainTerms,
+      surfaceFor(d.source, d.target),
     ),
   );
   return { fixes, rescues, diagnoses };

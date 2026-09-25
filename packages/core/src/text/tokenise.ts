@@ -26,28 +26,39 @@ const PHRASE_BREAK = /[^\p{L}\p{M}\p{N}\p{Zs}\t'’-]+/u;
 const WORD_BREAK = /[^\p{L}\p{M}\p{N}]+/u;
 const NUMERIC = /^\p{N}+$/u;
 
+/** A content word: its Porter stem, and the word as it appeared (normalised, lower-case). */
+export interface Word {
+  readonly stem: string;
+  readonly surface: string;
+}
+
 /**
- * The content words of `text`, stemmed, as phrases (runs of words not interrupted by
- * punctuation). NFKC, lower-case, apostrophes inside words removed, then per word: numbers,
- * stop-words and words shorter than `minTokenLength` are dropped and the rest are Porter-stemmed.
- * A dropped stop-word does not break a phrase ("terms of service" → [term, servic]).
+ * The content words of `text` as phrases (runs of words not interrupted by punctuation). NFKC,
+ * lower-case, apostrophes inside words removed, then per word: numbers, stop-words and words
+ * shorter than `minTokenLength` are dropped and the rest are Porter-stemmed. A dropped stop-word
+ * does not break a phrase ("terms of service" → [term, servic]).
  */
-export function phrases(text: string, opts: TokeniseOptions): string[][] {
+export function wordPhrases(text: string, opts: TokeniseOptions): Word[][] {
   const normalised = text
     .normalize("NFKC")
     .toLowerCase()
     .replace(/(?<=[\p{L}\p{N}])['’](?=[\p{L}\p{N}])/gu, "");
-  const out: string[][] = [];
+  const out: Word[][] = [];
   for (const phrase of normalised.split(PHRASE_BREAK)) {
-    const words: string[] = [];
+    const words: Word[] = [];
     for (const word of phrase.split(WORD_BREAK)) {
       if (word === "" || NUMERIC.test(word) || STOP_WORDS.has(word)) continue;
       if ([...word].length < opts.minTokenLength) continue;
-      words.push(stemmer(word));
+      words.push({ stem: stemmer(word), surface: word });
     }
     if (words.length > 0) out.push(words);
   }
   return out;
+}
+
+/** wordPhrases, stems only. */
+export function phrases(text: string, opts: TokeniseOptions): string[][] {
+  return wordPhrases(text, opts).map((p) => p.map((w) => w.stem));
 }
 
 /** Every n-gram of `words` for n = 1…maxNgram, in order; an n-gram's words are space-joined. */

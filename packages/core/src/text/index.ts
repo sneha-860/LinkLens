@@ -6,3 +6,4 @@
 export * from "./tokenise.js";
 export * from "./model.js";
 export * from "./run.js";
+export * from "./surface.js";
