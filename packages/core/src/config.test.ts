@@ -29,6 +29,7 @@ describe("defaultConfig", () => {
       robotsTreat429AsUnreachable: false,
       followNofollow: true,
       storeRawHtml: true,
+      canonicalMaxHops: 3,
     });
   });
 
@@ -69,6 +70,7 @@ describe("makeConfig", () => {
     [{ maxCrawlDelayMs: 0 }],
     [{ robotsCacheTtlMs: 25 * 60 * 60 * 1000 }],
     [{ robotsUnreachableGraceDays: 0 }],
+    [{ canonicalMaxHops: 0 }],
   ])("rejects invalid override %o", (overrides) => {
     expect(() => makeConfig(overrides)).toThrow(RangeError);
   });

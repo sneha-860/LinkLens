@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { removeDotSegments, resolveReference, stripFragment } from "./resolve.js";
+import { removeDotSegments, resolveReference, stripFragment } from "./rfc3986.js";
 
 describe("resolveReference: RFC 3986 §5.4 examples", () => {
   const base = "http://a/b/c/d;p?q";

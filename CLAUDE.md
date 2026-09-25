@@ -165,6 +165,28 @@ Adapted from patent **US 11,586,824 B2** (Belezko & McGoey, 2023).
 - Events: `progress` (pagesFetched, a Redis counter that survives restarts; queueSize, admitted,
   url, depth, outcome), `done`, `error`.
 
+### Canonicalisation policies (packages/core/src/canonicalise)
+
+Pure `(url, context) => nodeId`; the node id is the canonical URL string. Each policy adds one step
+to the previous one, so each is at least as coarse as the last (this is tested). Each exports a
+version (`P3_VERSION = "P3@1.0.0"`), which goes into `artefacts.policy_version`. **Bump the version
+whenever the output can change.**
+
+| Policy | Adds                                                                                                                                                                                                                           |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P0     | RFC 3986 §6.2.2/6.2.3: lower-case scheme and host; percent-encoding normalisation (decode unreserved, upper-case hex, UTF-8-encode non-URI chars); remove dot-segments; drop default/empty port; empty http path → `/`         |
+| P1     | drop the fragment; strip trailing slashes (not the root)                                                                                                                                                                       |
+| P2     | drop tracking params (`utm_*`, `mc_*`, `gclid`, `fbclid`, `ref`; names case-insensitive) and empty params; stable-sort the rest by name; drop an empty query                                                                   |
+| P3     | drop the query; http/https and `www.`/bare are one host (node form `https://`, no `www.`)                                                                                                                                      |
+| P4     | follow recorded redirects (P3 node graph); a loop maps to its smallest node                                                                                                                                                    |
+| P5     | follow rel=canonical (RFC 6596) hop by hop while it is same-site (P3 host) and the target was fetched 2xx. A cycle stops at its entry node; a chain longer than `canonicalMaxHops` is not trusted (the page keeps its P4 node) |
+
+- `buildCanonicalContext(observationsFromRows(fetches, pages), { maxCanonicalHops })` projects
+  redirect edges onto P3 nodes and canonical edges onto P4 nodes. With conflicting observations,
+  the most frequent wins and ties go to the smallest target (deterministic).
+- RFC 3986 parsing, resolution and normalisation primitives live in `core/src/url/rfc3986.ts`
+  (exported as `rfc3986`). The crawler uses them for `resolved_url`.
+
 ### Database
 
 - Postgres 16 + Redis 7 via `docker-compose.yml` (Postgres on host port **5433**).

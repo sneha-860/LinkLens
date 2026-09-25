@@ -68,6 +68,11 @@ export interface LinkLensConfig {
   readonly followNofollow: boolean;
   /** Store raw bytes of 2xx HTML responses (fetch_bodies), so extraction can be re-run offline. */
   readonly storeRawHtml: boolean;
+  /**
+   * P5: max rel=canonical hops followed (A→B→C is 2). A longer chain is not trusted and the page
+   * keeps its P4 node, as does any page in a canonical cycle (RFC 6596 §5: avoid chains).
+   */
+  readonly canonicalMaxHops: number;
 }
 
 export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
@@ -96,6 +101,7 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   robotsTreat429AsUnreachable: false,
   followNofollow: true,
   storeRawHtml: true,
+  canonicalMaxHops: 3,
 });
 
 function assertUnitInterval(name: keyof LinkLensConfig, value: number): void {
@@ -136,6 +142,7 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
     throw new RangeError("config.robotsCacheTtlMs must be ≤ 24 hours (RFC 9309 §2.4)");
   }
   assertPositiveInt("robotsUnreachableGraceDays", cfg.robotsUnreachableGraceDays);
+  assertPositiveInt("canonicalMaxHops", cfg.canonicalMaxHops);
   for (const flag of [
     "includeSubdomains",
     "robotsTreat429AsUnreachable",
