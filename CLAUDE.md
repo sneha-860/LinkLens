@@ -718,24 +718,93 @@ config } }` returns 202 with a Location header.
   and appends an `evaluation-E<n>` artefact. The CLI is
   `pnpm --filter @linklens/eval e E3 --run 12 [--policy P3] [--out results/e3.json]`; it needs
   DATABASE_URL.
-  - **E1** policy sensitivity: core `stats.compareRunPolicies`, the same as `/sensitivity`.
+  - **E1** policy sensitivity: each policy against the audit's (`stats.sensitivityFromSnapshots`,
+    the same as `/sensitivity`) and `pairs`, every unordered pair of P0–P5
+    (`stats.comparePolicyPairs`, 15 pairs, a before b, signed values b − a). Both come from one
+    `stats.loadPolicySnapshots` (each policy's graph, orphans and top-k fixes in P3 form). Per
+    pair: node counts (b − a, b / a), shared P3 pages and their Jaccard, orphan set Jaccard,
+    PageRank Spearman over the shared pages, depth shift over pages reachable under both (mean,
+    mean |·|, max |·|), and the top-k fix Jaccard (null unless both policies were ranked).
   - **E2** channel ablation: every subset of the five non-link channels (orphans found, recall,
-    pages known), each channel alone, and leave-one-out loss.
-  - **E3** fixes vs baselines: per target, among the same admissible donors, LinkLens's pick
-    against REF-only, highest-PageRank, seeded random, same-section random, the home page and
-    the ΔPR oracle. Mean ΔPR, share of the best ΔPR, depth gain, REF, win rate, and per-target
-    picks for paired tests.
-  - **E4** re-crawl stability: two runs of the same site compared in P3 form (pages, edges,
-    orphans, PageRank Spearman, depth shift, top-k fixes, diagnosis case agreement). The 14-day
-    re-crawl itself is a second audit run later.
-  - **E5** Screaming Frog calibration: `--sf internal_all.csv`; coverage Jaccard, depth
-    agreement (exact / ±1 / Spearman) and unique-inlink Spearman on HTML 200 pages.
-  - **E6** hide-and-recover: a seeded sample of main-content links is hidden (every observation
-    of the pair, including the donor's anchor text). Text, REF, prominence, diagnosis,
-    candidates, counterfactual and scores are rebuilt in memory, and each hidden donor's rank for
-    its target is found: MRR and recall@1/3/5/10.
-  - **E7** σ ablation: E6 for all four σ with `candidateRequireRef: false`, so every σ ranks the
-    same pool, plus the pairwise top-k Jaccard between σ rankings.
+    pages known), each channel alone, and leave-one-out loss. Plus `removals`: each of the six
+    channels removed in turn and the reconciliation recomputed from the remaining observations
+    (core `discovery.leaveOneChannelOut` on `loadReconcileInput`). Per channel: pages found and
+    lost without it (marginal page yield), orphans it detects and those lost without it
+    (detected only by it; marginal orphan yield) with their share of the orphans. `orphansBy`
+    splits the orphans by the non-link channels that reveal them (only one, per channel, or
+    several). Removing a channel never creates an orphan (checked), and removing the link graph
+    loses pages but never an orphan.
+  - **E3** fixes vs baselines (`e3-baselines.ts`; decided: three baselines). Targets T: the
+    audit's weak-authority pages and the reconciled orphans. Pool: the fix candidates of
+    weak-authority targets and each orphan's rescue shortlist, all on orphan rescue's graph
+    (structural prominence W plus the orphan nodes). Each entry is simulated alone for its ΔPR;
+    cosine comes from an embedder with the run's model (the orphans' rescue pages are not
+    embedded by the pipeline, so E3 needs one: the CLI starts the MiniLM worker). Methods, each
+    a global top-k over the pool: `linklens` (S = ΔPR × σ / κ with the run's σ), `random`
+    (the mean of `e3RandomDraws` seeded draws, seed + k per k), `highestCosine` (ignores the
+    graph gain; no cosine ranks last) and `highestPagerank` (the donor's PageRank; ignores
+    semantics). The measure: the k links applied together (core `fixes.applyLinks`: one copy,
+    PageRank recomputed warm-started) and ΔPR summed over T (`totalDeltaPr`), for each k in
+    `e3TopKs` (10, 25, 50). Also: fixes selected, targets covered, the sum of single ΔPRs (the
+    joint effect is not additive), site-wide L1, newly reachable targets, mean REF and cosine.
+  - **E4** re-crawl stability (`e4-stability.ts`, `--run-b`): two runs of a site compared in P3
+    form, site change separated from method instability.
+    - Pages (`classifyPages`): crawled in both → `unchanged` or `changed` (signature: title,
+      h1, body, meta robots, canonical, nofollow, every out-link with anchor, region and rel, in
+      order). Crawled once → the other run's own record gives the cause: site (`gone` 4xx,
+      `redirect` elsewhere, `not-html`, `robots` rule or Crawl-delay, `link`: nothing linked to
+      it) or crawl (`not-admitted`: linked but not admitted, the cap or order; `failed`: 5xx,
+      network, timeout, robots.txt unreachable). Discovery documents compare by their URL sets.
+    - The audit (node overlap, PageRank Spearman, orphan Jaccard, top-k fix Jaccard) is compared
+      `observed`; `siteChange` (each run restricted to the pages both crawled plus its
+      site-caused ones: coverage noise removed); `samePages` (both restricted to the unchanged
+      pages and documents: identical inputs, so any difference is the method's); and
+      `coverageA`/`coverageB` (each run with and without the pages the other missed for crawl
+      reasons).
+    - The restricted audits run in memory (`in-memory.ts` `auditInMemory`: graph,
+      reconciliation, structural audit, text, REF, prominence, diagnosis, candidates,
+      counterfactual, κ, scoring, with the run's stored cosine matrix). Unrestricted it
+      reproduces the stored ranking (tested).
+  - **E5** Screaming Frog calibration (`e5-screaming-frog.ts`; `--sf-dir <folder>` with
+    internal_all.csv, all_inlinks.csv, orphan_pages.csv, or `--sf internal_all.csv` alone).
+    Parsers find columns by name and skip Screaming Frog's title line. `calibrateRun` maps both
+    tools' URLs through P0 and the audit's policy (the run's redirect/canonical context) and
+    compares, per policy: URL sets (HTML 200: Jaccard), inlinks (Spearman against distinct
+    sources recomputed from All Inlinks hyperlinks under the same policy, and against SF's Unique
+    Inlinks column), crawl depth (exact, ±1, Spearman, mean |Δ|, whether the seeds differ) and
+    orphans (SF's orphan report against the reconciled orphans).
+    - Every disagreement gets a category by ordered rules, with evidence (`EXPLANATIONS`, one
+      sentence each, filled from the evidence). URL only in SF: `normalisation` (they meet under
+      the coarser policy), `out-of-scope`, `robots-linklens`, `status-linklens`, `page-cap`
+      (linked, not fetched, cap reached), `not-fetched`, `sf-non-link` (no SF inlink),
+      `link-not-extracted` (SF link types quoted: JavaScript, canonical…), `sources-not-crawled-
+linklens`. URL only in LinkLens: `normalisation`, `status-screaming-frog`, `nofollow`,
+      `link-not-in-screaming-frog`, `sources-not-crawled-screaming-frog`, `not-in-screaming-frog`.
+      Depth: `seed-differs`, `redirect-hop`, `link-not-extracted`, `parent-not-crawled-*`,
+      `nofollow-path`, `link-not-in-screaming-frog`, `cascade`, `other`. Inlinks (a gap of at
+      least `e5InlinkMinAbsDiff` and `e5InlinkMinRelDiff` of the larger count): the dominant cause
+      of the missing or extra sources. Orphans: `reachable-*`, `not-in-linklens-channels`,
+      `not-crawled-linklens`, `channel-screaming-frog-does-not-read`, `not-in-screaming-frog-
+orphans`.
+    - Categories are summarised per kind (count, share, `e5Examples` examples, explanation);
+      one is `large` at `e5LargeShare` of its kind and at least `e5LargeMin`.
+  - **E6** link-masking recovery (`e6-masking.ts`; needs an embedder: the CLI starts the
+    worker). Editorial links (`editorialSite`): body-region observations between two pages with
+    text whose template block is not site-wide. Each of `e6Repeats` (5) repeats (seed + r) masks
+    a share drawn in [`e6MaskShareMin`, `e6MaskShareMax`] (10–20%) of those pairs (`maskSite`):
+    every observation of a masked pair leaves the graph, its anchor leaves the donor's Links
+    field and, with `e6StripAnchorsFromBody` (default on; body_text contains link text, so it
+    would otherwise leak), its first occurrence in the donor's body. The text model, REF and the
+    embeddings are rebuilt from the masked site. Each masked edge is a query (`rankMasked`):
+    candidates are every page with text except the target, pages still linking to it and its
+    other masked donors. Methods: `ref`, `cosine`, `jaccard` (donor view vs target view terms),
+    `refGateCosine` (the hybrid), `blended`, `random`, and with `e6GraphBaselines`
+    `commonNeighbours` / `adamicAdar` (undirected, on the masked graph). Recall@k (`e6Ks`
+    5/10/20), MRR and AUC are expectations over random tie-breaking, so random is exactly k/N,
+    H_N/N and ½.
+  - **E7** σ ablation (`recovery.ts` `hideAndRecover`): a seeded sample of main-content links
+    hidden, the fix pipeline rebuilt in memory, all four σ ranking the same candidates
+    (`candidateRequireRef: false`), plus the pairwise top-k Jaccard between σ rankings.
   - **E8** human rating: without `--ratings` it writes a rating sheet (CSV, top 50 fixes with
     their explanation). With the filled sheets it summarises mean relevance, would-add rate,
     top-10 vs rest, score–relevance Spearman and inter-rater agreement.
@@ -743,6 +812,131 @@ config } }` returns 202 with a Location header.
   tables. It adds paired Wilcoxon tests (E3: LinkLens vs each baseline; E7: σ pairs) and seeded
   bootstrap CIs for MRR. Its tests read fixtures written by the eval integration test with
   `LINKLENS_WRITE_FIXTURES=1`, so both sides share one shape.
+
+### Corpus runner (packages/eval/corpus.yaml, src/corpus/, src/corpus-cli.ts)
+
+- E5 Screaming Frog sites: 10 sites have `screaming_frog: true` (4 blogs, 3 catalogues, 3
+  documentation sites). Crawl each with Screaming Frog from the same URL, export Internal: All,
+  Bulk Export → Links → All Inlinks and Reports → Orphan Pages, and run `corpus import-sf
+--batch <name> --site <id> --from <folder> [--sf-version <v>]`: the three files are parsed
+  (a foreign file is refused), copied to `<batch>/screaming-frog/<site>/` and recorded with row
+  counts and SHA-256 in `import.json`. `status` shows which marked sites still lack exports.
+- `corpus.yaml`: 28 sites in three `architecture_class`es (`cms-blog`, `ecommerce-catalogue`,
+  `documentation`), each with notes, plus one `seed`, the audit's `policy`/`sigma`/`refVariant`
+  and `config` overrides (keys of `config.ts` only; `randomSeed` comes from `seed`).
+  `rankAllPolicies` (default true) also runs the API's per-policy ranking job after each audit
+  (`PipelineDriver`, resumable, under its lease), so E1 can compare fix lists between policies;
+  a site is completed only once that job is.
+  `parseCorpus` (zod) reports every problem at once. Scope is the seed's host, so a seed path is
+  only where the crawl starts.
+- CLI: `pnpm --filter @linklens/eval corpus validate | run | status | recrawl | schedule |
+import-sf | export --batch <name>` (`--corpus`, `--out` default `results/corpus`, `--only a,b`,
+  `--retry-failed`, `--allow-code-change`).
+- E4 re-crawl (`corpus/recrawl.ts`): `recrawl` runs the batch's second wave in
+  `<batch>/recrawl` (its own manifest, `wave: { of, afterDays }`). A site is due
+  `e4RecrawlDays` (14) after its first run finished (`recrawlPlan`; an interrupted re-crawl is
+  resumed whatever the date); only due sites run, so it is meant to run daily. `--now` is the
+  manual trigger. The wave must match the first batch (config, audit settings, versions, sites,
+  embedding model hash, and code unless `--allow-code-change`). A lock file (`.lock`, stale when
+  its process is gone) keeps two sessions apart. `schedule [--at HH:MM]` prints the daily
+  Windows Task Scheduler and cron lines (it installs nothing). `status` shows each site's
+  re-crawl and when it is due. It reads the repository's `.env`; DATABASE_URL, REDIS_URL,
+  LINKLENS_PREFIX, LINKLENS_CACHE_DIR (default `.cache/linklens`), LINKLENS_USER_AGENT.
+- `run` audits the sites **sequentially** through the API's `PipelineRunner`
+  (`@linklens/api/pipeline`; `PipelineDriver`), so an audit is the same 18 stages, leases and
+  events as one from the dashboard. The resolved config (defaults + overrides + seed +
+  User-Agent) is stored as each run's config.
+- Resumable: `<out>/<batch>/manifest.json` is the batch state, written atomically after every
+  change. A site's run id is saved as soon as the run exists, so running `run` again resumes
+  that run (first stage not completed; the crawl from its Redis frontier) instead of starting a
+  new crawl. Completed sites are skipped and failed ones only re-run with `--retry-failed`.
+  SIGINT/SIGTERM stop after saving (the current site stays resumable); a killed process's
+  session is marked `crashed` and its audit is resumed once its lease expires.
+- Resuming refuses a different config, audit settings, stage versions or site list (notes may
+  change), and a different commit or uncommitted diff unless `--allow-code-change`.
+- The manifest is the reproducibility record: git commit, branch, dirty files and a hash of
+  `git diff HEAD`; the full config and its hash; seed; User-Agent; the six policy versions and
+  every stage version (`currentVersions`); the embedding model's name, dtype, body tokens and a
+  SHA-256 over its files (null until the first cache miss downloads it); the pnpm lockfile hash;
+  one `session` per invocation (timestamps, git, host, outcome); per site status, run id,
+  attempts, timestamps, error, and the commit and model hash it finished with; each export.
+- `export` writes tidy CSVs (columns in `csv.ts`, the contract with analysis/):
+  - `metrics.csv`: one row per site × policy × metric (completed sites; `runMetrics` derives all
+    six policies in memory from the raw observations, writing nothing). Groups: `graph.*`,
+    `discovery.*` (per channel), `audit.*`, `ref.entries`, `diagnosis.*`, `sensitivity.*`
+    (against the audit's policy, as E1), and `fixes.*` / `rescue.*` only where a ranking or
+    rescue was stored under that policy. A metric without a value is left out, never written as 0. Rows are in corpus, policy and metric order, so an export is byte-identical when re-run.
+  - `policy_pairs.csv` (E1): one row per site × pair of policies × metric (`pairMetrics`:
+    `nodes_a`, `nodes_b`, `node_delta`, `node_ratio`, `shared_nodes`, `node_jaccard`,
+    `orphans_a/b`, `orphan_jaccard`, `pagerank_spearman`, `depth_pages`, `mean_depth_shift`,
+    `mean_abs_depth_shift`, `max_abs_depth_shift`, `top_fixes_jaccard`), with `top_k`.
+  - `e6.csv` (E6, needs the embedder): one row per site × repeat × method × metric
+    (`e6Metrics`: recall@k, mrr, auc, queries; method `masking`: share, eligible_pairs, masked,
+    targets, queries).
+  - `e5.csv` / `e5_categories.csv` / `e5_disagreements.csv` (E5, each completed site with
+    imported exports, under P0 and the audit's policy): `e5Metrics` (urls__, inlink__, depth__,
+    orphans__, disagreements_<kind>), every category with count, share, large, explanation and
+    examples, and every disagreement with its evidence (JSON).
+  - `e4.csv` / `e4_pages.csv` (E4, once the re-crawl wave exists; sites completed in both):
+    one row per site × comparison × metric (`e4Metrics`; comparison `pages`: days apart, the
+    page classes, `site_<reason>`, `method_<reason>`, shares, discovery documents), and every
+    page's class.
+  - `e3.csv` (E3, the audit's policy; `export` starts the embedding worker): one row per site ×
+    k × method × metric (`e3Metrics`: `total_delta_pr`, `total_delta_pr_sd` (random),
+    `selected`, `targets_covered`, `sum_single_delta_pr`, `delta_pr_l1`, `newly_reachable`,
+    `mean_ref`, `mean_cosine`); method `site` with an empty k: `targets_weak`,
+    `targets_orphan`, `pool_*`, `*_targets_with_donors`, `target_pagerank_before`.
+  - `channels.csv` (E2, the audit's policy): one row per site × channel × metric
+    (`channelMetrics`: `pages_total`, `pages_exclusive`, `orphans_total`, `orphans_exclusive`,
+    `orphans_exclusive_share` (left out without orphans), `inventory_without`,
+    `orphans_without`; channel `all`: `inventory`, `orphans`, `orphans_several_channels`).
+  - `sites.csv` (one row per site) and `stages.csv` (site × stage status and duration).
+- Python: `python -m linklens_analysis corpus <batch dir> [--figures <dir>]` (`corpus.py`):
+  loads and checks the CSVs, pivots, per-class summaries, Kruskal–Wallis across classes (ε²,
+  Holm), Friedman across policies, and figures. `style.py` is the shared plotting style: fixed
+  colour and marker per class (validated palette), an ordinal ramp for P0–P5, recessive
+  chrome, sequential and diverging colour maps, PDF + PNG. matplotlib is imported only to draw.
+- E1 in Python: `python -m linklens_analysis e1 <batch dir> [--stat median|mean] [--figures <dir>]`
+  (`e1.py`). `class_summary`: per class (and all sites) × metric, the median over sites of
+  each site's mean across its pairs, the quartiles, and the least-agreeing pair.
+  `node_count_ratio` (min / max nodes) is derived there. `agreement_matrix`: the lower-
+  triangular policy × policy matrix (cell (row, column) = pair (column, row), signed values
+  row − column). `agreement_figure`: one heatmap per class plus all sites on a shared scale
+  (sequential for agreement and magnitude, diverging around 0 for the signed depth shift;
+  undefined pairs say n/a).
+- E6 in Python: `python -m linklens_analysis e6 <batch dir> [--alpha 0.05]` (`e6.py`). A
+  site's value is the mean over its repeats. `results_table`: per class (and all sites) ×
+  method, MRR, R@k and AUC as the mean over sites with a seeded bootstrap 95% CI. `paired_test`
+  (the C5 refutation test): hybrid (refGateCosine) vs cosine across sites, Wilcoxon signed-rank
+  one-sided (hybrid > cosine) and two-sided, zero differences dropped, rank-biserial r, Holm
+  over MRR (primary), R@10 and AUC; also per class. `c5_verdict`: supported (one-sided Holm p <
+  α on MRR), refuted (cosine significantly better) or not supported.
+- E5 in Python: `python -m linklens_analysis e5 <batch dir>` (`e5.py`). `calibration_table`:
+  per class (and all sites) × policy: sites, median URL counts, and the median [quartiles] of URL
+  Jaccard, both inlink Spearmans, depth exact / ±1 / Spearman and orphan Jaccard.
+  `large_categories`: every category large on at least one site, with how many, its pooled count
+  and share, example sites and its explanation; the report lists each one.
+- E4 in Python: `python -m linklens_analysis e4 <batch dir>` (`e4.py`). `summary_table`: per
+  class (and all sites): sites, days apart, median page shares (unchanged, changed, crawled once
+  for the site, for the crawl), and each metric under observed / site change only / same pages
+  as "median [q1, q3]". `attribution`: the median disagreement (1 − agreement) observed, with
+  only the site's changes, and on identical pages, and the site's share of the observed.
+- E3 in Python: `python -m linklens_analysis e3 <batch dir> [--measure raw|relative]`
+  (`e3.py`). `paired_tests`: per k, LinkLens vs each baseline across sites, Wilcoxon
+  signed-rank (two-sided, zero differences dropped: a site where both choose the same fixes is
+  uninformative), matched-pairs rank-biserial r = (R+ − R−) / (R+ + R−), wins/ties/losses,
+  median difference, Holm over the three baselines within each k. `class_table(s)`: per class
+  (and all sites) × k × method, median total ΔPR with quartiles and the paired comparison.
+  `relative` divides by the targets' PageRank before (scale-free across site sizes). With n
+  sites a class's smallest two-sided p is 2 / 2ⁿ (before Holm).
+- E2 in Python: `python -m linklens_analysis e2 <batch dir> [--figures <dir>]` (`e2.py`).
+  `class_table`: per class (and all sites) × channel, marginal pages (summed, share of the
+  inventory, per-site median) and orphans detected only by the channel, pooled over the
+  class's orphans and as the median site share (sites with orphans; n/a without).
+  `composition`: each class's orphans split into "only by <channel>" and "several channels"
+  (checked to add up). `plot_composition`: 100% stacked bars, one per class plus all sites,
+  channel colours fixed in `style.CHANNEL_COLOURS` (slots 1–5, validated as adjacent pairs; a
+  dark neutral for "several"), labelled segments and orphan/site counts.
 
 ### Database
 

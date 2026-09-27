@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { canonicalise, makeConfig, type db as q, type discovery } from "@linklens/core";
+import { canonicalise, fixes, makeConfig, type db as q, type discovery } from "@linklens/core";
 import { channelAblation } from "./e2-channels.js";
-import { compareWithBaselines, type DonorOption } from "./e3-baselines.js";
-import { calibrate, parseScreamingFrog } from "./e5-screaming-frog.js";
+import {
+  compareE3,
+  evaluateSelection,
+  rankPool,
+  type E3Inputs,
+  type PoolEntry,
+} from "./e3-baselines.js";
 import { parseRatings, ratingSheet, summariseRatings } from "./e8-ratings.js";
 import { hideAndRecover, type RecoveryInputs } from "./recovery.js";
 
@@ -60,108 +65,130 @@ describe("E2 channel ablation", () => {
 });
 
 // ---------- E3 ----------
-describe("E3 fixes against baselines", () => {
-  const opt = (
-    target: string,
-    donor: string,
-    deltaPr: number,
-    rest: Partial<DonorOption> = {},
-  ): DonorOption => ({
+describe("E3 top-k fixes against baselines, applied together", () => {
+  // h (home) → a, b; a → h, w; b → h. w is weak (one inlink), o is an orphan (no inlink).
+  const g = fixes.weightedGraph(["a", "b", "h", "o", "w"], "h", [
+    { source: "h", target: "a", weight: 1 },
+    { source: "h", target: "b", weight: 1 },
+    { source: "a", target: "h", weight: 1 },
+    { source: "a", target: "w", weight: 0.1 },
+    { source: "b", target: "h", weight: 1 },
+  ]);
+  const params = makeConfig();
+  const base = fixes.baseline(g, params);
+  const entry = (donor: string, target: string, o: Partial<PoolEntry> = {}): PoolEntry => ({
+    id: `add-link:${donor}->${target}`,
     donor,
     target,
-    ref: 0.3,
-    sameSection: false,
-    donorPagerank: 0.1,
-    deltaPr,
-    deltaDepth: -1,
-    targetRank: 9,
-    ...rest,
+    kind: target === "o" ? "orphan" : "weak",
+    action: "add-link",
+    ref: 0.5,
+    cosine: 0.5,
+    donorPagerank: base.rank[g.nodes.indexOf(donor)] as number,
+    deltaPr: 0,
+    kappa: 1,
+    score: 0,
+    ...o,
   });
-  const options = [
-    opt("t1", "home", 0.01, { donorPagerank: 0.5, targetRank: 3 }),
-    opt("t1", "a", 0.04, { ref: 0.9, targetRank: 1, sameSection: true }),
-    opt("t1", "b", 0.05, { ref: 0.2, targetRank: 2 }),
-    opt("t2", "a", 0.02, { targetRank: 1, ref: 0.4 }),
-    opt("t2", "c", 0.03, { ref: 0.8, donorPagerank: 0.3, targetRank: 2 }),
+  const pool: PoolEntry[] = [
+    entry("a", "o", { score: 3, cosine: 0.2 }),
+    entry("b", "w", { score: 2, cosine: 0.9 }),
+    entry("h", "w", { score: 1, cosine: null }),
+    entry("b", "o", { score: 1, deltaPr: 0.5, cosine: 0.1 }),
   ];
-  const r = compareWithBaselines(options, "home", "refGateCosine", 42);
-  const m = (name: string) => r.methods.find((x) => x.method === name);
+  const inputs: E3Inputs = {
+    graph: g,
+    base,
+    bodyWeight: 1,
+    params,
+    targets: [
+      { node: "w", kind: "weak" },
+      { node: "o", kind: "orphan" },
+    ],
+    pool,
+    sigma: "refGateCosine",
+  };
 
-  it("lets every method pick among the same donors and scores the picks", () => {
-    expect(r.targets).toBe(2);
-    expect(m("linklens")).toMatchObject({ targets: 2, linklensWinRate: null });
-    expect(m("linklens")?.meanDeltaPr).toBeCloseTo(0.03, 12); // a (0.04), a (0.02)
-    expect(m("oracle")?.meanDeltaPr).toBeCloseTo(0.04, 12); // b (0.05), c (0.03)
-    expect(m("oracle")?.meanShareOfBest).toBe(1);
-    expect(m("refOnly")?.meanRef).toBeCloseTo(0.85, 12); // a (0.9), c (0.8)
-    expect(m("highestPagerank")?.meanDeltaPr).toBeCloseTo(0.02, 12); // home (0.01), c (0.03)
-    expect(m("homePage")).toMatchObject({ targets: 1 }); // only admissible for t1
-    expect(m("highestPagerank")?.linklensWinRate).toBe(0.5); // wins on t1, loses on t2
-    expect(r.perTarget[0]).toMatchObject({
-      target: "t1",
-      picks: { linklens: { donor: "a", deltaPr: 0.04 }, oracle: { donor: "b", deltaPr: 0.05 } },
-    });
-    expect(r.perTarget[1]?.picks.homePage).toBeUndefined();
+  it("ranks the pool by each method's own criterion", () => {
+    const ids = (m: Parameters<typeof rankPool>[1]) => rankPool(pool, m).map((e) => e.id);
+    expect(ids("linklens")).toEqual([
+      "add-link:a->o",
+      "add-link:b->w",
+      "add-link:b->o", // score tie with h->w: the larger ΔPR first
+      "add-link:h->w",
+    ]);
+    expect(ids("highestCosine")).toEqual([
+      "add-link:b->w",
+      "add-link:a->o",
+      "add-link:b->o",
+      "add-link:h->w", // no cosine: last
+    ]);
+    // The home page has the highest PageRank.
+    expect(ids("highestPagerank")[0]).toBe("add-link:h->w");
   });
 
-  it("is deterministic for a seed", () => {
-    expect(compareWithBaselines(options, "home", "refGateCosine", 42)).toEqual(r);
+  it("applies the fixes together and sums ΔPR over the weak and orphan pages", () => {
+    const one = evaluateSelection(inputs, [pool[0] as PoolEntry]);
+    const wIndex = g.nodes.indexOf("w");
+    const oIndex = g.nodes.indexOf("o");
+    const joint = fixes.applyLinks(
+      g,
+      base,
+      [{ donor: g.nodes.indexOf("a"), target: oIndex }],
+      1,
+      params,
+    );
+    expect(one.totalDeltaPr).toBeCloseTo(
+      (joint.rank[oIndex] as number) -
+        (base.rank[oIndex] as number) +
+        (joint.rank[wIndex] as number) -
+        (base.rank[wIndex] as number),
+      12,
+    );
+    expect(one).toMatchObject({ selected: 1, targetsCovered: 1, newlyReachable: 1, meanRef: 0.5 });
+    const two = evaluateSelection(inputs, [pool[0] as PoolEntry, pool[3] as PoolEntry]);
+    expect(two.targetsCovered).toBe(1); // both to o
+    expect(two.totalDeltaPr).toBeGreaterThan(one.totalDeltaPr);
+    expect(two.meanCosine).toBeCloseTo(0.15);
+  });
+
+  it("compares every method for every k, the random baseline as a seeded mean", () => {
+    const r = compareE3(inputs, [2, 1], 5, 42);
+    expect(r.ks).toEqual([1, 2]);
+    expect(r.targets).toEqual({ weak: 1, orphan: 1, total: 2 });
+    expect(r.pool).toEqual({
+      pairs: 4,
+      weakPairs: 2,
+      orphanPairs: 2,
+      weakTargetsWithDonors: 1,
+      orphanTargetsWithDonors: 1,
+    });
+    const k2 = r.byK.find((b) => b.k === 2)?.methods ?? [];
+    expect(k2.map((m) => m.method)).toEqual([
+      "linklens",
+      "random",
+      "highestCosine",
+      "highestPagerank",
+    ]);
+    expect(k2[0]?.fixes).toEqual(["add-link:a->o", "add-link:b->w"]);
+    expect(k2[1]).toMatchObject({ method: "random", selected: 2, fixes: null });
+    expect(k2[1]?.totalDeltaPrSd).toBeGreaterThanOrEqual(0);
+    expect(k2[0]?.totalDeltaPrSd).toBeNull();
+    // Deterministic for a seed, and each k has its own stream.
+    expect(compareE3(inputs, [2, 1], 5, 42)).toEqual(r);
+    expect(compareE3(inputs, [2], 5, 42).byK[0]).toEqual(r.byK[1]);
+    expect(compareE3(inputs, [2], 5, 7).byK[0]?.methods[1]).not.toEqual(k2[1]);
+  });
+
+  it("with k at least the pool, every method applies the whole pool", () => {
+    const all = compareE3(inputs, [10], 3, 1).byK[0]?.methods ?? [];
+    const totals = all.map((m) => m.totalDeltaPr);
+    for (const t of totals) expect(t).toBeCloseTo(totals[0] as number, 9);
+    expect(all.every((m) => m.selected === 4)).toBe(true);
+    expect(all[1]?.totalDeltaPrSd).toBeCloseTo(0, 9);
   });
 });
 
-// ---------- E5 ----------
-describe("E5 Screaming Frog calibration", () => {
-  const csv = [
-    '"Internal - All"',
-    "Address,Content Type,Status Code,Indexability,Crawl Depth,Unique Inlinks",
-    `${S}/,text/html; charset=UTF-8,200,Indexable,0,5`,
-    `${S}/a,text/html; charset=UTF-8,200,Indexable,1,3`,
-    `${S}/b,text/html; charset=UTF-8,200,Indexable,3,1`,
-    `${S}/c.pdf,application/pdf,200,Indexable,2,1`,
-    `${S}/gone,text/html,404,Non-Indexable,2,1`,
-    `${S}/only-sf,text/html,200,Indexable,4,1`,
-  ].join("\n");
-  const sf = parseScreamingFrog(csv);
-
-  it("parses the export, skipping the title line, by column name", () => {
-    expect(sf).toHaveLength(6);
-    expect(sf[1]).toEqual({
-      address: `${S}/a`,
-      statusCode: 200,
-      contentType: "text/html; charset=UTF-8",
-      crawlDepth: 1,
-      uniqueInlinks: 3,
-      indexability: "Indexable",
-    });
-  });
-
-  it("compares coverage, depth and inlinks on HTML 200 pages", () => {
-    const ours = [
-      { url: `${S}/`, depth: 0, inNeighbours: 4 },
-      { url: `${S}/a`, depth: 1, inNeighbours: 3 },
-      { url: `${S}/b`, depth: 2, inNeighbours: 1 },
-      { url: `${S}/only-ours`, depth: 2, inNeighbours: 1 },
-    ];
-    const c = calibrate(ours, sf, (u) => u);
-    expect(c).toMatchObject({
-      ours: 4,
-      screamingFrog: 4,
-      common: 3,
-      onlyOurs: [`${S}/only-ours`],
-      onlyScreamingFrog: [`${S}/only-sf`],
-    });
-    expect(c.coverageJaccard).toBeCloseTo(3 / 5, 12);
-    expect(c.depth).toMatchObject({ pages: 3, exact: 2 / 3, withinOne: 1 });
-    expect(c.depth.spearman).toBeCloseTo(1, 12);
-    expect(c.inlinksSpearman).toBeCloseTo(1, 12);
-  });
-
-  it("refuses a file that is not a Screaming Frog export", () => {
-    expect(() => parseScreamingFrog("url,depth\n/a,1")).toThrow(/Address/);
-  });
-});
-
-// ---------- E8 ----------
 describe("E8 human rating", () => {
   const items = [1, 2, 3].map((rank) => ({
     id: `f${rank}`,

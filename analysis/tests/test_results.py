@@ -36,12 +36,15 @@ def test_e1_has_a_row_per_policy_and_the_baseline_against_itself():
     assert df.loc["P3", "meanDepthShift"] == pytest.approx(0)
 
 
-def test_e3_paired_tests_compare_linklens_with_every_baseline():
-    df = results.e3_paired_tests(fixture("E3")["result"])
-    assert set(df.index) == {"refOnly", "highestPagerank", "random", "sameSectionRandom", "homePage", "oracle"}
-    # The oracle is the best ΔPR by definition: LinkLens is never better than it.
-    assert df.loc["oracle", "LinkLens better"] == 0
-    assert (df["targets"] > 0).any()
+def test_e3_table_has_every_k_and_method():
+    data = fixture("E3")["result"]
+    df = results.e3_table(data)
+    assert list(df.index.get_level_values("k").unique()) == [10, 25, 50]
+    assert list(df.loc[10].index) == ["linklens", "random", "highestCosine", "highestPagerank"]
+    # The fixture's pool (2 fixes) is smaller than every k: all methods apply all of it.
+    assert df["total ΔPR"].nunique() == 1 or np.allclose(df["total ΔPR"], df["total ΔPR"].iloc[0])
+    pool = results.e3_pool_table(data)
+    assert pool.loc["orphans", "value"] == 1
 
 
 def test_recovery_tables_have_mrr_with_a_confidence_interval():

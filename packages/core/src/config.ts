@@ -208,6 +208,46 @@ export interface LinkLensConfig {
   readonly sigmaBlendLambda: number;
   /** Fixes returned by default (top-k, globally and per target). */
   readonly fixTopK: number;
+  /**
+   * E3: the list sizes compared. Each method's top-k fixes on the weak-authority and orphan
+   * targets are applied together and PageRank recomputed.
+   */
+  readonly e3TopKs: readonly number[];
+  /** E3: draws of the random-donor baseline (seeded by randomSeed); its result is their mean. */
+  readonly e3RandomDraws: number;
+  /** E4: a corpus site is crawled again this many days after its first run finished. */
+  readonly e4RecrawlDays: number;
+  /**
+   * E5: a disagreement category is "large" (and explained in the output's summary) when it holds
+   * at least this share of its kind's disagreements…
+   */
+  readonly e5LargeShare: number;
+  /** …and at least this many of them. */
+  readonly e5LargeMin: number;
+  /** E5: a page's inlink counts disagree when they differ by at least this many sources… */
+  readonly e5InlinkMinAbsDiff: number;
+  /** …and by at least this share of the larger count. */
+  readonly e5InlinkMinRelDiff: number;
+  /** E5: example URLs listed per disagreement category. */
+  readonly e5Examples: number;
+  /**
+   * E6: each repeat masks a share of the site's editorial body links drawn uniformly (seeded)
+   * between e6MaskShareMin and e6MaskShareMax.
+   */
+  readonly e6MaskShareMin: number;
+  readonly e6MaskShareMax: number;
+  /** E6: repeats per site, with seeds randomSeed, randomSeed + 1, … */
+  readonly e6Repeats: number;
+  /** E6: the k of Recall@k. */
+  readonly e6Ks: readonly number[];
+  /**
+   * E6: also remove a masked link's anchor text from the donor's body text (the extractor keeps
+   * link text in body_text, so the Links field alone would still leak the answer to REF and to
+   * the embeddings).
+   */
+  readonly e6StripAnchorsFromBody: boolean;
+  /** E6: also rank donors by Common Neighbours and Adamic–Adar on the masked link graph. */
+  readonly e6GraphBaselines: boolean;
   /** Orphan rescue: donors reported per orphan (the REF shortlist ordered by ΔPR). */
   readonly rescueTopK: number;
   /**
@@ -314,6 +354,20 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   sigmaVariant: "refGateCosine",
   sigmaBlendLambda: 0.5,
   fixTopK: 10,
+  e3TopKs: Object.freeze([10, 25, 50]),
+  e3RandomDraws: 20,
+  e4RecrawlDays: 14,
+  e5LargeShare: 0.1,
+  e5LargeMin: 3,
+  e5InlinkMinAbsDiff: 2,
+  e5InlinkMinRelDiff: 0.5,
+  e5Examples: 3,
+  e6MaskShareMin: 0.1,
+  e6MaskShareMax: 0.2,
+  e6Repeats: 5,
+  e6Ks: Object.freeze([5, 10, 20]),
+  e6StripAnchorsFromBody: true,
+  e6GraphBaselines: true,
   rescueTopK: 5,
   rescueMaxFetches: 50,
   explainTerms: 5,
@@ -404,6 +458,34 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   }
   assertUnitInterval("sigmaBlendLambda", cfg.sigmaBlendLambda);
   assertPositiveInt("fixTopK", cfg.fixTopK);
+  if (
+    !Array.isArray(cfg.e3TopKs) ||
+    cfg.e3TopKs.length === 0 ||
+    !cfg.e3TopKs.every((k) => Number.isInteger(k) && k > 0) ||
+    new Set(cfg.e3TopKs).size !== cfg.e3TopKs.length
+  ) {
+    throw new RangeError("config.e3TopKs must be distinct positive integers");
+  }
+  assertPositiveInt("e3RandomDraws", cfg.e3RandomDraws);
+  assertPositiveInt("e4RecrawlDays", cfg.e4RecrawlDays);
+  assertUnitInterval("e5LargeShare", cfg.e5LargeShare);
+  assertPositiveInt("e5LargeMin", cfg.e5LargeMin);
+  assertPositiveInt("e5InlinkMinAbsDiff", cfg.e5InlinkMinAbsDiff);
+  assertUnitInterval("e5InlinkMinRelDiff", cfg.e5InlinkMinRelDiff);
+  assertNonNegativeInt("e5Examples", cfg.e5Examples);
+  assertUnitInterval("e6MaskShareMin", cfg.e6MaskShareMin);
+  assertUnitInterval("e6MaskShareMax", cfg.e6MaskShareMax);
+  if (cfg.e6MaskShareMin > cfg.e6MaskShareMax) {
+    throw new RangeError("config.e6MaskShareMin must be ≤ e6MaskShareMax");
+  }
+  assertPositiveInt("e6Repeats", cfg.e6Repeats);
+  if (
+    !Array.isArray(cfg.e6Ks) ||
+    cfg.e6Ks.length === 0 ||
+    !cfg.e6Ks.every((k) => Number.isInteger(k) && k > 0)
+  ) {
+    throw new RangeError("config.e6Ks must be positive integers");
+  }
   assertPositiveInt("rescueTopK", cfg.rescueTopK);
   assertPositiveInt("rescueMaxFetches", cfg.rescueMaxFetches);
   assertPositiveInt("explainTerms", cfg.explainTerms);

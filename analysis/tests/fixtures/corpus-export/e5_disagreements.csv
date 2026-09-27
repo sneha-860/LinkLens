@@ -1,0 +1,13 @@
+batch_id,site_id,architecture_class,policy,kind,node,category,detail
+int,ocean,docs,P0,url-only-screaming-frog,https://eval.test/about/,normalisation,"{""policy"":""P3""}"
+int,ocean,docs,P0,url-only-screaming-frog,https://eval.test/guides/extra,link-not-extracted,"{""types"":""JavaScript""}"
+int,ocean,docs,P0,url-only-linklens,https://eval.test/about,normalisation,"{""policy"":""P3""}"
+int,ocean,docs,P0,inlinks,https://eval.test/,link-not-in-screaming-frog,"{""linklens"":4,""screamingFrog"":1,""types"":""hyperlinks in markup LinkLens does not read""}"
+int,ocean,docs,P0,depth,https://eval.test/guides/c,link-not-extracted,"{""linklens"":4,""screamingFrog"":2,""types"":""hyperlinks in markup LinkLens does not read""}"
+int,ocean,docs,P0,depth,https://eval.test/guides/turtle,cascade,"{""linklens"":5,""screamingFrog"":3}"
+int,ocean,docs,P0,orphan-only-screaming-frog,https://eval.test/old-page,not-in-linklens-channels,"{""sources"":""Google Analytics""}"
+int,ocean,docs,P3,url-only-screaming-frog,https://eval.test/guides/extra,link-not-extracted,"{""types"":""JavaScript""}"
+int,ocean,docs,P3,inlinks,https://eval.test/,link-not-in-screaming-frog,"{""linklens"":4,""screamingFrog"":1,""types"":""hyperlinks in markup LinkLens does not read""}"
+int,ocean,docs,P3,depth,https://eval.test/guides/c,link-not-extracted,"{""linklens"":4,""screamingFrog"":2,""types"":""hyperlinks in markup LinkLens does not read""}"
+int,ocean,docs,P3,depth,https://eval.test/guides/turtle,cascade,"{""linklens"":5,""screamingFrog"":3}"
+int,ocean,docs,P3,orphan-only-screaming-frog,https://eval.test/old-page,not-in-linklens-channels,"{""sources"":""Google Analytics""}"

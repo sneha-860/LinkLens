@@ -3,6 +3,7 @@ import { makeConfig } from "../config.js";
 import { pagerank, type Collapsed } from "../graph/metrics.js";
 import { mulberry32 } from "../graph/random.js";
 import {
+  applyLinks,
   baseline,
   depthFromSeed,
   linkWeight,
@@ -248,5 +249,66 @@ describe("warm start", () => {
   it("draws the same sample for the same seed", () => {
     const a = validateWarmStart(g, b, scenarios, 1, config, 5, 42).sample;
     expect(validateWarmStart(g, b, scenarios, 1, config, 5, 42).sample).toEqual(a);
+  });
+});
+
+describe("applyLinks", () => {
+  const at = (n: string) => chain.nodes.indexOf(n);
+  const link = (u: string, v: string) => ({ donor: at(u), target: at(v) });
+
+  it("one link gives the same result as simulate", () => {
+    const joint = applyLinks(chain, base, [link("h", "d")], 1, config);
+    const single = simulate(chain, base, scenario("h", "d"), 1, config);
+    expect((joint.rank[at("d")] as number) - (base.rank[at("d")] as number)).toBeCloseTo(
+      single.deltaPrTarget,
+      12,
+    );
+    expect(joint.deltaPrL1).toBeCloseTo(single.deltaPrL1, 12);
+    expect(joint.depth[at("d")]).toBe(1);
+  });
+
+  it("applies every link at once, so their effects interact", () => {
+    const links = [link("h", "d"), link("a", "o")];
+    const joint = applyLinks(chain, base, links, 1, config);
+    const gain = (r: Float64Array, n: string) =>
+      (r[at(n)] as number) - (base.rank[at(n)] as number);
+    const singles = links.map((l, i) =>
+      simulate(
+        chain,
+        base,
+        { id: String(i), donor: l.donor, target: l.target, action: "add-link" },
+        1,
+        config,
+      ),
+    );
+    expect(gain(joint.rank, "d")).toBeGreaterThan(0);
+    expect(gain(joint.rank, "o")).toBeGreaterThan(0);
+    // Not additive: h's rank is now split three ways, so d gains less than on its own.
+    expect(gain(joint.rank, "d")).not.toBeCloseTo(singles[0]?.deltaPrTarget as number, 6);
+    expect(joint.depth[at("o")]).toBe(2); // o became reachable
+    expect(sum(joint.rank)).toBeCloseTo(1, 9);
+    expect(joint.converged).toBe(true);
+  });
+
+  it("counts a repeated link once, and warm and cold starts agree", () => {
+    const once = applyLinks(chain, base, [link("h", "d")], 1, config);
+    const twice = applyLinks(chain, base, [link("h", "d"), link("h", "d")], 1, config);
+    expect(twice.rank).toEqual(once.rank);
+    const cold = applyLinks(chain, base, [link("h", "d"), link("a", "o")], 1, config, false);
+    const warm = applyLinks(chain, base, [link("h", "d"), link("a", "o")], 1, config);
+    let l1 = 0;
+    for (let i = 0; i < cold.rank.length; i++)
+      l1 += Math.abs((cold.rank[i] as number) - (warm.rank[i] as number));
+    expect(l1).toBeLessThan(10 * config.pagerankTolerance);
+  });
+
+  it("never modifies the baseline graph or vector, and no links changes nothing", () => {
+    const rank = Float64Array.from(base.rank);
+    const targets = Int32Array.from(chain.targets);
+    const none = applyLinks(chain, base, [], 1, config);
+    applyLinks(chain, base, [link("b", "o"), link("h", "x")], 1, config);
+    expect(base.rank).toEqual(rank);
+    expect(chain.targets).toEqual(targets);
+    expect(none.deltaPrL1).toBeLessThan(config.pagerankTolerance);
   });
 });

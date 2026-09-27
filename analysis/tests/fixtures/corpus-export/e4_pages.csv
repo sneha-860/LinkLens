@@ -1,0 +1,10 @@
+batch_id,site_id,architecture_class,node,status,cause,reason
+int,ocean,docs,https://eval.test/,unchanged,,
+int,ocean,docs,https://eval.test/about,onlyA,method,not-admitted
+int,ocean,docs,https://eval.test/guides,changed,site,
+int,ocean,docs,https://eval.test/guides/a,unchanged,,
+int,ocean,docs,https://eval.test/guides/b,onlyA,site,gone
+int,ocean,docs,https://eval.test/guides/c,onlyA,method,failed
+int,ocean,docs,https://eval.test/guides/shark,unchanged,,
+int,ocean,docs,https://eval.test/guides/turtle,unchanged,,
+int,ocean,docs,https://eval.test/guides/whale,unchanged,,

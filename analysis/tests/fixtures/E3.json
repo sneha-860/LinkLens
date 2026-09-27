@@ -2,160 +2,221 @@
   "experiment": "E3",
   "artefactId": 0,
   "result": {
-    "targets": 3,
     "sigma": "refGateCosine",
-    "perTarget": [
+    "seed": 42,
+    "randomDraws": 20,
+    "ks": [10, 25, 50],
+    "targets": {
+      "weak": 4,
+      "orphan": 1,
+      "total": 5
+    },
+    "pool": {
+      "pairs": 2,
+      "weakPairs": 1,
+      "orphanPairs": 1,
+      "weakTargetsWithDonors": 1,
+      "orphanTargetsWithDonors": 1
+    },
+    "targetPagerankBefore": 0.25816460018737636,
+    "byK": [
       {
-        "target": "https://eval.test/guides",
-        "picks": {
-          "linklens": {
-            "donor": "https://eval.test/guides/c",
-            "deltaPr": 0.024147774852389142
+        "k": 10,
+        "methods": [
+          {
+            "method": "linklens",
+            "selected": 2,
+            "targetsCovered": 2,
+            "totalDeltaPr": 0.09001973718804328,
+            "sumSingleDeltaPr": 0.09530272907425733,
+            "deltaPrL1": 0.41309329002387546,
+            "newlyReachable": 1,
+            "meanRef": 1,
+            "meanCosine": 0.13103667578760736,
+            "totalDeltaPrSd": null,
+            "fixes": [
+              "add-link:https://eval.test/about->https://eval.test/guides/a",
+              "add-link:https://eval.test/guides->https://eval.test/guides/lost"
+            ]
           },
-          "refOnly": {
-            "donor": "https://eval.test/guides/c",
-            "deltaPr": 0.024147774852389142
+          {
+            "method": "random",
+            "selected": 2,
+            "targetsCovered": 2,
+            "totalDeltaPr": 0.09001973718804329,
+            "totalDeltaPrSd": 1.4238309865648918e-17,
+            "sumSingleDeltaPr": 0.09530272907425735,
+            "deltaPrL1": 0.41309329002387524,
+            "newlyReachable": 1,
+            "meanRef": 1,
+            "meanCosine": 0.1310366757876073,
+            "fixes": null
           },
-          "highestPagerank": {
-            "donor": "https://eval.test/guides/turtle",
-            "deltaPr": 0.030525654849379746
+          {
+            "method": "highestCosine",
+            "selected": 2,
+            "targetsCovered": 2,
+            "totalDeltaPr": 0.09001973718804328,
+            "sumSingleDeltaPr": 0.09530272907425733,
+            "deltaPrL1": 0.41309329002387546,
+            "newlyReachable": 1,
+            "meanRef": 1,
+            "meanCosine": 0.13103667578760736,
+            "totalDeltaPrSd": null,
+            "fixes": [
+              "add-link:https://eval.test/guides->https://eval.test/guides/lost",
+              "add-link:https://eval.test/about->https://eval.test/guides/a"
+            ]
           },
-          "random": {
-            "donor": "https://eval.test/guides/turtle",
-            "deltaPr": 0.030525654849379746
-          },
-          "sameSectionRandom": {
-            "donor": "https://eval.test/guides/c",
-            "deltaPr": 0.024147774852389142
-          },
-          "oracle": {
-            "donor": "https://eval.test/guides/turtle",
-            "deltaPr": 0.030525654849379746
+          {
+            "method": "highestPagerank",
+            "selected": 2,
+            "targetsCovered": 2,
+            "totalDeltaPr": 0.09001973718804328,
+            "sumSingleDeltaPr": 0.09530272907425733,
+            "deltaPrL1": 0.41309329002387546,
+            "newlyReachable": 1,
+            "meanRef": 1,
+            "meanCosine": 0.13103667578760736,
+            "totalDeltaPrSd": null,
+            "fixes": [
+              "add-link:https://eval.test/guides->https://eval.test/guides/lost",
+              "add-link:https://eval.test/about->https://eval.test/guides/a"
+            ]
           }
-        }
+        ]
       },
       {
-        "target": "https://eval.test/guides/c",
-        "picks": {
-          "linklens": {
-            "donor": "https://eval.test/guides",
-            "deltaPr": 0.026919465161251363
+        "k": 25,
+        "methods": [
+          {
+            "method": "linklens",
+            "selected": 2,
+            "targetsCovered": 2,
+            "totalDeltaPr": 0.09001973718804328,
+            "sumSingleDeltaPr": 0.09530272907425733,
+            "deltaPrL1": 0.41309329002387546,
+            "newlyReachable": 1,
+            "meanRef": 1,
+            "meanCosine": 0.13103667578760736,
+            "totalDeltaPrSd": null,
+            "fixes": [
+              "add-link:https://eval.test/about->https://eval.test/guides/a",
+              "add-link:https://eval.test/guides->https://eval.test/guides/lost"
+            ]
           },
-          "refOnly": {
-            "donor": "https://eval.test/guides",
-            "deltaPr": 0.026919465161251363
+          {
+            "method": "random",
+            "selected": 2,
+            "targetsCovered": 2,
+            "totalDeltaPr": 0.09001973718804329,
+            "totalDeltaPrSd": 1.4238309865648918e-17,
+            "sumSingleDeltaPr": 0.09530272907425735,
+            "deltaPrL1": 0.41309329002387524,
+            "newlyReachable": 1,
+            "meanRef": 1,
+            "meanCosine": 0.1310366757876073,
+            "fixes": null
           },
-          "highestPagerank": {
-            "donor": "https://eval.test/guides",
-            "deltaPr": 0.026919465161251363
+          {
+            "method": "highestCosine",
+            "selected": 2,
+            "targetsCovered": 2,
+            "totalDeltaPr": 0.09001973718804328,
+            "sumSingleDeltaPr": 0.09530272907425733,
+            "deltaPrL1": 0.41309329002387546,
+            "newlyReachable": 1,
+            "meanRef": 1,
+            "meanCosine": 0.13103667578760736,
+            "totalDeltaPrSd": null,
+            "fixes": [
+              "add-link:https://eval.test/guides->https://eval.test/guides/lost",
+              "add-link:https://eval.test/about->https://eval.test/guides/a"
+            ]
           },
-          "random": {
-            "donor": "https://eval.test/guides",
-            "deltaPr": 0.026919465161251363
-          },
-          "sameSectionRandom": {
-            "donor": "https://eval.test/guides",
-            "deltaPr": 0.026919465161251363
-          },
-          "oracle": {
-            "donor": "https://eval.test/guides",
-            "deltaPr": 0.026919465161251363
+          {
+            "method": "highestPagerank",
+            "selected": 2,
+            "targetsCovered": 2,
+            "totalDeltaPr": 0.09001973718804328,
+            "sumSingleDeltaPr": 0.09530272907425733,
+            "deltaPrL1": 0.41309329002387546,
+            "newlyReachable": 1,
+            "meanRef": 1,
+            "meanCosine": 0.13103667578760736,
+            "totalDeltaPrSd": null,
+            "fixes": [
+              "add-link:https://eval.test/guides->https://eval.test/guides/lost",
+              "add-link:https://eval.test/about->https://eval.test/guides/a"
+            ]
           }
-        }
+        ]
       },
       {
-        "target": "https://eval.test/guides/turtle",
-        "picks": {
-          "linklens": {
-            "donor": "https://eval.test/guides",
-            "deltaPr": 0.029969496443031235
+        "k": 50,
+        "methods": [
+          {
+            "method": "linklens",
+            "selected": 2,
+            "targetsCovered": 2,
+            "totalDeltaPr": 0.09001973718804328,
+            "sumSingleDeltaPr": 0.09530272907425733,
+            "deltaPrL1": 0.41309329002387546,
+            "newlyReachable": 1,
+            "meanRef": 1,
+            "meanCosine": 0.13103667578760736,
+            "totalDeltaPrSd": null,
+            "fixes": [
+              "add-link:https://eval.test/about->https://eval.test/guides/a",
+              "add-link:https://eval.test/guides->https://eval.test/guides/lost"
+            ]
           },
-          "refOnly": {
-            "donor": "https://eval.test/guides",
-            "deltaPr": 0.029969496443031235
+          {
+            "method": "random",
+            "selected": 2,
+            "targetsCovered": 2,
+            "totalDeltaPr": 0.09001973718804329,
+            "totalDeltaPrSd": 1.4238309865648918e-17,
+            "sumSingleDeltaPr": 0.09530272907425735,
+            "deltaPrL1": 0.41309329002387524,
+            "newlyReachable": 1,
+            "meanRef": 1,
+            "meanCosine": 0.1310366757876073,
+            "fixes": null
           },
-          "highestPagerank": {
-            "donor": "https://eval.test/guides",
-            "deltaPr": 0.029969496443031235
+          {
+            "method": "highestCosine",
+            "selected": 2,
+            "targetsCovered": 2,
+            "totalDeltaPr": 0.09001973718804328,
+            "sumSingleDeltaPr": 0.09530272907425733,
+            "deltaPrL1": 0.41309329002387546,
+            "newlyReachable": 1,
+            "meanRef": 1,
+            "meanCosine": 0.13103667578760736,
+            "totalDeltaPrSd": null,
+            "fixes": [
+              "add-link:https://eval.test/guides->https://eval.test/guides/lost",
+              "add-link:https://eval.test/about->https://eval.test/guides/a"
+            ]
           },
-          "random": {
-            "donor": "https://eval.test/guides",
-            "deltaPr": 0.029969496443031235
-          },
-          "sameSectionRandom": {
-            "donor": "https://eval.test/guides",
-            "deltaPr": 0.029969496443031235
-          },
-          "oracle": {
-            "donor": "https://eval.test/guides",
-            "deltaPr": 0.029969496443031235
+          {
+            "method": "highestPagerank",
+            "selected": 2,
+            "targetsCovered": 2,
+            "totalDeltaPr": 0.09001973718804328,
+            "sumSingleDeltaPr": 0.09530272907425733,
+            "deltaPrL1": 0.41309329002387546,
+            "newlyReachable": 1,
+            "meanRef": 1,
+            "meanCosine": 0.13103667578760736,
+            "totalDeltaPrSd": null,
+            "fixes": [
+              "add-link:https://eval.test/guides->https://eval.test/guides/lost",
+              "add-link:https://eval.test/about->https://eval.test/guides/a"
+            ]
           }
-        }
-      }
-    ],
-    "methods": [
-      {
-        "method": "linklens",
-        "targets": 3,
-        "meanDeltaPr": 0.027012245485557248,
-        "meanShareOfBest": 0.9303549748732068,
-        "meanDeltaDepth": -1.6666666666666667,
-        "meanRef": 0.6195588857295743,
-        "linklensWinRate": null
-      },
-      {
-        "method": "refOnly",
-        "targets": 3,
-        "meanDeltaPr": 0.027012245485557248,
-        "meanShareOfBest": 0.9303549748732068,
-        "meanDeltaDepth": -1.6666666666666667,
-        "meanRef": 0.6195588857295743,
-        "linklensWinRate": null
-      },
-      {
-        "method": "highestPagerank",
-        "targets": 3,
-        "meanDeltaPr": 0.029138205484554116,
-        "meanShareOfBest": 1,
-        "meanDeltaDepth": -1.6666666666666667,
-        "meanRef": 0.5598681173146618,
-        "linklensWinRate": 0
-      },
-      {
-        "method": "random",
-        "targets": 3,
-        "meanDeltaPr": 0.029138205484554116,
-        "meanShareOfBest": 1,
-        "meanDeltaDepth": -1.6666666666666667,
-        "meanRef": 0.5598681173146618,
-        "linklensWinRate": 0
-      },
-      {
-        "method": "sameSectionRandom",
-        "targets": 3,
-        "meanDeltaPr": 0.027012245485557248,
-        "meanShareOfBest": 0.9303549748732068,
-        "meanDeltaDepth": -1.6666666666666667,
-        "meanRef": 0.6195588857295743,
-        "linklensWinRate": null
-      },
-      {
-        "method": "homePage",
-        "targets": 0,
-        "meanDeltaPr": null,
-        "meanShareOfBest": null,
-        "meanDeltaDepth": null,
-        "meanRef": null,
-        "linklensWinRate": null
-      },
-      {
-        "method": "oracle",
-        "targets": 3,
-        "meanDeltaPr": 0.029138205484554116,
-        "meanShareOfBest": 1,
-        "meanDeltaDepth": -1.6666666666666667,
-        "meanRef": 0.5598681173146618,
-        "linklensWinRate": 0
+        ]
       }
     ]
   }

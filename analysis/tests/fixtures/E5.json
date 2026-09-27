@@ -2,24 +2,290 @@
   "experiment": "E5",
   "artefactId": 0,
   "result": {
-    "ours": 9,
-    "screamingFrog": 4,
-    "common": 4,
-    "coverageJaccard": 0.4444444444444444,
-    "onlyOurs": [
-      "https://eval.test/guides/a",
-      "https://eval.test/guides/b",
-      "https://eval.test/guides/c",
-      "https://eval.test/guides/shark",
-      "https://eval.test/guides/turtle"
-    ],
-    "onlyScreamingFrog": [],
-    "depth": {
-      "pages": 4,
-      "exact": 1,
-      "withinOne": 1,
-      "spearman": 1
-    },
-    "inlinksSpearman": 1
+    "runId": 1,
+    "policies": [
+      {
+        "policy": "P0",
+        "policyVersion": "P0@1.0.0",
+        "urls": {
+          "linklens": 9,
+          "screamingFrog": 10,
+          "common": 8,
+          "jaccard": 0.7272727272727273
+        },
+        "inlinks": {
+          "pages": 8,
+          "spearman": -0.14285714285714285,
+          "spearmanColumn": 0.6546536707079772,
+          "largeDifferences": 1
+        },
+        "depth": {
+          "pages": 8,
+          "exact": 0.75,
+          "withinOne": 0.75,
+          "spearman": 0.876735070338608,
+          "meanAbsDifference": 0.5,
+          "seedDiffers": false
+        },
+        "orphans": {
+          "linklens": 1,
+          "screamingFrog": 2,
+          "common": 1,
+          "jaccard": 0.5
+        },
+        "categories": [
+          {
+            "kind": "url-only-screaming-frog",
+            "category": "normalisation",
+            "count": 1,
+            "share": 0.5,
+            "large": false,
+            "explanation": "The URLs differ only in form (case, trailing slash, query order or tracking, protocol, www); they are one page under P3.",
+            "examples": ["https://eval.test/about/"]
+          },
+          {
+            "kind": "url-only-screaming-frog",
+            "category": "link-not-extracted",
+            "count": 1,
+            "share": 0.5,
+            "large": false,
+            "explanation": "Screaming Frog reached it through links LinkLens does not extract from pages both crawled (JavaScript); LinkLens reads <a href> in the HTML only, without rendering JavaScript.",
+            "examples": ["https://eval.test/guides/extra"]
+          },
+          {
+            "kind": "url-only-linklens",
+            "category": "normalisation",
+            "count": 1,
+            "share": 1,
+            "large": false,
+            "explanation": "The URLs differ only in form (case, trailing slash, query, protocol, www); they are one page under P3.",
+            "examples": ["https://eval.test/about"]
+          },
+          {
+            "kind": "depth",
+            "category": "link-not-extracted",
+            "count": 1,
+            "share": 0.5,
+            "large": false,
+            "explanation": "Screaming Frog has a shorter path through a link LinkLens does not extract (hyperlinks in markup LinkLens does not read).",
+            "examples": ["https://eval.test/guides/c"]
+          },
+          {
+            "kind": "depth",
+            "category": "cascade",
+            "count": 1,
+            "share": 0.5,
+            "large": false,
+            "explanation": "The page's parent on the shorter path is itself at another depth in the other tool: the difference is inherited.",
+            "examples": ["https://eval.test/guides/turtle"]
+          },
+          {
+            "kind": "inlinks",
+            "category": "link-not-in-screaming-frog",
+            "count": 1,
+            "share": 1,
+            "large": false,
+            "explanation": "Most of the extra links come from pages Screaming Frog crawled but did not record (nofollow, or links it does not store).",
+            "examples": ["https://eval.test/"]
+          },
+          {
+            "kind": "orphan-only-screaming-frog",
+            "category": "not-in-linklens-channels",
+            "count": 1,
+            "share": 1,
+            "large": false,
+            "explanation": "Only Screaming Frog's orphan sources list it (Google Analytics): none of LinkLens's six channels (link graph, XML sitemap, robots.txt Sitemap, HTML sitemap, RSS/Atom, llms.txt) did — e.g. Google Analytics or Search Console, or a sitemap LinkLens did not find.",
+            "examples": ["https://eval.test/old-page"]
+          }
+        ],
+        "disagreements": [
+          {
+            "kind": "url-only-screaming-frog",
+            "node": "https://eval.test/about/",
+            "category": "normalisation",
+            "detail": {
+              "policy": "P3"
+            }
+          },
+          {
+            "kind": "url-only-screaming-frog",
+            "node": "https://eval.test/guides/extra",
+            "category": "link-not-extracted",
+            "detail": {
+              "types": "JavaScript"
+            }
+          },
+          {
+            "kind": "url-only-linklens",
+            "node": "https://eval.test/about",
+            "category": "normalisation",
+            "detail": {
+              "policy": "P3"
+            }
+          },
+          {
+            "kind": "inlinks",
+            "node": "https://eval.test/",
+            "category": "link-not-in-screaming-frog",
+            "detail": {
+              "linklens": 4,
+              "screamingFrog": 1,
+              "types": "hyperlinks in markup LinkLens does not read"
+            }
+          },
+          {
+            "kind": "depth",
+            "node": "https://eval.test/guides/c",
+            "category": "link-not-extracted",
+            "detail": {
+              "linklens": 4,
+              "screamingFrog": 2,
+              "types": "hyperlinks in markup LinkLens does not read"
+            }
+          },
+          {
+            "kind": "depth",
+            "node": "https://eval.test/guides/turtle",
+            "category": "cascade",
+            "detail": {
+              "linklens": 5,
+              "screamingFrog": 3
+            }
+          },
+          {
+            "kind": "orphan-only-screaming-frog",
+            "node": "https://eval.test/old-page",
+            "category": "not-in-linklens-channels",
+            "detail": {
+              "sources": "Google Analytics"
+            }
+          }
+        ]
+      },
+      {
+        "policy": "P3",
+        "policyVersion": "P3@1.0.0",
+        "urls": {
+          "linklens": 9,
+          "screamingFrog": 10,
+          "common": 9,
+          "jaccard": 0.9
+        },
+        "inlinks": {
+          "pages": 9,
+          "spearman": -0.125,
+          "spearmanColumn": 0.6614378277661477,
+          "largeDifferences": 1
+        },
+        "depth": {
+          "pages": 9,
+          "exact": 0.7777777777777778,
+          "withinOne": 0.7777777777777778,
+          "spearman": 0.9152492334988814,
+          "meanAbsDifference": 0.4444444444444444,
+          "seedDiffers": false
+        },
+        "orphans": {
+          "linklens": 1,
+          "screamingFrog": 2,
+          "common": 1,
+          "jaccard": 0.5
+        },
+        "categories": [
+          {
+            "kind": "url-only-screaming-frog",
+            "category": "link-not-extracted",
+            "count": 1,
+            "share": 1,
+            "large": false,
+            "explanation": "Screaming Frog reached it through links LinkLens does not extract from pages both crawled (JavaScript); LinkLens reads <a href> in the HTML only, without rendering JavaScript.",
+            "examples": ["https://eval.test/guides/extra"]
+          },
+          {
+            "kind": "depth",
+            "category": "link-not-extracted",
+            "count": 1,
+            "share": 0.5,
+            "large": false,
+            "explanation": "Screaming Frog has a shorter path through a link LinkLens does not extract (hyperlinks in markup LinkLens does not read).",
+            "examples": ["https://eval.test/guides/c"]
+          },
+          {
+            "kind": "depth",
+            "category": "cascade",
+            "count": 1,
+            "share": 0.5,
+            "large": false,
+            "explanation": "The page's parent on the shorter path is itself at another depth in the other tool: the difference is inherited.",
+            "examples": ["https://eval.test/guides/turtle"]
+          },
+          {
+            "kind": "inlinks",
+            "category": "link-not-in-screaming-frog",
+            "count": 1,
+            "share": 1,
+            "large": false,
+            "explanation": "Most of the extra links come from pages Screaming Frog crawled but did not record (nofollow, or links it does not store).",
+            "examples": ["https://eval.test/"]
+          },
+          {
+            "kind": "orphan-only-screaming-frog",
+            "category": "not-in-linklens-channels",
+            "count": 1,
+            "share": 1,
+            "large": false,
+            "explanation": "Only Screaming Frog's orphan sources list it (Google Analytics): none of LinkLens's six channels (link graph, XML sitemap, robots.txt Sitemap, HTML sitemap, RSS/Atom, llms.txt) did — e.g. Google Analytics or Search Console, or a sitemap LinkLens did not find.",
+            "examples": ["https://eval.test/old-page"]
+          }
+        ],
+        "disagreements": [
+          {
+            "kind": "url-only-screaming-frog",
+            "node": "https://eval.test/guides/extra",
+            "category": "link-not-extracted",
+            "detail": {
+              "types": "JavaScript"
+            }
+          },
+          {
+            "kind": "inlinks",
+            "node": "https://eval.test/",
+            "category": "link-not-in-screaming-frog",
+            "detail": {
+              "linklens": 4,
+              "screamingFrog": 1,
+              "types": "hyperlinks in markup LinkLens does not read"
+            }
+          },
+          {
+            "kind": "depth",
+            "node": "https://eval.test/guides/c",
+            "category": "link-not-extracted",
+            "detail": {
+              "linklens": 4,
+              "screamingFrog": 2,
+              "types": "hyperlinks in markup LinkLens does not read"
+            }
+          },
+          {
+            "kind": "depth",
+            "node": "https://eval.test/guides/turtle",
+            "category": "cascade",
+            "detail": {
+              "linklens": 5,
+              "screamingFrog": 3
+            }
+          },
+          {
+            "kind": "orphan-only-screaming-frog",
+            "node": "https://eval.test/old-page",
+            "category": "not-in-linklens-channels",
+            "detail": {
+              "sources": "Google Analytics"
+            }
+          }
+        ]
+      }
+    ]
   }
 }

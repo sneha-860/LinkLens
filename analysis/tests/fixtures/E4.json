@@ -4,14 +4,157 @@
   "result": {
     "runA": 1,
     "runB": 2,
-    "daysApart": 0.0000013194444444444444,
-    "pagesJaccard": 1,
-    "edgesJaccard": 0.9166666666666666,
-    "orphansJaccard": 1,
-    "pagerankSpearman": 0.9872062961643026,
-    "meanAbsDepthShift": 0,
-    "topFixesJaccard": 0.8,
-    "caseAgreement": 0.9375,
-    "casePairs": 16
+    "daysApart": 0.000002488425925925926,
+    "policyVersion": "P3@1.0.0",
+    "k": 10,
+    "pages": {
+      "union": 9,
+      "unchanged": 5,
+      "changed": 1,
+      "site": {
+        "gone": 1,
+        "redirect": 0,
+        "not-html": 0,
+        "robots": 0,
+        "link": 0
+      },
+      "method": {
+        "not-admitted": 1,
+        "failed": 1
+      },
+      "onlyA": 3,
+      "onlyB": 0
+    },
+    "siteChangeShare": 0.2222222222222222,
+    "methodShare": 0.2222222222222222,
+    "discoveryDocuments": {
+      "unchanged": 3,
+      "changed": 0,
+      "onlyA": 0,
+      "onlyB": 0
+    },
+    "comparisons": {
+      "observed": {
+        "crawledA": 9,
+        "crawledB": 6,
+        "nodeJaccard": 0.6666666666666666,
+        "pagerankSpearman": 0.775060553971261,
+        "sharedNodes": 8,
+        "orphansA": 1,
+        "orphansB": 1,
+        "orphanJaccard": 1,
+        "topFixesJaccard": 0.2857142857142857,
+        "fixesA": 6,
+        "fixesB": 3
+      },
+      "siteChange": {
+        "crawledA": 7,
+        "crawledB": 6,
+        "nodeJaccard": 0.8571428571428571,
+        "pagerankSpearman": 0.9625752041255983,
+        "sharedNodes": 8,
+        "orphansA": 1,
+        "orphansB": 1,
+        "orphanJaccard": 1,
+        "topFixesJaccard": 0.6666666666666666,
+        "fixesA": 2,
+        "fixesB": 3
+      },
+      "samePages": {
+        "crawledA": 5,
+        "crawledB": 5,
+        "nodeJaccard": 1,
+        "pagerankSpearman": 1,
+        "sharedNodes": 8,
+        "orphansA": 1,
+        "orphansB": 1,
+        "orphanJaccard": 1,
+        "topFixesJaccard": 1,
+        "fixesA": 0,
+        "fixesB": 0
+      },
+      "coverageA": {
+        "crawledA": 9,
+        "crawledB": 7,
+        "nodeJaccard": 0.7777777777777778,
+        "pagerankSpearman": 0.6521739130434783,
+        "sharedNodes": 9,
+        "orphansA": 1,
+        "orphansB": 1,
+        "orphanJaccard": 1,
+        "topFixesJaccard": 0.3333333333333333,
+        "fixesA": 6,
+        "fixesB": 2
+      },
+      "coverageB": {
+        "crawledA": 6,
+        "crawledB": 6,
+        "nodeJaccard": 1,
+        "pagerankSpearman": 1,
+        "sharedNodes": 8,
+        "orphansA": 1,
+        "orphansB": 1,
+        "orphanJaccard": 1,
+        "topFixesJaccard": 1,
+        "fixesA": 3,
+        "fixesB": 3
+      }
+    },
+    "classes": [
+      {
+        "node": "https://eval.test/",
+        "status": "unchanged",
+        "cause": null,
+        "reason": null
+      },
+      {
+        "node": "https://eval.test/about",
+        "status": "onlyA",
+        "cause": "method",
+        "reason": "not-admitted"
+      },
+      {
+        "node": "https://eval.test/guides",
+        "status": "changed",
+        "cause": "site",
+        "reason": null
+      },
+      {
+        "node": "https://eval.test/guides/a",
+        "status": "unchanged",
+        "cause": null,
+        "reason": null
+      },
+      {
+        "node": "https://eval.test/guides/b",
+        "status": "onlyA",
+        "cause": "site",
+        "reason": "gone"
+      },
+      {
+        "node": "https://eval.test/guides/c",
+        "status": "onlyA",
+        "cause": "method",
+        "reason": "failed"
+      },
+      {
+        "node": "https://eval.test/guides/shark",
+        "status": "unchanged",
+        "cause": null,
+        "reason": null
+      },
+      {
+        "node": "https://eval.test/guides/turtle",
+        "status": "unchanged",
+        "cause": null,
+        "reason": null
+      },
+      {
+        "node": "https://eval.test/guides/whale",
+        "status": "unchanged",
+        "cause": null,
+        "reason": null
+      }
+    ]
   }
 }

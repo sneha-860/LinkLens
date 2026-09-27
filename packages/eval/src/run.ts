@@ -4,14 +4,16 @@ import {
   db as q,
   discovery,
   fixes,
-  graph,
   stats,
   type SigmaVariant,
 } from "@linklens/core";
 import { channelAblation } from "./e2-channels.js";
-import { compareWithBaselines, loadDonorOptions } from "./e3-baselines.js";
-import { compareSnapshots, snapshot } from "./e4-stability.js";
-import { calibrate, parseScreamingFrog, type OurPage } from "./e5-screaming-frog.js";
+import type { Embedder } from "@linklens/embeddings";
+import { compareE3, loadE3Inputs } from "./e3-baselines.js";
+import { compareStoredRuns } from "./e4-stability.js";
+import { calibrateRun, parseExports, type ScreamingFrogCsvs } from "./e5-screaming-frog.js";
+import { maskingRecovery } from "./e6-masking.js";
+import { loadRunInputs } from "./in-memory.js";
 import { parseRatings, ratingSheet, summariseRatings } from "./e8-ratings.js";
 import { experiments } from "./experiments.js";
 import { hideAndRecover, loadRecoveryInputs } from "./recovery.js";
@@ -24,16 +26,18 @@ export interface ExperimentOptions {
   readonly policy: PolicyId;
   /** E4: the later crawl of the same site. */
   readonly runB?: number;
-  /** E5: a Screaming Frog "Internal: All" export. */
-  readonly screamingFrogCsv?: string;
+  /** E5: Screaming Frog exports (Internal: All, and optionally All Inlinks and Orphan pages). */
+  readonly screamingFrog?: ScreamingFrogCsvs;
   /** E8: filled rating sheets (without: E8 produces the sheet to fill). */
   readonly ratingsCsv?: string;
   /** E6/E7: links to hide, and the seed. */
   readonly sample?: number;
   readonly seed?: number;
-  /** E1/E3/E4: top k; E3: the σ of the ranking. */
+  /** E1/E4: top k; E3: one k instead of config.e3TopKs. E3: the σ of LinkLens's score. */
   readonly k?: number;
   readonly sigma?: SigmaVariant;
+  /** E3 and E6: embeds pages (E3: the orphans; E6: the masked site); the run's model. */
+  readonly embedder?: Embedder;
 }
 
 export interface ExperimentRun {
@@ -56,55 +60,79 @@ export async function runExperiment(
   const seed = options.seed ?? 42;
   let result: unknown;
   switch (id) {
-    case "E1":
-      result = await stats.compareRunPolicies(db, runId, policy, k, options.sigma);
+    case "E1": {
+      // Each policy against the audit's (the /sensitivity table), and every pair of policies.
+      const snapshots = await stats.loadPolicySnapshots(db, runId, k, options.sigma);
+      result = {
+        ...stats.sensitivityFromSnapshots(snapshots, policy),
+        pairs: stats.comparePolicyPairs(snapshots).pairs,
+      };
       break;
-    case "E2":
-      result = channelAblation(await discovery.loadReconciliation(db, runId, policy));
+    }
+    case "E2": {
+      // Subsets of the non-link channels, and each of the six removed in turn (reconciled again).
+      const input = await discovery.loadReconcileInput(db, runId, policy);
+      const loo = discovery.leaveOneChannelOut(input);
+      result = {
+        ...channelAblation(discovery.reconcile(input)),
+        orphansBy: loo.orphansBy,
+        removals: loo.removals,
+      };
       break;
+    }
     case "E3": {
-      const {
-        options: donors,
-        seedNode,
-        sigma,
-      } = await loadDonorOptions(db, runId, policy, options.sigma);
-      result = compareWithBaselines(donors, seedNode, sigma, seed);
+      if (options.embedder === undefined)
+        throw new Error("E3 needs an embedder with the run's embedding model (for the orphans)");
+      const { inputs, config } = await loadE3Inputs(db, runId, policy, options.embedder, {
+        ...(options.sigma === undefined ? {} : { sigma: options.sigma }),
+      });
+      result = compareE3(
+        inputs,
+        options.k === undefined ? config.e3TopKs : [options.k],
+        config.e3RandomDraws,
+        options.seed ?? config.randomSeed,
+      );
       break;
     }
     case "E4": {
       if (options.runB === undefined)
         throw new Error("E4 needs a second run of the same site (runB)");
-      result = compareSnapshots(
-        await snapshot(db, runId, policy, k),
-        await snapshot(db, options.runB, policy, k),
-      );
+      result = await compareStoredRuns(db, runId, options.runB, {
+        policyId: policy,
+        ...(options.k === undefined ? {} : { k: options.k }),
+        ...(options.sigma === undefined ? {} : { sigma: options.sigma }),
+      });
       break;
     }
     case "E5": {
-      if (options.screamingFrogCsv === undefined)
-        throw new Error("E5 needs a Screaming Frog export (internal_all.csv)");
-      const { observations, context, config } = await graph.loadRunGraphInputs(db, runId);
-      const derived = graph.deriveGraphFromObservations(observations, policy, context, config);
-      const ours: OurPage[] = [];
-      derived.graph.forEachNode((n, a) => {
-        if (a.crawled)
-          ours.push({ url: n, depth: a.depth ?? null, inNeighbours: a.inNeighbours ?? 0 });
-      });
-      result = calibrate(ours, parseScreamingFrog(options.screamingFrogCsv), (u) =>
-        canonicalise.POLICIES.P3.canonicalise(u, context),
+      if (options.screamingFrog === undefined)
+        throw new Error("E5 needs Screaming Frog exports (at least internal_all.csv)");
+      const inputs = await loadRunInputs(db, runId, policy);
+      const policies: PolicyId[] = policy === "P0" ? ["P0"] : ["P0", policy];
+      result = calibrateRun(inputs, parseExports(options.screamingFrog), policies, inputs.config);
+      break;
+    }
+    case "E6": {
+      if (options.embedder === undefined)
+        throw new Error("E6 needs an embedder with the run's embedding model (it re-embeds)");
+      const inputs = await loadRunInputs(db, runId, policy);
+      result = await maskingRecovery(
+        inputs,
+        policy,
+        options.embedder,
+        options.seed ?? inputs.config.randomSeed,
       );
       break;
     }
-    case "E6":
     case "E7": {
+      // Every σ on the same pool (no REF pre-filter), on the fix pipeline's candidates.
       const inputs = await loadRecoveryInputs(db, runId, policy);
       result = hideAndRecover(inputs, {
         sample: options.sample ?? 20,
         seed,
         ks: KS,
-        // E6: the audit's own set-up; E7: every σ on the same pool (no REF pre-filter).
-        sigmas: id === "E6" ? [options.sigma ?? inputs.config.sigmaVariant] : SIGMA_VARIANTS,
-        requireRef: id === "E6",
+        sigmas: SIGMA_VARIANTS,
+        requireRef: false,
       });
       break;
     }
@@ -149,8 +177,9 @@ export async function runExperiment(
       experiment: id,
       options: {
         ...options,
-        screamingFrogCsv: undefined,
+        screamingFrog: undefined,
         ratingsCsv: undefined,
+        embedder: undefined,
       } as unknown as q.Json,
       result: result as q.Json,
     },

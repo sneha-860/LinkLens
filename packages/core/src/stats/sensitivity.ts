@@ -38,23 +38,54 @@ export interface SensitivityResult {
 }
 
 /**
- * E1: derive a run under all six policies and compare each with `baseline`. Pages are compared
- * in P3 form, where node ids of every policy meet: a P3 page's PageRank is the sum of its merged
- * nodes', its depth the smallest. The top-k fixes are compared as (donor, target) pairs in P3 form,
- * using the latest ranking stored under each policy with σ.
+ * A run under one policy, in P3 form: the form where the node ids of every policy meet. A P3
+ * page's PageRank is the sum of its merged nodes', its depth the smallest; orphans and fixes
+ * are mapped to P3 form too.
  */
-export async function compareRunPolicies(
+export interface PolicySnapshot {
+  readonly policy: PolicyId;
+  readonly policyVersion: string;
+  readonly nodes: number;
+  readonly edges: number;
+  readonly reachable: number;
+  readonly largestScc: number;
+  readonly issues: number;
+  readonly meanDepth: number | null;
+  /** Reconciled orphans, as the policy's nodes (the count) and in P3 form (the set). */
+  readonly orphanCount: number;
+  readonly orphans: ReadonlySet<string>;
+  /** PageRank per P3 page. */
+  readonly pagerank: ReadonlyMap<string, number>;
+  /** Depth per reachable P3 page. */
+  readonly depth: ReadonlyMap<string, number>;
+  /** The top-k fixes as "donor -> target" (P3 form); null when no ranking is stored. */
+  readonly topFixes: ReadonlySet<string> | null;
+  readonly fixCount: number | null;
+}
+
+export interface PolicySnapshots {
+  readonly runId: number;
+  readonly sigma: SigmaVariant;
+  readonly k: number;
+  /** In POLICY_ORDER. */
+  readonly snapshots: PolicySnapshot[];
+}
+
+/**
+ * Derive a run under all six policies (the run's stored config) and project each onto P3 form.
+ * The top-k fixes come from the latest ranking stored under each policy with σ.
+ */
+export async function loadPolicySnapshots(
   db: Queryable,
   runId: number,
-  baseline: PolicyId,
   k: number,
   sigma?: SigmaVariant,
-): Promise<SensitivityResult> {
+): Promise<PolicySnapshots> {
   const { observations, context, config } = await loadRunGraphInputs(db, runId);
   const p3 = (n: string) => POLICIES.P3.canonicalise(n, context);
   const s = sigma ?? config.sigmaVariant;
 
-  const perPolicy = [];
+  const snapshots: PolicySnapshot[] = [];
   for (const id of POLICY_ORDER) {
     const derived = deriveGraphFromObservations(observations, id, context, config);
     const [rec, aud, rankings] = await Promise.all([
@@ -77,14 +108,19 @@ export async function compareRunPolicies(
         depth.set(key, Math.min(depth.get(key) ?? Infinity, attrs.depth));
       }
     });
-    perPolicy.push({
-      id,
-      summary: derived.summary,
-      orphans: rec.orphans.length,
+    snapshots.push({
+      policy: id,
+      policyVersion: POLICIES[id].version,
+      nodes: derived.summary.nodes,
+      edges: derived.summary.edges,
+      reachable: derived.summary.reachable,
+      largestScc: derived.summary.largestSccSize,
       issues: aud.summary.total,
+      meanDepth: depths.length === 0 ? null : depths.reduce((a, d) => a + d, 0) / depths.length,
+      orphanCount: rec.orphans.length,
+      orphans: new Set(rec.orphans.map(p3)),
       pagerank,
       depth,
-      meanDepth: depths.length === 0 ? null : depths.reduce((a, d) => a + d, 0) / depths.length,
       topFixes:
         ranking === undefined
           ? null
@@ -92,22 +128,31 @@ export async function compareRunPolicies(
       fixCount: ranking?.fixes.length ?? null,
     });
   }
-  const base = perPolicy.find((r) => r.id === baseline) as (typeof perPolicy)[number];
+  return { runId, sigma: s, k, snapshots };
+}
+
+/** Pure: each policy's snapshot compared with the baseline's (the /sensitivity table). */
+export function sensitivityFromSnapshots(
+  s: PolicySnapshots,
+  baseline: PolicyId,
+): SensitivityResult {
+  const base = s.snapshots.find((r) => r.policy === baseline);
+  if (base === undefined) throw new Error(`no snapshot for the baseline policy ${baseline}`);
   return {
-    runId,
+    runId: s.runId,
     baselinePolicy: baseline,
-    sigma: s,
-    k,
-    policies: perPolicy.map((r) => {
+    sigma: s.sigma,
+    k: s.k,
+    policies: s.snapshots.map((r) => {
       const shift = depthShift(r.depth, base.depth);
       return {
-        policy: r.id,
-        policyVersion: POLICIES[r.id].version,
-        nodes: r.summary.nodes,
-        edges: r.summary.edges,
-        reachable: r.summary.reachable,
-        largestScc: r.summary.largestSccSize,
-        orphans: r.orphans,
+        policy: r.policy,
+        policyVersion: r.policyVersion,
+        nodes: r.nodes,
+        edges: r.edges,
+        reachable: r.reachable,
+        largestScc: r.largestScc,
+        orphans: r.orphanCount,
         issues: r.issues,
         meanDepth: r.meanDepth,
         pagerankSpearman: spearman(r.pagerank, base.pagerank),
@@ -119,4 +164,20 @@ export async function compareRunPolicies(
       };
     }),
   };
+}
+
+/**
+ * E1: derive a run under all six policies and compare each with `baseline`. Pages are compared
+ * in P3 form, where node ids of every policy meet: a P3 page's PageRank is the sum of its merged
+ * nodes', its depth the smallest. The top-k fixes are compared as (donor, target) pairs in P3 form,
+ * using the latest ranking stored under each policy with σ.
+ */
+export async function compareRunPolicies(
+  db: Queryable,
+  runId: number,
+  baseline: PolicyId,
+  k: number,
+  sigma?: SigmaVariant,
+): Promise<SensitivityResult> {
+  return sensitivityFromSnapshots(await loadPolicySnapshots(db, runId, k, sigma), baseline);
 }

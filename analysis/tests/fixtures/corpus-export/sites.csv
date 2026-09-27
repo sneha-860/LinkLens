@@ -1,0 +1,2 @@
+batch_id,site_id,architecture_class,url,notes,status,run_id,attempts,audit_policy,pages_fetched,fetches,started_at,finished_at,duration_s,commit,model_sha256,error
+int,ocean,docs,https://eval.test/,"fixture, with a comma",completed,1,0,P3,9,10,2026-01-01T00:00:00.000Z,2026-01-01T00:01:30.000Z,90,,,

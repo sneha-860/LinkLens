@@ -1,17 +1,22 @@
 import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { readExportDir } from "./e5-files.js";
+import { fileURLToPath } from "node:url";
 import { createPool, asQueryable, resolveDatabaseUrl } from "@linklens/db";
-import type { canonicalise } from "@linklens/core";
+import { db as q, makeConfig, type canonicalise } from "@linklens/core";
+import { EmbeddingWorker, embeddingOptions } from "@linklens/embeddings";
 import { experiments } from "./experiments.js";
 import { runExperiment, type ExperimentId, type ExperimentOptions } from "./run.js";
 
 const USAGE = `Usage: pnpm --filter @linklens/eval e <E1…E8> --run <id> [options]
   --policy P0…P5     policy (default P3)
   --run-b <id>       E4: the later crawl of the same site
-  --sf <file>        E5: Screaming Frog internal_all.csv
+  --sf <file>        E5: Screaming Frog internal_all.csv (URLs, depth, its inlink column)
+  --sf-dir <dir>     E5: a folder with internal_all.csv, all_inlinks.csv, orphan_pages.csv
   --ratings <file>   E8: filled rating sheet(s) (without: writes the sheet to fill)
-  --sample <n>       E6/E7: links to hide (default 20)
-  --seed <n>         seed (default 42)
-  --k <n>            top k (default 10)
+  --sample <n>       E7: links to hide (default 20)
+  --seed <n>         seed (default config.randomSeed; E6: repeat r uses seed + r)
+  --k <n>            top k (default 10; E3: one k instead of config.e3TopKs)
   --out <file>       also write the JSON result here (for analysis/)
 Needs DATABASE_URL (or the PG* variables).`;
 
@@ -40,15 +45,33 @@ async function main(): Promise<void> {
     runId: Number(opts.get("run")),
     policy: (opts.get("policy") ?? "P3") as canonicalise.PolicyId,
     ...(num("run-b") === undefined ? {} : { runB: num("run-b") as number }),
-    ...(file("sf") === undefined ? {} : { screamingFrogCsv: file("sf") as string }),
+    ...(opts.has("sf-dir")
+      ? { screamingFrog: readExportDir(opts.get("sf-dir") as string) }
+      : file("sf") === undefined
+        ? {}
+        : { screamingFrog: { internal: file("sf") as string } }),
     ...(file("ratings") === undefined ? {} : { ratingsCsv: file("ratings") as string }),
     ...(num("sample") === undefined ? {} : { sample: num("sample") as number }),
     ...(num("seed") === undefined ? {} : { seed: num("seed") as number }),
     ...(num("k") === undefined ? {} : { k: num("k") as number }),
   };
   const pool = createPool(resolveDatabaseUrl(process.env));
+  const db = asQueryable(pool);
+  let embedder: EmbeddingWorker | undefined;
   try {
-    const run = await runExperiment(asQueryable(pool), id as ExperimentId, options);
+    if (id === "E3" || id === "E6") {
+      // The run's model; cached embeddings are reused (E3 embeds the orphans' pages, E6 the
+      // masked pages).
+      const stored = await q.getRun(db, options.runId);
+      if (stored === null) throw new Error(`run ${options.runId} not found`);
+      const repo = fileURLToPath(new URL("../../../", import.meta.url));
+      const cacheDir = resolve(repo, process.env["LINKLENS_CACHE_DIR"] ?? ".cache/linklens");
+      embedder = EmbeddingWorker.start(embeddingOptions(makeConfig(stored.config), cacheDir));
+    }
+    const run = await runExperiment(db, id as ExperimentId, {
+      ...options,
+      ...(embedder === undefined ? {} : { embedder }),
+    });
     const json = JSON.stringify(
       { experiment: run.id, artefactId: run.artefact.id, result: run.result },
       null,
@@ -57,6 +80,7 @@ async function main(): Promise<void> {
     console.log(json);
     if (opts.has("out")) writeFileSync(opts.get("out") as string, `${json}\n`);
   } finally {
+    await embedder?.close();
     await pool.end();
   }
 }

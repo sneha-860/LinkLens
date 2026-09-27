@@ -7,5 +7,5 @@
     "noEmit": true,
     "declaration": false
   },
-  "include": ["src", "test", "vitest.config.ts", "vitest.integration.config.ts"]
+  "include": ["src", "test", "bench", "vitest.config.ts", "vitest.integration.config.ts"]
 }

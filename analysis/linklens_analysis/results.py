@@ -40,6 +40,23 @@ def e1_table(result: dict[str, Any]) -> pd.DataFrame:
     return pd.DataFrame(result["policies"])[cols].set_index("policy")
 
 
+def e1_pairs_table(result: dict[str, Any]) -> pd.DataFrame:
+    """E1: every pair of policies (a before b; signed values are b − a)."""
+    cols = [
+        "nodesA",
+        "nodesB",
+        "orphanJaccard",
+        "pagerankSpearman",
+        "meanDepthShift",
+        "maxAbsDepthShift",
+        "topFixesJaccard",
+    ]
+    df = pd.DataFrame(result["pairs"])
+    df.index = df["a"] + "–" + df["b"]
+    df.index.name = "pair"
+    return df[cols]
+
+
 def e2_table(result: dict[str, Any]) -> pd.DataFrame:
     """E2: each channel alone and what dropping it costs."""
     single = {tuple(r["channels"])[0]: r["orphansFound"] for r in result["single"]}
@@ -55,38 +72,129 @@ def e2_table(result: dict[str, Any]) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("channel")
 
 
-def e3_table(result: dict[str, Any]) -> pd.DataFrame:
-    """E3: one row per method (LinkLens, the baselines, the oracle)."""
-    return pd.DataFrame(result["methods"]).set_index("method")
+def e2_removals_table(result: dict[str, Any]) -> pd.DataFrame:
+    """E2: each of the six channels removed and the reconciliation recomputed."""
+    cols = [
+        "pagesTotal",
+        "pagesExclusive",
+        "orphansTotal",
+        "orphansExclusive",
+        "orphansExclusiveShare",
+        "inventoryWithout",
+        "orphansWithout",
+    ]
+    return pd.DataFrame(result["removals"]).set_index("channel")[cols]
 
 
-def e3_paired_tests(result: dict[str, Any]) -> pd.DataFrame:
-    """E3: LinkLens against each baseline on the same targets, paired Wilcoxon signed-rank on ΔPR."""
+def e4_pages_table(result: dict[str, Any]) -> pd.DataFrame:
+    """E4 on one site: the pages of the two crawls by class and cause."""
+    p = result["pages"]
+    rows = {
+        "days apart": result["daysApart"],
+        "pages (union)": p["union"],
+        "unchanged": p["unchanged"],
+        "changed (site)": p["changed"],
+        **{f"only one run, site: {k}": v for k, v in p["site"].items()},
+        **{f"only one run, crawl: {k}": v for k, v in p["method"].items()},
+        "site change share": result["siteChangeShare"],
+        "crawl instability share": result["methodShare"],
+    }
+    return pd.Series(rows).to_frame("value")
+
+
+def e4_comparisons_table(result: dict[str, Any]) -> pd.DataFrame:
+    """E4 on one site: each comparison (observed, site change, same pages, coverage)."""
+    cols = ["nodeJaccard", "pagerankSpearman", "orphanJaccard", "topFixesJaccard", "crawledA", "crawledB"]
+    df = pd.DataFrame(result["comparisons"]).T[cols]
+    df.index.name = "comparison"
+    return df
+
+
+def e5_table(result: dict[str, Any]) -> pd.DataFrame:
+    """E5 on one site: LinkLens against Screaming Frog under each policy."""
     rows = []
-    per = result.get("perTarget", [])
-    methods = [m["method"] for m in result["methods"] if m["method"] != "linklens"]
-    for method in methods:
-        pairs = [
-            (t["picks"]["linklens"]["deltaPr"], t["picks"][method]["deltaPr"])
-            for t in per
-            if "linklens" in t["picks"] and method in t["picks"]
-        ]
-        ours = np.array([p[0] for p in pairs])
-        theirs = np.array([p[1] for p in pairs])
-        diff = ours - theirs
-        nonzero = diff[diff != 0]
-        p = float(stats.wilcoxon(nonzero).pvalue) if len(nonzero) >= 1 else float("nan")
+    for p in result["policies"]:
         rows.append(
             {
-                "baseline": method,
-                "targets": len(pairs),
-                "median ΔPR difference": float(np.median(diff)) if len(diff) else float("nan"),
-                "LinkLens better": int((diff > 0).sum()),
-                "baseline better": int((diff < 0).sum()),
-                "wilcoxon p": p,
+                "policy": p["policy"],
+                "URLs LinkLens": p["urls"]["linklens"],
+                "URLs Screaming Frog": p["urls"]["screamingFrog"],
+                "URL Jaccard": p["urls"]["jaccard"],
+                "inlinks Spearman": p["inlinks"]["spearman"],
+                "inlinks Spearman (SF column)": p["inlinks"]["spearmanColumn"],
+                "depth exact": p["depth"]["exact"],
+                "depth ±1": p["depth"]["withinOne"],
+                "depth Spearman": p["depth"]["spearman"],
+                "orphan Jaccard": p["orphans"]["jaccard"],
             }
         )
-    return pd.DataFrame(rows).set_index("baseline")
+    return pd.DataFrame(rows).set_index("policy")
+
+
+def e5_categories_table(result: dict[str, Any]) -> pd.DataFrame:
+    """E5 on one site: every disagreement category with its explanation."""
+    rows = [
+        {"policy": p["policy"], **{k: c[k] for k in ("kind", "category", "count", "share", "large", "explanation")}}
+        for p in result["policies"]
+        for c in p["categories"]
+    ]
+    cols = ["policy", "kind", "category", "count", "share", "large", "explanation"]
+    return pd.DataFrame(rows, columns=cols).set_index(["policy", "kind", "category"])
+
+
+def e6_table(result: dict[str, Any]) -> pd.DataFrame:
+    """E6 on one site: each method's metrics averaged over the repeats."""
+    ks = result["options"]["ks"]
+    rows = []
+    for method, m in result["summary"].items():
+        row = {"method": method, "queries": m["queries"], "MRR": m["mrr"], "AUC": m["auc"]}
+        for k in ks:
+            row[f"R@{k}"] = m["recall"][str(k)]
+        rows.append(row)
+    return pd.DataFrame(rows).set_index("method")
+
+
+def e6_repeats_table(result: dict[str, Any]) -> pd.DataFrame:
+    """E6 on one site: each repeat's masking."""
+    cols = ["repeat", "seed", "share", "eligiblePairs", "masked", "targets", "queries"]
+    return pd.DataFrame(result["repeats"])[cols].set_index("repeat")
+
+
+def e3_table(result: dict[str, Any]) -> pd.DataFrame:
+    """E3 on one run: each k × method, the top-k fixes applied together (total ΔPR over the
+    weak-authority and orphan pages). Paired tests across sites: e3.py on a corpus batch."""
+    rows = [
+        {
+            "k": b["k"],
+            "method": m["method"],
+            "selected": m["selected"],
+            "targets covered": m["targetsCovered"],
+            "total ΔPR": m["totalDeltaPr"],
+            "total ΔPR sd": m["totalDeltaPrSd"],
+            "Σ single ΔPR": m["sumSingleDeltaPr"],
+            "newly reachable": m["newlyReachable"],
+            "mean REF": m["meanRef"],
+            "mean cosine": m["meanCosine"],
+        }
+        for b in result["byK"]
+        for m in b["methods"]
+    ]
+    return pd.DataFrame(rows).set_index(["k", "method"])
+
+
+def e3_pool_table(result: dict[str, Any]) -> pd.DataFrame:
+    """E3 on one run: the targets and the admissible pool."""
+    t, p = result["targets"], result["pool"]
+    return pd.Series(
+        {
+            "weak-authority pages": t["weak"],
+            "orphans": t["orphan"],
+            "admissible fixes": p["pairs"],
+            "weak pages with a donor": p["weakTargetsWithDonors"],
+            "orphans with a donor": p["orphanTargetsWithDonors"],
+            "Σ PR of the targets before": result["targetPagerankBefore"],
+        }
+    ).to_frame("value")
 
 
 def bootstrap_ci(
@@ -152,31 +260,14 @@ def summary_series(result: dict[str, Any], keys: list[str]) -> pd.Series:
 
 
 TABLES = {
-    "E1": lambda r: [("Policies", e1_table(r))],
-    "E2": lambda r: [("Channels", e2_table(r))],
-    "E3": lambda r: [("Methods", e3_table(r)), ("LinkLens vs baselines (paired)", e3_paired_tests(r))],
-    "E4": lambda r: [
-        (
-            "Stability",
-            summary_series(
-                r,
-                [
-                    "daysApart",
-                    "pagesJaccard",
-                    "edgesJaccard",
-                    "orphansJaccard",
-                    "pagerankSpearman",
-                    "meanAbsDepthShift",
-                    "topFixesJaccard",
-                    "caseAgreement",
-                ],
-            ).to_frame("value"),
-        )
-    ],
-    "E5": lambda r: [
-        ("Calibration", summary_series(r, ["ours", "screamingFrog", "common", "coverageJaccard", "depth", "inlinksSpearman"]).to_frame("value"))
-    ],
-    "E6": lambda r: [("Hide-and-recover", recovery_table(r))],
+    "E1": lambda r: [("Policies", e1_table(r))]
+    + ([("Policy pairs", e1_pairs_table(r))] if r.get("pairs") else []),
+    "E2": lambda r: [("Channels", e2_table(r))]
+    + ([("Each channel removed", e2_removals_table(r))] if r.get("removals") else []),
+    "E3": lambda r: [("Targets and pool", e3_pool_table(r)), ("Top-k fixes applied together", e3_table(r))],
+    "E4": lambda r: [("Pages", e4_pages_table(r)), ("Comparisons", e4_comparisons_table(r))],
+    "E5": lambda r: [("Calibration", e5_table(r)), ("Disagreement categories", e5_categories_table(r))],
+    "E6": lambda r: [("Link-masking recovery", e6_table(r)), ("Repeats", e6_repeats_table(r))],
     "E7": lambda r: [("σ ablation", recovery_table(r)), ("σ pairs", sigma_paired_tests(r))],
     "E8": lambda r: [
         (

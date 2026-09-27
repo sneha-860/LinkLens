@@ -379,3 +379,46 @@ export function validateWarmStart(
     meanIterationsCold: sample.length === 0 ? 0 : coldIt / sample.length,
   };
 }
+
+/** The outcome of several links added at once (E3's joint evaluation). */
+export interface JointResult {
+  /** PageRank after every link is in place (a copy; the baseline is untouched). */
+  readonly rank: Float64Array;
+  /** Click depth after (−1 = unreachable). */
+  readonly depth: Int32Array;
+  /** Σ_i |PR'(i) − PR(i)| over the whole site. */
+  readonly deltaPrL1: number;
+  readonly iterations: number;
+  readonly converged: boolean;
+}
+
+/**
+ * Pure: a copy of the graph with every link u→v set to at least `bodyWeight` (added, or an
+ * existing link raised; duplicates count once), PageRank recomputed (warm-started from the
+ * baseline unless `warmStart` is false) and depths recomputed. The joint effect is not the sum
+ * of the single-link effects: links to the same target, or from the same donor, interact.
+ */
+export function applyLinks(
+  g: WeightedGraph,
+  base: Baseline,
+  links: readonly { readonly donor: number; readonly target: number }[],
+  bodyWeight: number,
+  params: PageRankParams,
+  warmStart = true,
+): JointResult {
+  let h = g;
+  for (const l of links) h = withLink(h, l.donor, l.target, bodyWeight);
+  const pr = weightedPagerank(h, params, warmStart ? base.rank : undefined);
+  const rank = Float64Array.from(pr.scores);
+  let l1 = 0;
+  for (let i = 0; i < rank.length; i++) {
+    l1 += Math.abs((rank[i] as number) - (base.rank[i] as number));
+  }
+  return {
+    rank,
+    depth: Int32Array.from(depthFromSeed(h)),
+    deltaPrL1: l1,
+    iterations: pr.iterations,
+    converged: pr.converged,
+  };
+}

@@ -156,6 +156,15 @@ export async function loadReconciliation(
   runId: number,
   policyId: PolicyId,
 ): Promise<Reconciliation> {
+  return reconcile(await loadReconcileInput(db, runId, policyId));
+}
+
+/** What `reconcile` needs for a run under `policyId` (the raw observations, as stored). */
+export async function loadReconcileInput(
+  db: Queryable,
+  runId: number,
+  policyId: PolicyId,
+): Promise<ReconcileInput> {
   const { observations, context, config } = await loadRunGraphInputs(db, runId);
   const policy = POLICIES[policyId];
   const { graph } = deriveGraphFromObservations(observations, policyId, context, config);
@@ -165,14 +174,14 @@ export async function loadReconciliation(
   );
 
   const rows = await listDiscoveryObservations(db, runId);
-  return reconcile({
+  return {
     runId,
     policyVersion: policy.version,
     observations: rows,
     isInternal: makeInternalTest(observations.seedUrl, config.includeSubdomains),
     canonicalise: (url) => policy.canonicalise(url, context),
     graph: reach,
-  });
+  };
 }
 
 /** loadReconciliation, appended as a `discovery-reconciliation` artefact. */

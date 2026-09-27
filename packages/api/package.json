@@ -4,6 +4,12 @@
   "private": true,
   "description": "LinkLens HTTP API (Express)",
   "type": "module",
+  "exports": {
+    "./pipeline": {
+      "types": "./src/pipeline.ts",
+      "default": "./src/pipeline.ts"
+    }
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",

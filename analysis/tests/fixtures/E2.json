@@ -271,6 +271,85 @@
         "removed": "llms_txt",
         "orphansLost": 0
       }
+    ],
+    "orphansBy": {
+      "only": {
+        "link_graph": 0,
+        "xml_sitemap": 0,
+        "robots_sitemap": 0,
+        "html_sitemap": 0,
+        "feed": 0,
+        "llms_txt": 0
+      },
+      "several": 1
+    },
+    "removals": [
+      {
+        "channel": "link_graph",
+        "pagesTotal": 1,
+        "pagesExclusive": 1,
+        "orphansTotal": 0,
+        "orphansExclusive": 0,
+        "orphansExclusiveShare": 0,
+        "inventoryWithout": 2,
+        "orphansWithout": 1,
+        "lostOrphans": []
+      },
+      {
+        "channel": "xml_sitemap",
+        "pagesTotal": 1,
+        "pagesExclusive": 0,
+        "orphansTotal": 1,
+        "orphansExclusive": 0,
+        "orphansExclusiveShare": 0,
+        "inventoryWithout": 3,
+        "orphansWithout": 1,
+        "lostOrphans": []
+      },
+      {
+        "channel": "robots_sitemap",
+        "pagesTotal": 0,
+        "pagesExclusive": 0,
+        "orphansTotal": 0,
+        "orphansExclusive": 0,
+        "orphansExclusiveShare": 0,
+        "inventoryWithout": 3,
+        "orphansWithout": 1,
+        "lostOrphans": []
+      },
+      {
+        "channel": "html_sitemap",
+        "pagesTotal": 0,
+        "pagesExclusive": 0,
+        "orphansTotal": 0,
+        "orphansExclusive": 0,
+        "orphansExclusiveShare": 0,
+        "inventoryWithout": 3,
+        "orphansWithout": 1,
+        "lostOrphans": []
+      },
+      {
+        "channel": "feed",
+        "pagesTotal": 1,
+        "pagesExclusive": 0,
+        "orphansTotal": 1,
+        "orphansExclusive": 0,
+        "orphansExclusiveShare": 0,
+        "inventoryWithout": 3,
+        "orphansWithout": 1,
+        "lostOrphans": []
+      },
+      {
+        "channel": "llms_txt",
+        "pagesTotal": 1,
+        "pagesExclusive": 1,
+        "orphansTotal": 0,
+        "orphansExclusive": 0,
+        "orphansExclusiveShare": 0,
+        "inventoryWithout": 2,
+        "orphansWithout": 1,
+        "lostOrphans": []
+      }
     ]
   }
 }
