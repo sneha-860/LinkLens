@@ -261,16 +261,47 @@ def e6_rows(g: Graph, scores: np.ndarray) -> pd.DataFrame:
     return pd.concat(rows, ignore_index=True)
 
 
+def e6_query_metrics(g: Graph, scores: np.ndarray, ks: list[int]) -> dict[str, pd.DataFrame]:
+    """Per method, one row per query of repeat `g`: the same values as e6_rows + query_metrics
+    (tested), computed on arrays per target instead of a table per query."""
+    from .metrics import Ranking, auc, recall_at, reciprocal_rank
+
+    pairs = g.pairs.assign(graphsage=scores)
+    cols = {
+        "graphsage": pairs["graphsage"].fillna(-np.inf).to_numpy(dtype=float),
+        "hybrid": pairs["hybrid"].to_numpy(dtype=float),
+        "cosine": pairs["cosine"].fillna(-np.inf).to_numpy(dtype=float),
+        "ref": pairs["ref"].to_numpy(dtype=float),
+    }
+    donors = pairs["donor"].to_numpy()
+    rows: dict[str, list[dict]] = {m: [] for m in METHODS}
+    by_target = pairs.groupby("target", sort=False).indices
+    for t, qs in g.queries.groupby("target", sort=True):
+        idx = by_target[t]
+        cand_donors = donors[idx]
+        masked = set(qs["donor"])
+        for d in sorted(masked):
+            keep = ~np.isin(cand_donors, list(masked - {d}))
+            pos = int(np.flatnonzero(cand_donors[keep] == d)[0])
+            for m in METHODS:
+                s = cols[m][idx][keep]
+                r = Ranking(int((s > s[pos]).sum()), int((s == s[pos]).sum()), len(s))
+                rows[m].append(
+                    {"query": f"{g.repeat}|{t}|{d}", "rr": reciprocal_rank(r), "auc": auc(r),
+                     **{f"recall@{k}": recall_at(r, k) for k in ks}}
+                )
+    return {m: pd.DataFrame(v) for m, v in rows.items()}
+
+
 def e6_metrics(site: SiteGraphs, ks: list[int], repeat_scores: dict[int, np.ndarray]) -> list[dict]:
     """Per repeat and method: E6's metrics (mean over queries), plus the repeat's query count."""
     out = []
     for g in site.repeats:
-        rows = e6_rows(g, repeat_scores[g.repeat])
-        if rows.empty:
+        if g.queries is None or g.queries.empty:
             continue
-        rows["graphsage"] = rows["graphsage"].fillna(-np.inf)
+        per_method = e6_query_metrics(g, repeat_scores[g.repeat], ks)
         for m in METHODS:
-            s = summarise(query_metrics(rows, rows[m].to_numpy(dtype=float), ks), ks)
+            s = summarise(per_method[m], ks)
             for metric, v in s.items():
                 out.append({"site": site.id, "architecture_class": site.architecture_class,
                             "repeat": g.repeat, "method": m, "metric": metric, "value": v})

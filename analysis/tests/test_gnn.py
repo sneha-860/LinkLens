@@ -169,3 +169,19 @@ def test_a_site_without_pages_is_skipped(graphs: Path, tmp_path: Path):
     gnn.cross_validate(gs, out)
     assert not (out / "predictions" / "empty.json").exists()
     assert "empty" not in json.loads((out / "predictions" / "a.json").read_text())["model"]["trainedOn"]
+
+
+def test_fast_e6_metrics_equal_the_table_path(graphs: Path):
+    g = gnn.load(graphs).sites[1].repeats[1]
+    scores = np.random.default_rng(3).normal(size=len(g.pairs)).round(1)  # ties included
+    scores[::7] = np.nan  # unscored pairs rank last
+    fast = gnn.e6_query_metrics(g, scores, [5, 10])
+    rows = gnn.e6_rows(g, scores)
+    rows["graphsage"] = rows["graphsage"].fillna(-np.inf)
+    for m in gnn.METHODS:
+        slow = metrics.query_metrics(rows, rows[m].to_numpy(dtype=float), [5, 10])
+        pd.testing.assert_frame_equal(
+            fast[m].sort_values("query").reset_index(drop=True),
+            slow.sort_values("query").reset_index(drop=True),
+            check_like=True,
+        )
