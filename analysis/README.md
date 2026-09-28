@@ -24,6 +24,25 @@ pnpm --filter @linklens/eval corpus export --batch pilot    # writes the tidy CS
 python -m linklens_analysis corpus ../results/corpus/pilot --figures ../results/corpus/pilot/figures
 ```
 
+Every table and figure for RQ1–RQ5, in one command:
+
+```sh
+python make_all.py ../results/corpus/pilot          # or: python -m linklens_analysis make-all …
+```
+
+It writes `../results/corpus/pilot/results/` (or `--out <dir>`): each table as CSV and LaTeX (booktabs) in `tables/`, each figure as PDF and PNG (plus a `\begin{figure}` snippet) in `figures/`, and a `README.md` that maps every output to its research question and experiment:
+
+| RQ  | Question                                  | Experiments |
+| --- | ----------------------------------------- | ----------- |
+| RQ0 | The corpus and its architecture classes   | corpus      |
+| RQ1 | Canonicalisation sensitivity              | E1          |
+| RQ2 | Multi-channel orphan discovery            | E2          |
+| RQ3 | Fixes against baselines                   | E3          |
+| RQ4 | Re-crawl stability, Screaming Frog        | E4, E5      |
+| RQ5 | Semantic layer and σ design (C5)          | E6, E7      |
+
+Outputs whose data is not there yet (no re-crawl, no Screaming Frog import) are skipped and listed with the reason. `manifest.json` records the SHA-256 of every input CSV. The per-experiment commands below print the same tables as Markdown.
+
 E1 (every pair of policies per site, from `policy_pairs.csv`):
 
 ```sh
@@ -79,6 +98,14 @@ python -m linklens_analysis e6 ../results/corpus/pilot [--alpha 0.05]
 
 It prints each method's MRR, Recall@5/10/20 and AUC per class (mean over sites, bootstrap 95% CI), then the refutation test for C5: the hybrid (REF-gated cosine) against cosine, paired over sites (Wilcoxon signed-rank, one- and two-sided, rank-biserial effect size, Holm over MRR, R@10 and AUC), with a one-line verdict on MRR.
 
+E7 (the σ / ε / α ablation, from `e7.csv` and `e7_sigma_pairs.csv`):
+
+```sh
+python -m linklens_analysis e7 ../results/corpus/pilot --figures ../results/corpus/pilot/figures
+```
+
+It prints the σ ablation table (top-k overlap with the default, E3 gain, E6 recovery per σ variant, all sites and each class), the σ variants' pairwise top-k overlap, and the ε and α sweeps as tables, and draws them as sensitivity curves (`e7_epsilon_curves`, `e7_alpha_curves`).
+
 `metrics.csv` has one row per site × policy × metric (`batch_id, site_id, architecture_class, run_id, policy, policy_version, is_audit_policy, metric, value`); `sites.csv` and `stages.csv` describe the sites and the pipeline stages. In Python:
 
 ```python
@@ -92,6 +119,18 @@ corpus.policy_effect(batch.metrics, "graph.nodes")  # Friedman across P0–P5
 style.apply()                                     # the shared plotting style
 corpus.plot_by_class(batch.metrics, "graph.mean_depth")
 ```
+
+### L13 learned prioritiser (`ml/`)
+
+Needs LightGBM: `pip install -e ".[ml]"`. After `pnpm --filter @linklens/eval l13 export --batch <b> --out <dir>`:
+
+```sh
+python -m ml train  <dir>/<b>/l13/dataset --out <dir>/<b>/l13/model   # leave-one-site-out, TreeSHAP
+pnpm --filter @linklens/eval l13 import --batch <b> --out <dir>        # artefacts + e3.csv
+python -m ml report <dir>/<b>/l13/model                                # REPORT.md + figures/shap_summary
+```
+
+The model is a LightGBM lambdarank trained on E6 hide-and-recover labels (one hidden donor per query), each site scored by a model that never saw it. The report compares it with S on E6 (MRR, recall@k, AUC; paired Wilcoxon across sites) and E3 (total ΔPR of the top k), and says plainly when it does not beat S.
 
 ### Plotting style
 

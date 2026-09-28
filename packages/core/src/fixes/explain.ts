@@ -6,13 +6,16 @@ import type { ProminenceRegion } from "../config.js";
 import type { ProminenceEdge } from "../prominence/weights.js";
 import type { MatchedTerm } from "../semantic/ref.js";
 import { parseReference } from "../url/rfc3986.js";
+import type { PageType } from "../config.js";
+import type { ImportanceComponents } from "../importance/importance.js";
+import type { AnchorResult } from "./anchor.js";
 import type { CandidateAction } from "./candidates.js";
 import type { DonorEffort } from "./effort.js";
 import type { RescuedOrphan } from "./rescue.js";
 import type { FixRecord } from "./scoring.js";
 
 /** Bump whenever any template, number format or field can change. */
-export const EXPLAIN_VERSION = "explain@1.1.0";
+export const EXPLAIN_VERSION = "explain@1.3.0";
 export const EXPLANATIONS_ARTEFACT = "explanations";
 
 // ---------- deterministic formatting ----------
@@ -143,6 +146,8 @@ export interface FixExplanation {
   readonly target: string;
   readonly type: CandidateAction;
   readonly needs: TargetNeed[];
+  /** The target's page type and importance (L12), or null when not computed. */
+  readonly targetPage: TargetPage | null;
   readonly donorEvidence: {
     readonly ref: number;
     /** The top matched n-grams behind REF, largest share first, with their words. */
@@ -150,6 +155,11 @@ export interface FixExplanation {
     /** null when a page has no embedding (e.g. an orphan). */
     readonly cosine: number | null;
   };
+  /**
+   * Where the link goes: the donor paragraph that best covers the target's title (element-level
+   * REF) and the anchor to use in it (null when not computed).
+   */
+  readonly anchor: AnchorResult | null;
   readonly link: {
     readonly exists: boolean;
     readonly omega: number | null;
@@ -202,6 +212,50 @@ export interface FixExplanationInput {
   readonly explainTerms: number;
   /** The words of a matched term (the target's, then the donor's, then the site's). */
   readonly surface?: Surface;
+  /** The element-level REF anchor suggestion (see anchor.ts); without it there is no line. */
+  readonly anchor?: AnchorResult;
+  /** The target's page type and importance (L12); without it there is no "Target page" line. */
+  readonly targetPage?: TargetPage;
+}
+
+/** A target's page type (rule-based) and importance in [0, 1] with its components (L12). */
+export interface TargetPage {
+  readonly type: PageType;
+  readonly rule: string;
+  readonly importance: number;
+  readonly components: ImportanceComponents;
+  /** Depth and inbound main-content links behind the components (null for an orphan). */
+  readonly depth: number | null;
+  readonly inboundBodyLinks: number;
+}
+
+const TYPE_NAMES: Readonly<Record<PageType, string>> = {
+  homepage: "the homepage",
+  hub: "a category/hub page",
+  product: "a product page",
+  article: "an article/doc page",
+  utility: "a utility page",
+  other: "an unclassified page",
+};
+
+/** How the page type was decided, in words. */
+function ruleWords(rule: string): string {
+  if (rule === "seed") return "the crawl's seed";
+  if (rule === "default") return "no rule matched";
+  const [kind, what] = rule.split(":");
+  if (kind === "schema") return `schema.org ${what}`;
+  if (kind === "url") return "its URL";
+  return "its structure";
+}
+
+/** The "Target page" line: type, why, and importance with its components. */
+function targetPageLine(t: TargetPage, target: string): string {
+  const c = t.components;
+  return (
+    `Target page: ${target} is ${TYPE_NAMES[t.type]} (${ruleWords(t.rule)}); importance ${f2(t.importance)} ` +
+    `(type prior ${f2(c.typePrior)}, PageRank percentile ${f2(c.pagerank)}, ` +
+    `${t.depth === null ? "unreachable" : `depth ${t.depth}`}, ${plural(t.inboundBodyLinks, "inbound main-content link")}).`
+  );
 }
 
 function depthPhrase(before: number | null, after: number | null): string {
@@ -209,6 +263,34 @@ function depthPhrase(before: number | null, after: number | null): string {
   if (before === null) return `becomes reachable, ${plural(after, "click")} from the home page`;
   if (after === before) return `stays ${plural(after, "click")} deep`;
   return `goes from ${before} to ${plural(after, "click")} deep (${after - before})`;
+}
+
+const NO_ANCHOR: Readonly<
+  Record<Exclude<AnchorResult, { status: "suggested" }>["reason"], (target: string) => string>
+> = {
+  "no-paragraphs": () => "has no paragraph to place it in",
+  "no-title-terms": (t) => `cannot be matched: ${t}'s title has no distinctive term`,
+  "not-above-epsilon": (t) => `has no paragraph about ${t}'s title`,
+};
+
+/**
+ * The "Where" line: the paragraph (with the anchor in [brackets]) and the anchor, or why there
+ * is none.
+ */
+function anchorLine(a: AnchorResult, donor: string, target: string, epsilon: number): string {
+  if (a.status === "none") {
+    const best =
+      a.bestRef === null
+        ? ""
+        : ` (best: paragraph ${(a.bestParagraphIndex as number) + 1} of ${a.paragraphs}, REF ${f2(a.bestRef)} ≤ ε ${epsilon})`;
+    return `Where: ${donor} ${NO_ANCHOR[a.reason](target)}${best}; write a sentence that introduces ${target}.`;
+  }
+  const { text, anchorStart, anchorEnd } = a.excerpt;
+  const marked = `${text.slice(0, anchorStart)}[${text.slice(anchorStart, anchorEnd)}]${text.slice(anchorEnd)}`;
+  return (
+    `Where: suggested anchor '${a.anchor}' in paragraph ${a.paragraphIndex + 1} of ${a.paragraphs} ` +
+    `of ${donor} (REF to ${target}'s title ${f2(a.ref)} > ε ${epsilon}): "${marked}"`
+  );
 }
 
 /** Pure: the explanation of one fix (or orphan rescue) from its evidence. */
@@ -240,10 +322,12 @@ export function explainFix(x: FixExplanationInput): FixExplanation {
 
   const lines = [
     `Why the target: ${target} ${needs.join("; ")}.`,
+    ...(x.targetPage === undefined ? [] : [targetPageLine(x.targetPage, target)]),
     `Why this donor: REF(u,v) ${f2(x.ref)} > ε ${x.epsilon}` +
       (matched.length > 0 ? `, on ${quote(matched)}` : "") +
       (x.cosine === null ? "; no embedding cosine" : `; cosine ${f2(x.cosine)}`) +
       ".",
+    ...(x.anchor === undefined ? [] : [anchorLine(x.anchor, donor, target, x.epsilon)]),
     linkLine,
     `Predicted: ${impact}; ${target} ${depthPhrase(x.depthBefore, x.depthAfter)}.`,
     `Effort: κ ${x.effort.kappa} (${plural(x.effort.kappa, "body link block")}); ${reach}.`,
@@ -253,6 +337,9 @@ export function explainFix(x: FixExplanationInput): FixExplanation {
     `${verb} from ${donor} to ${target}${x.type === "make-visible" ? " more visible" : ""}: ` +
     `the target ${needs[0]}; REF ${f2(x.ref)}` +
     (matched.length > 0 ? ` on ${quote(matched.slice(0, 2))}` : "") +
+    (x.anchor?.status === "suggested"
+      ? `; anchor '${x.anchor.anchor}' in paragraph ${x.anchor.paragraphIndex + 1}`
+      : "") +
     `; predicted ${impact}; κ ${x.effort.kappa}.`;
 
   return {
@@ -262,7 +349,9 @@ export function explainFix(x: FixExplanationInput): FixExplanation {
     target: x.target,
     type: x.type,
     needs: [...x.needs],
+    targetPage: x.targetPage ?? null,
     donorEvidence: { ref: x.ref, matched, cosine: x.cosine },
+    anchor: x.anchor ?? null,
     link: {
       exists: x.edge !== null,
       omega: x.edge?.omega ?? null,
@@ -376,6 +465,14 @@ export interface ExplainInput {
    * without it, explanations quote the stems.
    */
   readonly surface?: (term: string, nodes: readonly string[]) => string;
+  /** The anchor suggestion for a (donor, target) pair (anchor.ts); without it there is none. */
+  /** The target's page type and importance (L12); without it there is no "Target page" line. */
+  readonly targetPage?: (target: string, kind: "fix" | "rescue") => TargetPage | undefined;
+  readonly anchor?: (
+    donor: string,
+    target: string,
+    kind: "fix" | "rescue",
+  ) => AnchorResult | undefined;
 }
 
 export interface Explanations {
@@ -394,6 +491,14 @@ export function explainAll(input: ExplainInput): Explanations {
   const surfaceFor = (u: string, v: string): Surface => {
     const lookUp = input.surface;
     return lookUp === undefined ? asWritten : (term) => lookUp(term, [v, u]);
+  };
+  const anchorFor = (u: string, v: string, kind: "fix" | "rescue") => {
+    const a = input.anchor?.(u, v, kind);
+    const t = input.targetPage?.(v, kind);
+    return {
+      ...(a === undefined ? {} : { anchor: a }),
+      ...(t === undefined ? {} : { targetPage: t }),
+    };
   };
 
   const fixes = input.fixes.map((f) =>
@@ -423,6 +528,7 @@ export function explainAll(input: ExplainInput): Explanations {
       rank: f.rank,
       explainTerms: input.explainTerms,
       surface: surfaceFor(f.donor, f.target),
+      ...anchorFor(f.donor, f.target, "fix"),
     }),
   );
 
@@ -454,6 +560,7 @@ export function explainAll(input: ExplainInput): Explanations {
         rank: d.rank,
         explainTerms: input.explainTerms,
         surface: surfaceFor(d.donor, o.node),
+        ...anchorFor(d.donor, o.node, "rescue"),
       }),
     ),
   );

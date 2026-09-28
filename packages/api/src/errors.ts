@@ -1,6 +1,6 @@
 import type { ErrorRequestHandler, NextFunction, Request, RequestHandler, Response } from "express";
 import { ZodError } from "zod";
-import { prominence } from "@linklens/core";
+import { prominence, rating } from "@linklens/core";
 import type { Logger } from "./pipeline.js";
 
 /** An error with an HTTP status and a stable machine-readable code. */
@@ -55,6 +55,7 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
         err.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
       );
     }
+    if (err instanceof rating.RatingError) return send(400, "invalid_rating", err.message);
     if (err instanceof prominence.CsvError)
       return send(400, "invalid_csv", err.message, err.problems);
     const e = err as { type?: string; status?: number; message?: string };

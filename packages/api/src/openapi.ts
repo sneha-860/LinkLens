@@ -3,6 +3,8 @@ import {
   AnalyticsQuerySchema,
   CreateAuditSchema,
   DiagnosisQuerySchema,
+  RatingQuerySchema,
+  RatingSchema,
   SessionSchema,
   FixesQuerySchema,
   IssuesQuerySchema,
@@ -79,6 +81,7 @@ export function openApiDocument(): JsonSchema {
         },
         CreateAudit: schema(CreateAuditSchema),
         Session: schema(SessionSchema),
+        Rating: schema(RatingSchema),
       },
       securitySchemes: {
         bearer: { type: "http", scheme: "bearer", description: "LINKLENS_API_KEY" },
@@ -194,7 +197,8 @@ export function openApiDocument(): JsonSchema {
       },
       "/audits/{id}/fixes": {
         get: {
-          summary: "Ranked fixes S(u→v) = ΔPR × σ / κ, top k, with explanations",
+          summary:
+            "Ranked fixes S(u→v) = ΔPR × σ / κ (or the L13 learned priority), top k, with explanations",
           parameters: [idParam, ...queryParams(FixesQuerySchema)],
           responses: { "200": json("Fixes"), ...errors, ...notYet },
         },
@@ -277,6 +281,63 @@ export function openApiDocument(): JsonSchema {
             },
             ...busy,
           },
+        },
+      },
+      "/audits/{id}/links": {
+        get: {
+          summary:
+            "Broken internal links (4xx/5xx targets with their source pages) and redirect chains",
+          description:
+            "From the recorded crawl fetches, no request made: each link joined to the fetch of its " +
+            "fragment-less resolved URL. Broken = final status 4xx/5xx (redirects included); chains = " +
+            "≥ config.linkHealthMinChainHops redirect hops. Links to unfetched targets and fetch " +
+            "failures without a status are counted, not judged.",
+          parameters: [idParam],
+          responses: { "200": json("Link health report"), ...errors, ...notYet },
+        },
+      },
+      "/audits/{id}/rating": {
+        get: {
+          summary: "E8 rating page: the blind sample (no ranks or scores) and one rater's answers",
+          description:
+            "With ?rater=A or B, that rater's own latest answers only; the other rater's are never " +
+            "returned. `sample` is null until POST …/rating/sample.",
+          parameters: [idParam, ...queryParams(RatingQuerySchema)],
+          responses: { "200": json("Sample and answers"), ...errors },
+        },
+      },
+      "/audits/{id}/rating/sample": {
+        post: {
+          summary: "Draw the blind rating sample (once per audit; asking again returns it)",
+          description:
+            "config.ratingSampleSize fixes drawn with randomSeed from the top config.ratingPoolSize " +
+            "of the audit's fix ranking, in a random order, with page titles and suggested placement.",
+          parameters: [idParam],
+          responses: {
+            "201": json("Sample created"),
+            "200": json("The existing sample"),
+            ...errors,
+            ...notYet,
+          },
+        },
+      },
+      "/audits/{id}/rating/answers": {
+        post: {
+          summary: "Record one rater's answer for an item (relevant, placement quality)",
+          description: "Append-only: a new answer replaces the rater's earlier one for the item.",
+          parameters: [idParam],
+          requestBody: {
+            required: true,
+            content: { "application/json": { schema: { $ref: "#/components/schemas/Rating" } } },
+          },
+          responses: { "201": json("Saved"), ...errors, ...notYet },
+        },
+      },
+      "/audits/{id}/rating/summary": {
+        get: {
+          summary: "Precision@k per rater and together, and Cohen's kappa between the raters",
+          parameters: [idParam],
+          responses: { "200": json("Rating summary"), ...errors, ...notYet },
         },
       },
       "/audits/{id}/export": {

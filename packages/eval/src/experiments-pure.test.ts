@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalise, fixes, makeConfig, type db as q, type discovery } from "@linklens/core";
+import { fixes, makeConfig, type discovery } from "@linklens/core";
 import { channelAblation } from "./e2-channels.js";
 import {
   compareE3,
@@ -9,7 +9,6 @@ import {
   type PoolEntry,
 } from "./e3-baselines.js";
 import { parseRatings, ratingSheet, summariseRatings } from "./e8-ratings.js";
-import { hideAndRecover, type RecoveryInputs } from "./recovery.js";
 
 const S = "https://s.test";
 
@@ -245,116 +244,3 @@ describe("E8 human rating", () => {
 });
 
 // ---------- E6 / E7 ----------
-describe("E6/E7 hide-and-recover", () => {
-  // A hub about whales, sharks and turtles links (main content) to each; each links home.
-  const pagesDef: [string, string, string, string[]][] = [
-    ["/", "Home", "Welcome to the ocean site.", ["/guides/"]],
-    [
-      "/guides/",
-      "Ocean guides",
-      "Whale songs. Shark teeth. Turtle nests.",
-      ["/guides/whale", "/guides/shark", "/guides/turtle"],
-    ],
-    ["/guides/whale", "Whale songs", "Whale songs travel far.", ["/"]],
-    ["/guides/shark", "Shark teeth", "Shark teeth grow back.", ["/"]],
-    ["/guides/turtle", "Turtle nests", "Turtle nests on beaches.", ["/"]],
-    ["/cakes/", "Cakes", "Chocolate cake recipes.", ["/"]],
-  ];
-  let id = 0;
-  const pages = pagesDef.map(([path, title, body], i) => ({
-    fetchId: i + 1,
-    url: S + path,
-    title,
-    h1: title,
-    bodyText: body,
-  }));
-  const linkRows: q.LinkObservationRow[] = pagesDef.flatMap(([, , , targets], i) =>
-    targets.map((t, pos) => ({
-      id: ++id,
-      runId: 1,
-      sourceFetchId: i + 1,
-      rawHref: t,
-      resolvedUrl: S + t,
-      anchorText: t.split("/").filter(Boolean).pop() ?? "home",
-      rel: null,
-      domRegion: t === "/" ? "nav" : "main", // links home are navigation
-      domPath: `main>a:nth-of-type(${pos + 1})`,
-      templateSignature: "block",
-      positionIndex: pos,
-    })),
-  );
-  const inputs: RecoveryInputs = {
-    runId: 1,
-    policyId: "P0",
-    config: makeConfig({ frequentNgramDropPct: 0 }),
-    observations: {
-      runId: 1,
-      seedUrl: `${S}/`,
-      pages: pages.map((p) => ({ fetchId: p.fetchId, url: p.url })),
-      links: linkRows.map((l) => ({
-        id: l.id,
-        sourceFetchId: l.sourceFetchId,
-        resolvedUrl: l.resolvedUrl as string,
-        domRegion: l.domRegion,
-        anchorText: l.anchorText,
-        templateSignature: l.templateSignature,
-        rel: l.rel,
-      })),
-    },
-    context: canonicalise.EMPTY_CONTEXT,
-    pages,
-    linkRows,
-    cosine: null,
-  };
-
-  it("hides a sample of main-content links and finds where each donor ranks again (E6)", () => {
-    const r = hideAndRecover(inputs, {
-      sample: 2,
-      seed: 7,
-      sigmas: ["refOnly"],
-      ks: [1, 3],
-      requireRef: true,
-    });
-    expect(r.hidden).toHaveLength(2);
-    for (const h of r.hidden) expect(h.donor).not.toBe(h.target);
-    const ranks = r.bySigma["refOnly"]?.ranks ?? [];
-    expect(ranks).toHaveLength(2);
-    // The hub covers the animal pages' topics: when its link to one is hidden, it comes back first.
-    const hubRanks = r.hidden
-      .map((h, i) => (h.donor === `${S}/guides/` ? ranks[i] : undefined))
-      .filter((x) => x !== undefined);
-    for (const rank of hubRanks) expect(rank).toBe(1);
-    expect(r.candidateRecall).toBeGreaterThan(0);
-    expect(
-      hideAndRecover(inputs, {
-        sample: 2,
-        seed: 7,
-        sigmas: ["refOnly"],
-        ks: [1, 3],
-        requireRef: true,
-      }),
-    ).toEqual(r);
-  });
-
-  it("compares every σ on the same pool without the REF filter (E7)", () => {
-    const r = hideAndRecover(inputs, {
-      sample: 3,
-      seed: 1,
-      sigmas: ["refGateCosine", "cosineOnly", "refOnly", "blended"],
-      ks: [1, 5],
-      requireRef: false,
-    });
-    expect(Object.keys(r.bySigma).sort()).toEqual([
-      "blended",
-      "cosineOnly",
-      "refGateCosine",
-      "refOnly",
-    ]);
-    expect(r.sigmaAgreement).toHaveLength(6);
-    for (const m of Object.values(r.bySigma)) {
-      expect(m.recall[5]).toBeGreaterThanOrEqual(m.recall[1] as number);
-    }
-    // Without the REF filter, every hidden donor is a candidate again.
-    expect(r.candidateRecall).toBe(1);
-  });
-});

@@ -137,7 +137,8 @@ const REFS: [string, number][] = [
   ["/search?q=whales", 0.9], // utility → rejected
 ];
 const ref: RefMatrix = {
-  version: "ref@1.1.0",
+  version: "ref@1.2.0",
+  prefilter: null,
   textVersion: "text@1.1.0",
   runId: 1,
   policyVersion: "P0@1.0.0",

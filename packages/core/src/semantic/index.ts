@@ -4,5 +4,6 @@
  * with the ε cutoff and per-node normalisation ρ. The patent's session counts are replaced by
  * structural link prominence (see ../prominence).
  */
+export * from "./lsh-ensemble.js";
 export * from "./ref.js";
 export * from "./cosine.js";

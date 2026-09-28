@@ -230,6 +230,13 @@ describe("rankMasked", () => {
     expect(random?.mrr).toBeLessThan(1);
   });
 
+  it("extra ε gates: at the config's ε the gated hybrid is the hybrid itself", () => {
+    const g = rankMasked(m, vector, 1, "P3@1.0.0", inputs.config, [inputs.config.epsilon, 0.99]);
+    expect(g.gated?.[String(inputs.config.epsilon)]).toEqual(g.methods.refGateCosine);
+    expect(g.gated?.["0.99"]?.mrr).toBeCloseTo(g.methods.random?.mrr as number, 12);
+    expect(r.gated).toBeUndefined(); // only when asked for
+  });
+
   it("the hybrid gates cosine by REF > ε: with nothing above ε it is the random baseline", () => {
     const gated = rankMasked(m, vector, 1, "P3@1.0.0", { ...inputs.config, epsilon: 0.99 });
     expect(gated.methods.refGateCosine?.mrr).toBeCloseTo(gated.methods.random?.mrr as number, 12);

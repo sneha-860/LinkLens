@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
 
 // React Router builds a Request for each navigation with jsdom's AbortSignal, which Node's
@@ -12,6 +12,9 @@ globalThis.Request = class extends NodeRequest {
     super(input, rest);
   }
 } as typeof Request;
+
+// findBy*/waitFor wait up to 1 s by default, too little under a parallel run (see vite.config).
+configure({ asyncUtilTimeout: 5_000 });
 
 afterEach(() => {
   cleanup();

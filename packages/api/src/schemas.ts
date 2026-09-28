@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { audit, diagnosis, SIGMA_VARIANTS } from "@linklens/core";
+import { audit, db, diagnosis, SIGMA_VARIANTS } from "@linklens/core";
 
 export const POLICY_IDS = ["P0", "P1", "P2", "P3", "P4", "P5"] as const;
 export const PolicySchema = z
@@ -58,6 +58,12 @@ export const FixesQuerySchema = z
       .optional()
       .describe("Top k: 10, 25 or 50 (default config.fixTopK)"),
     scope: z.enum(["global", "target"]).default("global").describe("Top k overall, or per target"),
+    scoring: z
+      .enum(["formula", "learned"])
+      .default("formula")
+      .describe(
+        "formula: the run's rule (S, or S_imp); learned: the L13 model's priority (needs an imported learned-priority artefact)",
+      ),
   })
   .strict();
 
@@ -75,6 +81,28 @@ export const SensitivityQuerySchema = z
   })
   .strict();
 
+export const RaterSchema = z.enum(db.RATERS).describe("Rater slot (two raters per sample)");
+
+export const RatingQuerySchema = z
+  .object({ rater: RaterSchema.optional().describe("Include this rater's own answers") })
+  .strict();
+
+export const RatingSchema = z
+  .object({
+    itemId: z.string().min(1).max(4000).describe("The item (fix id) as listed in the sample"),
+    rater: RaterSchema,
+    name: z.string().trim().min(1).max(100).describe("The rater's name"),
+    relevant: z.boolean(),
+    placement: z
+      .enum(db.PLACEMENTS)
+      .describe("Placement quality of the suggested paragraph and anchor; na when not relevant"),
+  })
+  .strict()
+  .refine((r) => r.relevant || r.placement === "na", {
+    message: "an item marked not relevant has placement na",
+    path: ["placement"],
+  });
+
 export const EXPORT_FILES = [
   "audit.json",
   "summary.json",
@@ -87,6 +115,9 @@ export const EXPORT_FILES = [
   "orphans.json",
   "orphans.csv",
   "explanations.json",
+  "ratings.csv",
+  "broken-links.csv",
+  "redirect-chains.csv",
 ] as const;
 export const ExportFileParamsSchema = z.object({
   id: z.coerce.number().int().positive(),

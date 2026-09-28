@@ -31,10 +31,14 @@ import {
   type Calibration,
   type E3Result,
   type E6Result,
+  type E7Result,
   type PolicyCalibration,
   type Stability,
   type ExperimentRun,
 } from "../src/index.js";
+import { rankOf, reciprocalRank } from "../src/e6-masking.js";
+import { e6Rows, fixRows, siteFeatures } from "../src/l13/dataset.js";
+import { FEATURES } from "../src/l13/features.js";
 
 // LINKLENS_WRITE_FIXTURES=1 saves each result, in the CLI's --out format, as a fixture for the
 // Python analysis tests (analysis/tests/fixtures), so both sides share one shape.
@@ -486,17 +490,102 @@ describe("experiments on a stored run", () => {
     expect(again.result).toEqual(e6.result);
   });
 
-  it("E7: hides links and recovers them under every σ", async () => {
-    const e7 = await runExperiment(db, "E7", { runId: runA, policy: "P3", sample: 3 });
+  it("L13: E6 label rows (one positive per query, the hybrid σ reproduces E6) and fix rows", async () => {
+    const embedder = hashingEmbedder(embeddingOptions(config, tmpdir()));
+    const inputs = await loadRunInputs(db, runA, "P3");
+    const rows = await e6Rows(inputs, "P3", embedder);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) for (const f of FEATURES) expect(r).toHaveProperty(f);
+    const byQuery = new Map<string, typeof rows>();
+    for (const r of rows) byQuery.set(r.query, [...(byQuery.get(r.query) ?? []), r]);
+    for (const q of byQuery.values()) expect(q.filter((r) => r.label === 1)).toHaveLength(1);
+    // E6's hidden links are never linked in the masked world: no candidate has an existing edge.
+    expect(rows.every((r) => r.omega_existing === 0)).toBe(true);
+    // Same masking, same candidates: the REF-gated cosine column gives E6's refGateCosine MRR.
+    const e6 = (await runExperiment(db, "E6", { runId: runA, policy: "P3", embedder }))
+      .result as E6Result;
+    for (let rep = 0; rep < config.l13Repeats; rep++) {
+      const qs = [...byQuery.values()].filter((q) => q[0]?.repeat === rep);
+      const rr = qs.map((q) =>
+        reciprocalRank(
+          rankOf(
+            q.map((r) => r.sigma_hybrid),
+            q.findIndex((r) => r.label === 1),
+          ),
+        ),
+      );
+      const methods = e6.repeats[rep]?.methods;
+      expect(qs.length).toBe(e6.repeats[rep]?.queries);
+      expect(rr.reduce((a, b) => a + b, 0) / rr.length).toBeCloseTo(
+        methods?.refGateCosine?.mrr ?? NaN,
+        12,
+      );
+    }
+    // Fix rows are the stored ranking's fixes, in its order.
+    const stored = (await q.listArtefacts(db, runA, {
+      kind: fixes.FIX_RANKING_ARTEFACT,
+      policyVersion: "P3@1.0.0",
+    })) as { payload: unknown }[];
+    const ranking = stored[0]?.payload as fixes.FixRanking;
+    const fr = fixRows(siteFeatures(inputs, "P3"), inputs.config);
+    expect(fr.map((f) => f.fix_id)).toEqual(ranking.fixes.map((f) => f.id));
+  });
+
+  it("E7: re-ranks under every σ, an ε sweep and an α sweep, with E3 and E6 per setting", async () => {
+    await expect(runExperiment(db, "E7", { runId: runA, policy: "P3" })).rejects.toThrow(
+      /embedder/,
+    );
+    const embedder = hashingEmbedder(embeddingOptions(config, tmpdir()));
+    const e7 = await runExperiment(db, "E7", { runId: runA, policy: "P3", embedder });
     saveFixture(e7);
-    const r7 = e7.result as { bySigma: Record<string, unknown>; candidateRecall: number | null };
-    expect(Object.keys(r7.bySigma).sort()).toEqual([
-      "blended",
-      "cosineOnly",
-      "refGateCosine",
-      "refOnly",
-    ]);
-    expect(r7.candidateRecall).toBe(1);
+    const r = e7.result as E7Result;
+    // Per σ: 8 ε + 6 α − 1 shared under S, plus S_imp at the default ε and α (L12).
+    expect(r.rows).toHaveLength(4 * (8 + 6 - 1 + 1));
+    expect(r.sigmaPairs).toHaveLength(6);
+    const row = (sigma: string, epsilon: number, alpha: number, scoring = "S") =>
+      r.rows.find(
+        (x) =>
+          x.sigma === sigma && x.epsilon === epsilon && x.alpha === alpha && x.scoring === scoring,
+      );
+    const def = row("refGateCosine", 0.2, 0.1);
+    expect(def).toMatchObject({ isDefault: true, topKJaccardDefault: 1 });
+
+    // The default setting agrees with E3 and E6 run on their own.
+    const e3 = (await runExperiment(db, "E3", { runId: runA, policy: "P3", embedder }))
+      .result as E3Result;
+    const e3LinkLens = e3.byK.map(
+      (b) => b.methods.find((m) => m.method === "linklens")?.totalDeltaPr,
+    );
+    expect(r.e3Ks.map((k) => def?.e3.linklens[k])).toEqual(e3LinkLens);
+    const e6 = (await runExperiment(db, "E6", { runId: runA, policy: "P3", embedder }))
+      .result as E6Result;
+    expect(def?.e6).toEqual(e6.summary.refGateCosine);
+    expect(row("cosineOnly", 0.2, 0.1)?.e6).toEqual(e6.summary.cosine);
+    expect(row("refOnly", 0.05, 0.1)?.e6).toEqual(e6.summary.ref); // REF alone: ε-free in E6
+
+    // E6 does not depend on α.
+    expect(row("blended", 0.2, 0.3)?.e6).toEqual(row("blended", 0.2, 0.05)?.e6);
+
+    // The scoring sweep (L12): each σ also under S_imp at the default ε and α. The same fixes are
+    // ranked (another order), E3 is measured, and E6 equals S's by construction.
+    for (const sigma of ["refGateCosine", "cosineOnly", "refOnly", "blended"]) {
+      const s = row(sigma, 0.2, 0.1, "S");
+      const imp = row(sigma, 0.2, 0.1, "S_imp");
+      expect(imp).toMatchObject({ isDefault: false, sweeps: ["scoring"] });
+      expect(imp?.fixes).toBe(s?.fixes);
+      expect(imp?.e6).toEqual(s?.e6);
+      for (const k of r.e3Ks) expect(Number.isFinite(imp?.e3.linklens[k])).toBe(true);
+      expect(s?.sweeps).toContain("scoring");
+    }
+    expect(r.defaults.scoring).toBe("S");
+    for (const x of r.rows) {
+      expect(x.topKJaccardDefault).toBeGreaterThanOrEqual(0);
+      expect(x.topKJaccardDefault).toBeLessThanOrEqual(1);
+    }
+    // Deterministic.
+    expect((await runExperiment(db, "E7", { runId: runA, policy: "P3", embedder })).result).toEqual(
+      r,
+    );
   });
 
   it("E8: writes a rating sheet, then summarises the filled one", async () => {
@@ -587,6 +676,8 @@ sites:
         "e5_categories.csv",
         "e5_disagreements.csv",
         "e6.csv",
+        "e7.csv",
+        "e7_sigma_pairs.csv",
         "policy_pairs.csv",
         "sites.csv",
         "stages.csv",
@@ -685,6 +776,35 @@ sites:
       expect(Number(e6Of("0", "masking", "share"))).toBeGreaterThanOrEqual(0.1);
       expect(e6Of("0", "random", "auc")).toBe("0.5");
       expect(e6Of("0", "refGateCosine", "recall@10")).toBeDefined();
+      // The shared E6 run carries the extra gates, but e6.csv is E6's own metrics only.
+      expect(e6Rows.some((r) => r[7]?.startsWith("gate"))).toBe(false);
+      const e7Rows = readFileSync(join(dir, "e7.csv"), "utf8")
+        .trimEnd()
+        .split(String.fromCharCode(13, 10))
+        .slice(1)
+        .map((l) => l.split(","));
+      // Columns: … sigma 5, epsilon 6, alpha 7, scoring 8, is_default 9, sweeps 10, metric 11, value 12.
+      const e7Of = (sigma: string, epsilon: string, alpha: string, metric: string, scoring = "S") =>
+        e7Rows.find(
+          (r) =>
+            r[5] === sigma &&
+            r[6] === epsilon &&
+            r[7] === alpha &&
+            r[8] === scoring &&
+            r[11] === metric,
+        )?.[12];
+      expect(e7Of("refGateCosine", "0.2", "0.1", "topk_jaccard_default")).toBe("1");
+      expect(e7Rows.find((r) => r[9] === "1")?.[10]).toBe("sigma|epsilon|alpha|scoring");
+      expect(new Set(e7Rows.map((r) => `${r[5]}|${r[6]}|${r[7]}|${r[8]}`)).size).toBe(
+        4 * (8 + 6 - 1 + 1),
+      );
+      expect(e7Rows.filter((r) => r[8] === "S_imp").every((r) => r[10] === "scoring")).toBe(true);
+      expect(e7Of("blended", "0.2", "0.1", "e3_linklens@10", "S_imp")).toBeDefined();
+      expect(e7Of("cosineOnly", "0.05", "0.1", "e6_mrr")).toBeDefined();
+      const pairs = readFileSync(join(dir, "e7_sigma_pairs.csv"), "utf8")
+        .trimEnd()
+        .split(String.fromCharCode(13, 10));
+      expect(pairs).toHaveLength(1 + 6);
       expect(rows.filter((r) => r[6] === "1").every((r) => r[4] === "P3")).toBe(true);
       // The same rows every time (determinism).
       const again = await exportBatch(db, m, corpus, dir, git, noLog, embedder, wave);

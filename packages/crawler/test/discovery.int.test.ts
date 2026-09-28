@@ -574,6 +574,28 @@ describe("discovery on the fixture site", () => {
         "Why the target: /orphan.html is linked from nowhere and was found only via the XML sitemap.",
       );
       expect(aboutRescue?.donorEvidence.matched.length).toBeGreaterThan(0);
+
+      // Element-level REF: every rescue donor has an anchor result (the orphans' rescue pages
+      // give their titles); a suggested anchor is quoted verbatim from its paragraph.
+      for (const e of explained.rescues) {
+        expect(e.anchor, e.id).not.toBeNull();
+        if (e.anchor?.status === "suggested") {
+          const { text, anchorStart, anchorEnd } = e.anchor.excerpt;
+          expect(text.slice(anchorStart, anchorEnd)).toBe(e.anchor.anchor);
+          expect(e.anchor.ref).toBeGreaterThan(report.params.epsilon);
+          expect(e.lines).toContainEqual(expect.stringContaining(`'${e.anchor.anchor}'`));
+        }
+      }
+      // The orphan's title is just "Orphan", a word /about.html never uses: no paragraph to put
+      // the link in, and the explanation says so.
+      expect(aboutRescue?.anchor).toMatchObject({
+        status: "none",
+        reason: "not-above-epsilon",
+        paragraphs: 4,
+      });
+      expect(aboutRescue?.lines).toContain(
+        "Where: /about.html has no paragraph about /orphan.html's title (best: paragraph 1 of 4, REF 0.00 ≤ ε 0.2); write a sentence that introduces /orphan.html.",
+      );
     });
 
     it("works under a coarser policy (P3 nodes)", async () => {

@@ -1,4 +1,11 @@
-import type { Fix, GraphNodeAttributes, GraphResponse, Issue, IssueType } from "../../api/types.js";
+import type {
+  Fix,
+  GraphNodeAttributes,
+  GraphResponse,
+  Issue,
+  IssueType,
+  NodeImportance,
+} from "../../api/types.js";
 import { shortUrl } from "../../ui/format.js";
 
 // ---------- colours ----------
@@ -248,6 +255,8 @@ export interface NodeDetails {
   outbound: LinkRow[];
   /** Fixes whose target is this node (best first). */
   fixes: Fix[];
+  /** Page type and importance (L12), or null when not available. */
+  importance: NodeImportance | null;
 }
 
 function linkRows(
@@ -285,6 +294,7 @@ export function nodeDetails(
     attributes: n?.attributes ?? null,
     inGraph: n !== undefined,
     issues: issues.filter((i) => i.node === node),
+    importance: data.importance?.[node] ?? null,
     inbound: linkRows(
       edges
         .filter((e) => e.target === node)

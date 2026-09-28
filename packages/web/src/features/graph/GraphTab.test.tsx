@@ -36,6 +36,17 @@ const S = "https://example.com";
 const graph = (policy: string, extra = 0): GraphResponse => ({
   policy: policy as GraphResponse["policy"],
   policyVersion: `${policy}@1.0.0`,
+  importance: {
+    [`${S}/t1`]: {
+      type: "product",
+      rule: "schema:Product",
+      evidence: "Product",
+      importance: 0.62,
+      components: { typePrior: 0.8, pagerank: 0.55, depth: 0.17, inboundBodyLinks: 0.4 },
+      raw: { pagerank: 0.3, depth: 5, inboundBodyLinks: 2 },
+      schemaTypes: ["Product"],
+    },
+  },
   graph: {
     attributes: { seedNode: `${S}/` },
     nodes: [
@@ -149,6 +160,13 @@ describe("Graph tab", () => {
     await userEvent.click(await screen.findByRole("button", { name: `node ${S}/t1` }));
     const panel = screen.getByRole("complementary", { name: "Page details" });
     expect(within(panel).getByText("PageRank").nextSibling).toHaveTextContent("3.00e-1");
+    // Page type and importance (L12), with why and the components.
+    expect(within(panel).getByText("Page type").nextSibling).toHaveTextContent(
+      "Product schema.org Product",
+    );
+    expect(within(panel).getByText("Importance").nextSibling).toHaveTextContent(
+      "0.62 type prior 0.80 · PageRank percentile 0.55 · depth 0.17 · inbound body links 0.40 (2)",
+    );
     expect(within(panel).getByText("deep-page")).toBeInTheDocument();
     expect(within(panel).getByText("depth 5 (> 3)")).toBeInTheDocument();
     expect(

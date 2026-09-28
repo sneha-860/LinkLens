@@ -57,6 +57,119 @@ describe("Fixes tab", () => {
     expect(card).toHaveTextContent("template reach1 page");
     expect(card).toHaveTextContent("5 → 3");
   });
+
+  it("shows the suggested anchor in its paragraph, or why there is none", async () => {
+    const text = "Volunteers guard the beaches where Turtle Nesting happens.";
+    const withAnchor = fix(1, {
+      explanation: {
+        sentence: "Add a link from /d1 to /t1.",
+        lines: [
+          "Why the target: /t1 is 5 clicks deep.",
+          "Where: suggested anchor 'Turtle Nesting' in paragraph 2 of 3 of /d1.",
+          "Case: v4 (missing).",
+        ],
+        anchor: {
+          status: "suggested",
+          paragraphIndex: 1,
+          paragraphs: 3,
+          ref: 0.75,
+          term: "turtl nest",
+          weight: 2.1,
+          share: 0.5,
+          anchor: "Turtle Nesting",
+          excerpt: { text, anchorStart: 35, anchorEnd: 49 },
+          matched: [],
+        },
+      },
+    });
+    const without = fix(2, {
+      explanation: {
+        sentence: "Add a link from /d2 to /t2.",
+        lines: ["Where: /d2 has no paragraph about /t2's title.", "Case: v4 (missing)."],
+        anchor: {
+          status: "none",
+          reason: "not-above-epsilon",
+          paragraphs: 4,
+          bestRef: 0.05,
+          bestParagraphIndex: 2,
+        },
+      },
+    });
+    mockApi({
+      "GET /audits/7": audit(),
+      "GET /audits/7/fixes": {
+        sigma: "refGateCosine",
+        k: 10,
+        scope: "global",
+        total: 2,
+        fixes: [withAnchor, without],
+      },
+    });
+    renderAt("/audits/7/fixes");
+    await userEvent.click(await screen.findByText("Add a link from /d1 to /t1."));
+    const card = document.querySelector(".explain-card") as HTMLElement;
+    expect(within(card).getByText("Turtle Nesting", { selector: "mark" })).toBeInTheDocument();
+    expect(card).toHaveTextContent("Suggested anchor Turtle Nesting");
+    expect(card).toHaveTextContent("paragraph 2 of 3 · REF to the title 0.75");
+    expect(card).toHaveTextContent(text);
+    // The block replaces the "Where" line in the list.
+    expect(card).not.toHaveTextContent("Where:");
+
+    await userEvent.click(screen.getByText("Add a link from /d2 to /t2."));
+    const cards = document.querySelectorAll(".explain-card");
+    expect(cards[cards.length - 1]).toHaveTextContent(
+      "No paragraph of the donor is about the target's title (best: paragraph 3 of 4, REF 0.05): write a sentence that introduces it.",
+    );
+  });
+
+  it("switches to the learned priority and shows the model's view next to the rule-based lines", async () => {
+    const learned = (priority: number) => ({
+      priority,
+      raw: priority * 2,
+      shap: [
+        { feature: "ref", value: 0.42, contribution: 0.31 },
+        { feature: "target_type", value: "product", contribution: -0.12 },
+        { feature: "delta_pr", value: 0.0004, contribution: 0.05 },
+      ],
+    });
+    const byS = [fix(1, { learned: learned(0.2) }), fix(2, { learned: learned(0.9) })];
+    const { calls } = mockApi({
+      "GET /audits/7": audit(),
+      "GET /audits/7/fixes": (_init: unknown, url: URL) =>
+        url.searchParams.get("scoring") === "learned"
+          ? {
+              sigma: "refGateCosine",
+              k: 25,
+              scope: "global",
+              scoring: "learned",
+              total: 2,
+              learnedModel: { site: "x", trainedOn: ["a", "b"], labels: "e6", createdAt: "" },
+              fixes: [
+                { ...byS[1], rank: 1, scoring: "learned" },
+                { ...byS[0], rank: 2, scoring: "learned" },
+              ],
+            }
+          : { sigma: "refGateCosine", k: 25, scope: "global", total: 2, fixes: byS },
+    });
+    renderAt("/audits/7/fixes");
+    await screen.findByText("Add a link from /d1 to /t1.");
+    await userEvent.selectOptions(screen.getByLabelText("Scoring"), "learned");
+    expect(
+      await screen.findByText(
+        /by the learned priority of a model trained on a, b \(never this site\)/,
+      ),
+    ).toBeInTheDocument();
+    expect(calls.some((c) => c.search.includes("scoring=learned"))).toBe(true);
+    await userEvent.click(screen.getByText("Add a link from /d2 to /t2."));
+    const card = document.querySelector(".explain-card") as HTMLElement;
+    const model = within(card).getByRole("region", { name: "Model view (learned)" });
+    expect(model).toHaveTextContent("priority 90%");
+    expect(model).toHaveTextContent("▲ +0.31 REF = 0.42");
+    expect(model).toHaveTextContent("▼ −0.12 target page type = product");
+    expect(model).toHaveTextContent("▲ +0.05 ΔPR of the target = 4.00e-4");
+    // The rule-based explanation stays in the card.
+    expect(card).toHaveTextContent("Why the target");
+  });
 });
 
 // ---------- Diagnosis ----------

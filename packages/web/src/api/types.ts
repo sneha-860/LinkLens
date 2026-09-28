@@ -66,9 +66,178 @@ export interface ChannelStats {
   orphans: number;
 }
 
+/**
+ * Element-level REF: the donor paragraph that best covers the target's title, and the anchor
+ * to use in it (core fixes/anchor.ts).
+ */
+export type AnchorSuggestion =
+  | {
+      status: "suggested";
+      paragraphIndex: number;
+      paragraphs: number;
+      ref: number;
+      term: string;
+      weight: number;
+      share: number;
+      anchor: string;
+      excerpt: { text: string; anchorStart: number; anchorEnd: number };
+      matched: { term: string; contribution: number; words: string }[];
+    }
+  | {
+      status: "none";
+      reason: "no-paragraphs" | "no-title-terms" | "not-above-epsilon";
+      paragraphs: number;
+      bestRef: number | null;
+      bestParagraphIndex: number | null;
+    };
+
+// ---------- link health (broken links, redirect chains) ----------
+export interface RedirectHop {
+  url: string;
+  statusCode: number;
+  location?: string | null;
+}
+
+export interface LinkSource {
+  page: string;
+  node: string;
+  links: number;
+  anchors: string[];
+  regions: string[];
+}
+
+interface LinkTarget {
+  url: string;
+  node: string;
+  finalUrl: string | null;
+  finalStatus: number | null;
+  chain: RedirectHop[];
+  error: string | null;
+  links: number;
+  sources: LinkSource[];
+  hops: number;
+}
+
+export interface BrokenTarget extends LinkTarget {
+  class: "4xx" | "5xx";
+}
+
+export interface RedirectChain extends LinkTarget {
+  endsBroken: boolean;
+}
+
+export interface LinkHealthResponse {
+  version: string;
+  runId: number;
+  policyVersion: string;
+  summary: {
+    internalLinks: number;
+    checkedLinks: number;
+    uncheckedLinks: number;
+    failedLinks: number;
+    brokenTargets: number;
+    brokenLinks: number;
+    brokenSourcePages: number;
+    statuses: Record<string, number>;
+    redirectTargets: number;
+    chainTargets: number;
+    chainLinks: number;
+    maxHops: number;
+    minChainHops: number;
+  };
+  broken: BrokenTarget[];
+  redirectChains: RedirectChain[];
+}
+
+// ---------- E8 rating page ----------
+export type Rater = "A" | "B";
+export type Placement = "good" | "acceptable" | "poor" | "na";
+
+/** A sampled fix as raters see it: no rank or score. */
+export interface BlindItem {
+  itemId: string;
+  position: number;
+  donor: string;
+  target: string;
+  donorTitle: string | null;
+  targetTitle: string | null;
+  action: "add-link" | "make-visible";
+  placement: AnchorSuggestion | null;
+}
+
+export interface RatingAnswer {
+  relevant: boolean;
+  placement: Placement;
+}
+
+export interface RatingResponse {
+  sample: {
+    id: number;
+    version: string;
+    size: number;
+    pool: number;
+    sigmaVariant: SigmaVariant;
+    items: BlindItem[];
+  } | null;
+  canCreate: boolean;
+  rater?: Rater | null;
+  name?: string | null;
+  answers?: Record<string, RatingAnswer>;
+}
+
+export interface PrecisionAtK {
+  k: number;
+  rated: number;
+  relevant: number;
+  precision: number | null;
+}
+
+export interface RatingSummary {
+  version: string;
+  items: number;
+  ks: number[];
+  raters: {
+    rater: Rater;
+    name: string | null;
+    rated: number;
+    relevant: number;
+    precisionAtK: PrecisionAtK[];
+    placement: Record<Placement, number>;
+  }[];
+  consensus: { strict: PrecisionAtK[]; mean: { k: number; precision: number | null }[] };
+  agreement: {
+    items: number;
+    relevance: { observed: number | null; kappa: number | null };
+    placement: {
+      items: number;
+      observed: number | null;
+      kappa: number | null;
+      weightedKappa: number | null;
+    };
+  };
+}
+
 export interface Explanation {
   sentence: string;
   lines: string[];
+  /** Fixes and rescue donors only; absent or null when not computed. */
+  anchor?: AnchorSuggestion | null;
+}
+
+/** One feature's TreeSHAP contribution to the L13 model's raw score for a fix. */
+export interface LearnedContribution {
+  feature: string;
+  value: number | string | null;
+  contribution: number;
+}
+
+/** The L13 learned prioritiser's view of a fix (present once a model has been imported). */
+export interface LearnedFix {
+  /** In [0, 1]: the raw score's percentile among the site's fixes. */
+  priority: number;
+  raw: number;
+  /** The largest |SHAP| contributions, largest first. */
+  shap: LearnedContribution[];
 }
 
 export interface Fix {
@@ -90,6 +259,12 @@ export interface Fix {
   kappa: number;
   templateReach: number;
   score: number;
+  /** S = ΔPR × σ / κ; `score` is S × importance when `scoring` is "S_imp" (L12). */
+  scoreS?: number;
+  scoring?: "S" | "S_imp" | "learned";
+  importance?: number | null;
+  /** L13: the model's priority and top SHAP contributions (null without an imported model). */
+  learned?: LearnedFix | null;
   rank: number;
   targetRank: number;
   diagnosis: "v4" | "v3" | null;
@@ -125,10 +300,15 @@ export interface Summary {
   orphans: { orphans: number; scored: number; withDonors: number } | null;
 }
 
+export type FixScoringMode = "formula" | "learned";
+
 export interface FixesResponse {
   sigma: SigmaVariant;
   k: number;
   scope: "global" | "target";
+  scoring?: FixScoringMode;
+  /** The imported L13 model: the site it scores and the sites it was trained on. */
+  learnedModel?: { site: string; trainedOn: string[]; labels: string; createdAt: string } | null;
   total: number;
   fixes?: Fix[];
   targets?: { target: string; fixes: Fix[] }[];
@@ -184,9 +364,25 @@ export interface GraphNodeAttributes {
   outDegree?: number;
   betweennessNormalized?: number;
 }
+export type PageType = "homepage" | "hub" | "product" | "article" | "utility" | "other";
+
+/** A node's page type and importance in [0, 1] (L12; heuristic weights). */
+export interface NodeImportance {
+  type: PageType;
+  /** "seed", "url:<type>", "schema:<Type>", "structure:hub|article" or "default". */
+  rule: string;
+  evidence: string;
+  importance: number;
+  components: { typePrior: number; pagerank: number; depth: number; inboundBodyLinks: number };
+  raw: { pagerank: number; depth: number | null; inboundBodyLinks: number };
+  schemaTypes: string[];
+}
+
 export interface GraphResponse {
   policy: Policy;
   policyVersion: string;
+  /** Page type and importance per node (null until the crawl has completed). */
+  importance?: Record<string, NodeImportance> | null;
   graph: {
     attributes: { nodes?: number; edges?: number; seedNode?: string };
     nodes: { key: string; attributes: GraphNodeAttributes }[];

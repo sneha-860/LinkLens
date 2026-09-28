@@ -77,7 +77,7 @@ def test_loads_the_real_export():
 def test_rejects_pairs_out_of_order(tmp_path):
     d = tmp_path / "b"
     d.mkdir()
-    for name in ("metrics.csv", "channels.csv", "e3.csv", "e4.csv", "e4_pages.csv", "e5.csv", "e5_categories.csv", "e5_disagreements.csv", "e6.csv", "sites.csv", "stages.csv"):
+    for name in ("metrics.csv", "channels.csv", "e3.csv", "e4.csv", "e4_pages.csv", "e5.csv", "e5_categories.csv", "e5_disagreements.csv", "e6.csv", "e7.csv", "e7_sigma_pairs.csv", "sites.csv", "stages.csv"):
         (d / name).write_bytes((FIXTURES / "corpus-export" / name).read_bytes())
     bad = synthetic_pairs(1)
     bad.loc[0, ["policy_a", "policy_b"]] = ["P1", "P0"]
@@ -154,7 +154,7 @@ def test_single_run_e1_has_a_pairs_table():
 def write_batch(tmp_path: Path, pairs: pd.DataFrame) -> Path:
     d = tmp_path / "batch"
     d.mkdir()
-    for name in ("metrics.csv", "channels.csv", "e3.csv", "e4.csv", "e4_pages.csv", "e5.csv", "e5_categories.csv", "e5_disagreements.csv", "e6.csv", "sites.csv", "stages.csv"):
+    for name in ("metrics.csv", "channels.csv", "e3.csv", "e4.csv", "e4_pages.csv", "e5.csv", "e5_categories.csv", "e5_disagreements.csv", "e6.csv", "e7.csv", "e7_sigma_pairs.csv", "sites.csv", "stages.csv"):
         (d / name).write_bytes((FIXTURES / "corpus-export" / name).read_bytes())
     pairs.to_csv(d / "policy_pairs.csv", index=False)
     return d

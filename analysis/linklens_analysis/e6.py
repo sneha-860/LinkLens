@@ -217,3 +217,35 @@ def report(directory: str | Path, alpha: float = 0.05) -> str:
         t = paired_test(batch.e6, scope=cls)
         parts += ["", f"#### {style.class_label(cls)}", "", t.to_markdown(floatfmt=".4g")]
     return "\n".join(parts) + "\n"
+
+
+def methods_figure(e6: pd.DataFrame, metric: str = "mrr", n: int = 2000):
+    """Each method's recovery (mean over sites, bootstrap 95% CI), best first; the random
+    baseline dashed. One series: a single colour."""
+    import matplotlib.pyplot as plt
+
+    means = site_means(e6)
+    rows = []
+    for method in [m for m in METHODS if m in set(means.index.get_level_values("method"))]:
+        v = means.xs(method, level="method")[metric].dropna().to_numpy(dtype=float)
+        if v.size == 0:
+            continue
+        boots = np.random.default_rng(RANDOM_SEED).choice(v, size=(n, v.size)).mean(axis=1)
+        lo, hi = np.quantile(boots, [0.025, 0.975])
+        rows.append((method, v.mean(), lo, hi))
+    rows.sort(key=lambda r: r[1])
+    fig, ax = plt.subplots(figsize=(style.SINGLE_COLUMN, 0.32 * len(rows) + 0.9))
+    y = np.arange(len(rows))
+    means_ = np.array([r[1] for r in rows])
+    ax.hlines(y, [r[2] for r in rows], [r[3] for r in rows], color=style.SEQUENTIAL[4], linewidth=2)
+    ax.scatter(means_, y, s=30, color=style.SEQUENTIAL[9], edgecolors=style.surface, linewidths=0.8, zorder=3)
+    for yi, r in zip(y, rows):
+        ax.text(r[3], yi, f"  {r[1]:.3f}", va="center", fontsize=7.5, color=style.ink_secondary)
+    random = [r for r in rows if r[0] == "random"]
+    if random:
+        ax.axvline(random[0][1], color=style.muted, linewidth=0.8, linestyle=(0, (3, 3)), zorder=1)
+    ax.set_yticks(y, [METHOD_LABELS.get(r[0], r[0]) for r in rows])
+    ax.set_xlabel(f"E6 {metric.upper() if metric in ('mrr', 'auc') else metric} (mean over sites, 95% CI)")
+    ax.grid(axis="x")
+    ax.grid(axis="y", visible=False)
+    return fig

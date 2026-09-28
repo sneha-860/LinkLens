@@ -94,6 +94,8 @@ export interface RepeatResult {
   /** Masked edges that became queries (both ends have text after masking). */
   readonly queries: number;
   readonly methods: Partial<Record<E6Method, MethodMetrics>>;
+  /** The hybrid gated at other ε (E7's sweep), keyed by ε; absent unless asked for. */
+  readonly gated?: Record<string, MethodMetrics>;
 }
 
 export interface E6Result {
@@ -113,6 +115,8 @@ export interface E6Result {
   readonly repeats: RepeatResult[];
   /** Each method's metrics averaged over the repeats. */
   readonly summary: Partial<Record<E6Method, MethodMetrics>>;
+  /** The gated hybrid per ε, averaged over the repeats (with `gateEpsilons`). */
+  readonly gatedSummary?: Record<string, MethodMetrics>;
 }
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -210,6 +214,9 @@ export interface MaskedSite {
   readonly share: number;
   readonly documents: text.RawDocument[];
   readonly graph: graph.LinkGraph;
+  /** The hidden link observations, and each source page's body with their anchors stripped. */
+  readonly hidden: ReadonlySet<number>;
+  readonly bodies: ReadonlyMap<number, string | null>;
 }
 
 /** Pure: draw a repeat's masked pairs and rebuild the site without them. */
@@ -243,6 +250,7 @@ export function maskSite(
   for (const r of rows)
     rowsByFetch.set(r.sourceFetchId, [...(rowsByFetch.get(r.sourceFetchId) ?? []), r]);
   const documents: text.RawDocument[] = [];
+  const bodies = new Map<number, string | null>();
   g.forEachNode((node, a) => {
     const page =
       a.representativeFetchId === null ? undefined : pageByFetch.get(a.representativeFetchId);
@@ -251,11 +259,33 @@ export function maskSite(
       config.e6StripAnchorsFromBody && page.bodyText !== null
         ? stripAnchors(page.bodyText, anchors.get(page.fetchId) ?? [])
         : page.bodyText;
+    if (body !== page.bodyText) bodies.set(page.fetchId, body);
     documents.push(
       text.rawDocument(node, { ...page, bodyText: body }, rowsByFetch.get(page.fetchId) ?? []),
     );
   });
-  return { masked, share, documents, graph: g };
+  return { masked, share, documents, graph: g, hidden, bodies };
+}
+
+/**
+ * The run's inputs as the masked site: its hidden observations removed and its stripped bodies,
+ * so the whole in-memory pipeline (prepareRun) sees the site without the masked links (L13).
+ */
+export function maskedInputs(
+  inputs: RunInputs,
+  m: Pick<MaskedSite, "hidden" | "bodies">,
+): RunInputs {
+  return {
+    ...inputs,
+    observations: {
+      ...inputs.observations,
+      links: inputs.observations.links.filter((l) => !m.hidden.has(l.id)),
+    },
+    linkRows: inputs.linkRows.filter((l) => !m.hidden.has(l.id)),
+    pages: inputs.pages.map((p) =>
+      m.bodies.has(p.fetchId) ? { ...p, bodyText: m.bodies.get(p.fetchId) ?? null } : p,
+    ),
+  };
 }
 
 /**
@@ -269,7 +299,8 @@ export function rankMasked(
   runId: number,
   policyVersion: string,
   config: Readonly<LinkLensConfig>,
-): Pick<RepeatResult, "targets" | "queries" | "methods"> {
+  gateEpsilons: readonly number[] = [],
+): Pick<RepeatResult, "targets" | "queries" | "methods" | "gated"> {
   const model = text.buildTextModel({ runId, policyVersion, documents: m.documents }, config);
   const docs = [...model.documents].sort((a, b) => cmp(a.node, b.node));
   const index = new Map(docs.map((d, i) => [d.node, i]));
@@ -294,7 +325,8 @@ export function rankMasked(
     string,
     { recall: Record<number, number>; rr: number; auc: number | null }[]
   > = {};
-  for (const method of methods) perQuery[method] = [];
+  const keys = [...methods, ...gateEpsilons.map((e) => `gate:${e}`)];
+  for (const key of keys) perQuery[key] = [];
 
   for (const [target, maskedDonors] of [...byTarget].sort((a, b) => cmp(a[0], b[0]))) {
     const v = index.get(target) as number;
@@ -306,8 +338,8 @@ export function rankMasked(
     const pool = docs
       .map((d) => d.node)
       .filter((u) => u !== target && !m.graph.hasDirectedEdge(u, target));
-    const scores = new Map<E6Method, Map<string, number>>();
-    for (const method of methods) scores.set(method, new Map());
+    const scores = new Map<string, Map<string, number>>();
+    for (const key of keys) scores.set(key, new Map());
     for (const u of pool) {
       const i = index.get(u) as number;
       const r = semantic.ref(donorSets[i] as Set<string>, tw, "weighted");
@@ -327,6 +359,7 @@ export function rankMasked(
       set("refGateCosine", sigmas.refGateCosine);
       set("blended", sigmas.blended);
       set("random", 0);
+      for (const e of gateEpsilons) scores.get(`gate:${e}`)?.set(u, r > e && hasCos ? cos : 0);
       if (config.e6GraphBaselines) {
         const nu = around(u);
         let cn = 0;
@@ -346,7 +379,7 @@ export function rankMasked(
       const candidates = pool.filter((u) => !others.has(u));
       const relevant = candidates.indexOf(donor);
       if (relevant < 0) continue; // the donor still links to v through an unmasked observation
-      for (const method of methods) {
+      for (const method of keys) {
         const s = scores.get(method) as Map<string, number>;
         const r = rankOf(
           candidates.map((u) => s.get(u) as number),
@@ -363,11 +396,10 @@ export function rankMasked(
 
   const mean = (xs: readonly number[]) =>
     xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length;
-  const out: Partial<Record<E6Method, MethodMetrics>> = {};
-  for (const method of methods) {
-    const qs = perQuery[method] ?? [];
+  const metricsOf = (key: string): MethodMetrics => {
+    const qs = perQuery[key] ?? [];
     const aucs = qs.flatMap((x) => (x.auc === null ? [] : [x.auc]));
-    out[method] = {
+    return {
       queries: qs.length,
       recall: Object.fromEntries(
         config.e6Ks.map((k) => [k, mean(qs.map((x) => x.recall[k] as number))]),
@@ -375,11 +407,35 @@ export function rankMasked(
       mrr: mean(qs.map((x) => x.rr)),
       auc: aucs.length === 0 ? null : mean(aucs),
     };
-  }
+  };
+  const out: Partial<Record<E6Method, MethodMetrics>> = {};
+  for (const method of methods) out[method] = metricsOf(method);
   return {
     targets: byTarget.size,
     queries: perQuery[methods[0] as string]?.length ?? 0,
     methods: out,
+    ...(gateEpsilons.length === 0
+      ? {}
+      : {
+          gated: Object.fromEntries(gateEpsilons.map((e) => [String(e), metricsOf(`gate:${e}`)])),
+        }),
+  };
+}
+
+/** Metrics averaged over repeats (those without queries are skipped); null when none has any. */
+export function averageMetrics(
+  ms: readonly (MethodMetrics | undefined)[],
+  ks: readonly number[],
+): MethodMetrics | null {
+  const used = ms.filter((x): x is MethodMetrics => x !== undefined && x.queries > 0);
+  if (used.length === 0) return null;
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const aucs = used.flatMap((x) => (x.auc === null ? [] : [x.auc]));
+  return {
+    queries: used.reduce((s, x) => s + x.queries, 0),
+    recall: Object.fromEntries(ks.map((k) => [k, mean(used.map((x) => x.recall[k] as number))])),
+    mrr: mean(used.map((x) => x.mrr)),
+    auc: aucs.length === 0 ? null : mean(aucs),
   };
 }
 
@@ -390,19 +446,11 @@ export function summariseRepeats(
 ): Partial<Record<E6Method, MethodMetrics>> {
   const out: Partial<Record<E6Method, MethodMetrics>> = {};
   for (const method of E6_METHODS) {
-    const ms = repeats.flatMap((r) => {
-      const x = r.methods[method];
-      return x === undefined || x.queries === 0 ? [] : [x];
-    });
-    if (ms.length === 0) continue;
-    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
-    const aucs = ms.flatMap((x) => (x.auc === null ? [] : [x.auc]));
-    out[method] = {
-      queries: ms.reduce((s, x) => s + x.queries, 0),
-      recall: Object.fromEntries(ks.map((k) => [k, mean(ms.map((x) => x.recall[k] as number))])),
-      mrr: mean(ms.map((x) => x.mrr)),
-      auc: aucs.length === 0 ? null : mean(aucs),
-    };
+    const m = averageMetrics(
+      repeats.map((r) => r.methods[method]),
+      ks,
+    );
+    if (m !== null) out[method] = m;
   }
   return out;
 }
@@ -416,7 +464,9 @@ export async function maskingRecovery(
   policyId: PolicyId,
   embedder: Embedder,
   seed: number = inputs.config.randomSeed,
+  options: { readonly gateEpsilons?: readonly number[] } = {},
 ): Promise<E6Result> {
+  const gateEpsilons = options.gateEpsilons ?? [];
   const { config } = inputs;
   const o = embedder.options;
   if (
@@ -446,7 +496,7 @@ export async function maskingRecovery(
       share: m.share,
       eligiblePairs: s.eligible.length,
       masked: m.masked.length,
-      ...rankMasked(m, (n) => vector.get(n), inputs.runId, policyVersion, config),
+      ...rankMasked(m, (n) => vector.get(n), inputs.runId, policyVersion, config, gateEpsilons),
     });
   }
   return {
@@ -465,5 +515,18 @@ export async function maskingRecovery(
     },
     repeats,
     summary: summariseRepeats(repeats, config.e6Ks),
+    ...(gateEpsilons.length === 0
+      ? {}
+      : {
+          gatedSummary: Object.fromEntries(
+            gateEpsilons.flatMap((e) => {
+              const m = averageMetrics(
+                repeats.map((r) => r.gated?.[String(e)]),
+                config.e6Ks,
+              );
+              return m === null ? [] : [[String(e), m]];
+            }),
+          ),
+        }),
   };
 }

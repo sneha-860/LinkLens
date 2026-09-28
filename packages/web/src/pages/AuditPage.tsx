@@ -13,7 +13,9 @@ export const TABS = [
   { to: "fixes", label: "Fixes" },
   { to: "diagnosis", label: "Diagnosis" },
   { to: "orphans", label: "Orphans" },
+  { to: "links", label: "Links" },
   { to: "canonicalisation", label: "Canonicalisation" },
+  { to: "rating", label: "Rating" },
   { to: "export", label: "Export" },
 ];
 

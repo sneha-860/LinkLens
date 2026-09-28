@@ -107,7 +107,7 @@ def write_batch(tmp_path: Path, metrics: pd.DataFrame, cats: pd.DataFrame) -> Pa
     d = tmp_path / "batch"
     d.mkdir()
     for name in ("metrics.csv", "policy_pairs.csv", "channels.csv", "e3.csv", "e4.csv", "e4_pages.csv",
-                 "e5_disagreements.csv", "e6.csv", "sites.csv", "stages.csv"):
+                 "e5_disagreements.csv", "e6.csv", "e7.csv", "e7_sigma_pairs.csv", "sites.csv", "stages.csv"):
         (d / name).write_bytes((FIXTURES / "corpus-export" / name).read_bytes())
     metrics.to_csv(d / "e5.csv", index=False)
     cats.to_csv(d / "e5_categories.csv", index=False)

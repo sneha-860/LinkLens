@@ -195,11 +195,15 @@ def text_on(rgba) -> str:
     return ink if on_ink >= on_white else "#ffffff"
 
 
+class UnknownClass(KeyError):
+    """An architecture class without a validated colour."""
+
+
 def class_colour(cls: str) -> str:
     try:
         return CLASS_COLOURS[cls]
     except KeyError:
-        raise KeyError(
+        raise UnknownClass(
             f"no colour for architecture class {cls!r}: add it to style.CLASSES "
             "(and re-validate the palette) rather than letting matplotlib pick one"
         ) from None

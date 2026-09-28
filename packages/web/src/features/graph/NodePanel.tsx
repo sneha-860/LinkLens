@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Fix } from "../../api/types.js";
+import type { Fix, NodeImportance, PageType } from "../../api/types.js";
 import { fmt2, fmtSci, shortUrl } from "../../ui/format.js";
 import { Badge, Button, type Tone } from "../../ui/ui.js";
 import { REGIONS, type LinkRow, type NodeDetails } from "./model.js";
@@ -52,6 +52,47 @@ function Links({ title, rows, empty }: { title: string; rows: LinkRow[]; empty: 
         </button>
       )}
     </section>
+  );
+}
+
+const TYPE_LABELS: Record<PageType, string> = {
+  homepage: "Homepage",
+  hub: "Category / hub",
+  product: "Product",
+  article: "Article / doc",
+  utility: "Utility",
+  other: "Other",
+};
+
+/** How the page type was decided, in words. */
+function ruleText(i: NodeImportance): string {
+  if (i.rule === "seed") return "the crawl's seed";
+  if (i.rule === "default") return "no rule matched";
+  const [kind, what] = i.rule.split(":");
+  if (kind === "schema") return `schema.org ${what ?? ""}`;
+  if (kind === "url") return `URL pattern ${i.evidence}`;
+  return i.evidence;
+}
+
+/** Page type (rule-based) and importance with its components (L12; heuristic weights). */
+function ImportanceRows({ i }: { i: NodeImportance }) {
+  const c = i.components;
+  return (
+    <>
+      <dt>Page type</dt>
+      <dd>
+        <Badge tone="info">{TYPE_LABELS[i.type]}</Badge>{" "}
+        <span className="field-hint">{ruleText(i)}</span>
+      </dd>
+      <dt>Importance</dt>
+      <dd>
+        {fmt2(i.importance)}{" "}
+        <span className="field-hint">
+          type prior {fmt2(c.typePrior)} · PageRank percentile {fmt2(c.pagerank)} · depth{" "}
+          {fmt2(c.depth)} · inbound body links {fmt2(c.inboundBodyLinks)} ({i.raw.inboundBodyLinks})
+        </span>
+      </dd>
+    </>
   );
 }
 
@@ -109,6 +150,7 @@ export function NodePanel({
             <dd>{fmt2(a.betweennessNormalized ?? 0)}</dd>
             <dt>Crawled</dt>
             <dd>{a.crawled ? "yes" : "no"}</dd>
+            {details.importance !== null && <ImportanceRows i={details.importance} />}
           </dl>
         )}
       </section>

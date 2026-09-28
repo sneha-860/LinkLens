@@ -5,6 +5,7 @@ import { computeProminence, type PageLinks } from "../prominence/weights.js";
 import { refMatrix } from "../semantic/ref.js";
 import { buildTextModel, type RawDocument } from "../text/model.js";
 import { SurfaceForms } from "../text/surface.js";
+import { suggestAnchor } from "./anchor.js";
 import {
   explainAll,
   explainFix,
@@ -36,16 +37,26 @@ describe("formatting", () => {
 });
 
 // ---------- the diagnosis example: an ocean hub, three animal pages and a cake page ----------
-const doc = (path: string, title: string, body: string): RawDocument => ({
+const doc = (
+  path: string,
+  title: string,
+  body: string,
+  paragraphs: string[] = [],
+): RawDocument => ({
   node: S + path,
   fetchId: path.length,
   url: S + path,
   title: [title],
   links: [],
   body: [body],
+  paragraphs,
 });
+// The hub's paragraphs: the second covers the turtle page's title; none covers the shark's.
 const docs = [
-  doc("/ocean", "Ocean life", "Whale facts. Shark teeth. Turtle nesting."),
+  doc("/ocean", "Ocean life", "Whale facts. Shark teeth. Turtle nesting.", [
+    "Whale facts for every season.",
+    "Volunteers guard the beaches where Turtle Nesting happens each summer.",
+  ]),
   doc("/whale", "Whale facts", "Whale facts."),
   doc("/shark", "Shark teeth", "Shark teeth."),
   doc("/turtle", "Turtle nesting", "Turtle nesting."),
@@ -107,6 +118,9 @@ const fix = (
     kappa: 1,
     templateReach: 1,
     score: (pr[1] - pr[0]) * 0.8,
+    scoreS: (pr[1] - pr[0]) * 0.8,
+    scoring: "S",
+    importance: null,
     rank,
     targetRank: 1,
     targetReasons: [],
@@ -168,6 +182,32 @@ const input: ExplainInput = {
   ],
   matched: (u, v) => entry(u, v)?.matched ?? [],
   surface: (term, nodes) => surfaces.of(term, nodes),
+  // Page type and importance (L12): known for the turtle page only.
+  targetPage: (v) =>
+    v === `${S}/turtle`
+      ? {
+          type: "article",
+          rule: "url:article",
+          importance: 0.5,
+          components: { typePrior: 0.6, pagerank: 0.25, depth: 0.5, inboundBodyLinks: 0.5 },
+          depth: 1,
+          inboundBodyLinks: 1,
+        }
+      : undefined,
+  // Element-level REF against the target's title (only crawled targets here).
+  anchor: (u, v) => {
+    const donor = docs.find((d) => d.node === u);
+    const target = text.documents.find((d) => d.node === v);
+    if (donor === undefined || target === undefined) return undefined;
+    return suggestAnchor(
+      {
+        paragraphs: donor.paragraphs ?? [],
+        title: new Map(Object.entries(target.fields.title)),
+        variant: "weighted",
+      },
+      { ...config, minTokenLength: config.textMinTokenLength, maxNgram: config.textMaxNgram },
+    );
+  },
   edges: prominence.edges,
   effort: new Map([
     [`${S}/ocean`, { kappa: 2, templateReach: 4 }],
@@ -183,12 +223,14 @@ describe("fix explanations", () => {
   it("explain an added link to a deep, weak, missing target", () => {
     const e = all.fixes[0];
     expect(e?.sentence).toMatchInlineSnapshot(
-      `"Add a link from /ocean to /turtle: the target is 5 clicks from the home page (deeper than 3); REF 1.00 on 'nesting', 'turtle'; predicted PageRank +3.00e-2 (+30.0%); κ 2."`,
+      `"Add a link from /ocean to /turtle: the target is 5 clicks from the home page (deeper than 3); REF 1.00 on 'nesting', 'turtle'; anchor 'Turtle Nesting' in paragraph 2; predicted PageRank +3.00e-2 (+30.0%); κ 2."`,
     );
     expect(e?.lines).toMatchInlineSnapshot(`
       [
         "Why the target: /turtle is 5 clicks from the home page (deeper than 3); is in the bottom 20% by PageRank (1.20e-3 < 1.80e-3); is missing a link from 1 related page (v4).",
+        "Target page: /turtle is an article/doc page (its URL); importance 0.50 (type prior 0.60, PageRank percentile 0.25, depth 1, 1 inbound main-content link).",
         "Why this donor: REF(u,v) 1.00 > ε 0.2, on 'nesting', 'turtle', 'turtle nesting'; cosine 0.80.",
+        "Where: suggested anchor 'Turtle Nesting' in paragraph 2 of 2 of /ocean (REF to /turtle's title 1.00 > ε 0.2): "Volunteers guard the beaches where [Turtle Nesting] happens each summer."",
         "There is no link from /ocean to /turtle yet.",
         "Predicted: PageRank +3.00e-2 (+30.0%); /turtle goes from 2 to 1 click deep (-1).",
         "Effort: κ 2 (2 body link blocks); its widest body block is a template on 4 pages.",
@@ -206,6 +248,7 @@ describe("fix explanations", () => {
       [
         "Why the target: /shark is buried: 1 related page links to it only faintly (v3).",
         "Why this donor: REF(u,v) 1.00 > ε 0.2, on 'shark', 'shark teeth', 'teeth'; cosine 0.80.",
+        "Where: /ocean has no paragraph about /shark's title (best: paragraph 1 of 2, REF 0.00 ≤ ε 0.2); write a sentence that introduces /shark.",
         "/ocean already links to /shark from the footer, with low prominence ω 0.05 (< α 0.1).",
         "Predicted: PageRank +2.00e-2 (+25.0%); /shark stays 1 click deep.",
         "Effort: κ 2 (2 body link blocks); its widest body block is a template on 4 pages.",
@@ -368,6 +411,49 @@ describe("words", () => {
       ["turtl", "turtle"],
       ["turtl nest", "turtle nesting"],
     ]);
+  });
+});
+
+describe("anchor suggestions", () => {
+  it("name the paragraph and quote the anchor as written, or say why there is none", () => {
+    const turtle = all.fixes[0]?.anchor;
+    expect(turtle).toMatchObject({
+      status: "suggested",
+      paragraphIndex: 1,
+      paragraphs: 2,
+      ref: 1,
+      term: "turtl nest",
+      anchor: "Turtle Nesting",
+    });
+    expect(all.fixes[1]?.anchor).toMatchObject({
+      status: "none",
+      reason: "not-above-epsilon",
+      bestRef: 0,
+    });
+    // No title to match for the orphan in this fixture: no anchor line.
+    expect(all.rescues[0]?.anchor).toBeNull();
+    expect(all.rescues[0]?.lines).toHaveLength(6);
+  });
+
+  it("leave the lines as they were without an anchor lookup", () => {
+    const { anchor: _unused, targetPage: _alsoUnused, ...withoutAnchor } = input;
+    const plain = explainAll(withoutAnchor);
+    expect(plain.fixes[0]?.anchor).toBeNull();
+    expect(plain.fixes[0]?.lines).toHaveLength(6);
+    expect(plain.fixes[0]?.sentence).not.toContain("anchor");
+  });
+});
+
+describe("target page (L12)", () => {
+  it("states the target's page type and importance after why it needs help", () => {
+    const f = all.fixes[0];
+    expect(f?.targetPage).toMatchObject({ type: "article", rule: "url:article", importance: 0.5 });
+    expect(f?.lines[1]).toBe(
+      "Target page: /turtle is an article/doc page (its URL); importance 0.50 (type prior 0.60, PageRank percentile 0.25, depth 1, 1 inbound main-content link).",
+    );
+    // Without a lookup (the shark here) there is no line and the field is null.
+    expect(all.fixes[1]?.targetPage).toBeNull();
+    expect(all.fixes[1]?.lines.some((l) => l.startsWith("Target page:"))).toBe(false);
   });
 });
 

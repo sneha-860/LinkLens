@@ -176,7 +176,17 @@ describe("audit page: tabs", () => {
       within(tabs)
         .getAllByRole("link")
         .map((l) => l.textContent),
-    ).toEqual(["Summary", "Graph", "Fixes", "Diagnosis", "Orphans", "Canonicalisation", "Export"]);
+    ).toEqual([
+      "Summary",
+      "Graph",
+      "Fixes",
+      "Diagnosis",
+      "Orphans",
+      "Links",
+      "Canonicalisation",
+      "Rating",
+      "Export",
+    ]);
     await userEvent.click(within(tabs).getByRole("link", { name: "Export" }));
     expect(router.state.location.pathname).toBe("/audits/7/export");
     expect(screen.getByRole("link", { name: "Download linklens-audit-7.zip" })).toHaveAttribute(

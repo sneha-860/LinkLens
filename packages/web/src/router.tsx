@@ -4,7 +4,9 @@ import { DiagnosisTab } from "./features/diagnosis/DiagnosisTab.js";
 import { ExportTab } from "./features/export/ExportTab.js";
 import { FixesTab } from "./features/fixes/FixesTab.js";
 import { GraphTab } from "./features/graph/GraphTab.js";
+import { LinksTab } from "./features/links/LinksTab.js";
 import { OrphansTab } from "./features/orphans/OrphansTab.js";
+import { RatingTab } from "./features/rating/RatingTab.js";
 import { SummaryTab } from "./features/summary/SummaryTab.js";
 import { AppShell } from "./layout/AppShell.js";
 import { AuditPage } from "./pages/AuditPage.js";
@@ -30,7 +32,9 @@ export const routes: RouteObject[] = [
           { path: "fixes", element: <FixesTab /> },
           { path: "diagnosis", element: <DiagnosisTab /> },
           { path: "orphans", element: <OrphansTab /> },
+          { path: "links", element: <LinksTab /> },
           { path: "canonicalisation", element: <CanonTab /> },
+          { path: "rating", element: <RatingTab /> },
           { path: "export", element: <ExportTab /> },
         ],
       },

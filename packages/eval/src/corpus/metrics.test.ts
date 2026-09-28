@@ -4,8 +4,10 @@ import type { E3Method } from "../e3-baselines.js";
 import type { Comparison, Stability } from "../e4-stability.js";
 import type { PolicyCalibration } from "../e5-screaming-frog.js";
 import type { E6Result } from "../e6-masking.js";
+import type { E7Result } from "../e7-ablation.js";
 import {
   PAIR_METRICS,
+  e7Metrics,
   e6Metrics,
   e5Metrics,
   e4Metrics,
@@ -473,5 +475,56 @@ describe("e6Metrics", () => {
     ]);
     expect(m.some((x) => x.method === "random" && x.metric === "auc")).toBe(false);
     expect(m.every((x) => x.repeat === 0 && x.seed === 42)).toBe(true);
+  });
+});
+
+describe("e7Metrics", () => {
+  it("writes each setting's ranking, E3 gain and E6 recovery", () => {
+    const r = {
+      e3Ks: [10],
+      rows: [
+        {
+          sigma: "refGateCosine",
+          epsilon: 0.2,
+          alpha: 0.1,
+          isDefault: true,
+          sweeps: ["sigma", "epsilon", "alpha"],
+          fixes: 40,
+          topKJaccardDefault: 1,
+          e3: { pool: 12, linklens: { 10: 0.03 }, random: { 10: 0.01 } },
+          e6: { queries: 20, recall: { 5: 0.5, 10: 0.7 }, mrr: 0.4, auc: 0.9 },
+        },
+        {
+          sigma: "cosineOnly",
+          epsilon: 0.3,
+          alpha: 0.1,
+          isDefault: false,
+          sweeps: ["epsilon"],
+          fixes: 30,
+          topKJaccardDefault: 0.5,
+          e3: { pool: 8, linklens: { 10: 0.02 }, random: { 10: 0.01 } },
+          e6: null,
+        },
+      ],
+    } as unknown as E7Result;
+    const m = e7Metrics(r);
+    const def = new Map(m.filter((x) => x.isDefault).map((x) => [x.metric, x.value]));
+    expect([...def.keys()]).toEqual([
+      "fixes",
+      "topk_jaccard_default",
+      "e3_pool",
+      "e3_linklens@10",
+      "e3_random@10",
+      "e3_gain@10",
+      "e6_mrr",
+      "e6_recall@5",
+      "e6_recall@10",
+      "e6_auc",
+    ]);
+    expect(def.get("e3_gain@10")).toBeCloseTo(0.02);
+    expect(m.find((x) => x.isDefault)?.sweeps).toBe("sigma|epsilon|alpha");
+    expect(m.filter((x) => x.sigma === "cosineOnly").some((x) => x.metric.startsWith("e6_"))).toBe(
+      false,
+    );
   });
 });

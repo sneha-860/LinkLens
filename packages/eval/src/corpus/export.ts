@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { canonicalise, db as q, type SigmaVariant } from "@linklens/core";
 import type { Corpus } from "./corpus.js";
 import type { Embedder } from "@linklens/embeddings";
-import { compareE3, loadE3Inputs } from "../e3-baselines.js";
+import { buildE3Inputs, compareE3, loadE3Data } from "../e3-baselines.js";
+import { ablate, e7Settings } from "../e7-ablation.js";
 import { compareStoredRuns } from "../e4-stability.js";
 import { readExportDir } from "../e5-files.js";
 import { calibrateRun, parseExports } from "../e5-screaming-frog.js";
@@ -20,6 +21,8 @@ import {
   E5_COLUMNS,
   E5_DISAGREEMENTS_COLUMNS,
   E6_COLUMNS,
+  E7_COLUMNS,
+  E7_SIGMA_PAIRS_COLUMNS,
   METRICS_COLUMNS,
   POLICY_PAIRS_COLUMNS,
   SITES_COLUMNS,
@@ -34,6 +37,7 @@ import {
   e4Metrics,
   e5Metrics,
   e6Metrics,
+  e7Metrics,
   pairMetrics,
   runMetrics,
 } from "./metrics.js";
@@ -59,6 +63,8 @@ export interface ExportResult {
  *   every disagreement category explained, and every disagreement with its evidence;
  * - e6.csv: E6 link-masking recovery (needs `embedder`), one row per site × repeat × method ×
  *   metric;
+ * - e7.csv / e7_sigma_pairs.csv: E7 σ / ε / α ablation (needs `embedder`), one row per site ×
+ *   setting × metric, and the σ variants' pairwise top-k Jaccard;
  * - sites.csv: one row per site (status, run, crawl size, timings, commit, model hash);
  * - stages.csv: one row per site × pipeline stage (status, duration).
  * Rows follow the corpus order, then the policy order (P0–P5; pairs (P0,P1), (P0,P2), …), then
@@ -84,6 +90,8 @@ export async function exportBatch(
   const channels: Row<typeof CHANNELS_COLUMNS>[] = [];
   const e3: Row<typeof E3_COLUMNS>[] = [];
   const e6: Row<typeof E6_COLUMNS>[] = [];
+  const e7: Row<typeof E7_COLUMNS>[] = [];
+  const e7Pairs: Row<typeof E7_SIGMA_PAIRS_COLUMNS>[] = [];
   const e4: Row<typeof E4_COLUMNS>[] = [];
   const e4Pages: Row<typeof E4_PAGES_COLUMNS>[] = [];
   const second = new Map((recrawl?.sites ?? []).map((s) => [s.id, s]));
@@ -137,32 +145,56 @@ export async function exportBatch(
           }
         }
         if (embedder !== undefined) {
-          const { inputs, config } = await loadE3Inputs(db, s.runId, policy, embedder, {
-            sigma: manifest.audit.sigma as SigmaVariant,
-            refVariant: manifest.audit.refVariant === "unweighted" ? "unweighted" : "weighted",
+          // E3, E6 and E7 share what they load: E3's data (embeddings included) and one E6 run
+          // whose hybrid is also gated at every ε E7 sweeps.
+          const inputs = await loadRunInputs(db, s.runId, policy);
+          const { config } = inputs;
+          const e3Data = await loadE3Data(
+            db,
+            s.runId,
+            policy,
+            embedder,
+            manifest.audit.refVariant === "unweighted" ? "unweighted" : "weighted",
+          );
+          const result = compareE3(
+            buildE3Inputs(e3Data, {
+              epsilon: config.epsilon,
+              alpha: config.alpha,
+              sigma: manifest.audit.sigma as SigmaVariant,
+            }),
+            config.e3TopKs,
+            config.e3RandomDraws,
+            config.randomSeed,
+          );
+          const recovery = await maskingRecovery(inputs, policy, embedder, config.randomSeed, {
+            gateEpsilons: [...new Set(e7Settings(config).map((x) => x.epsilon))],
           });
-          const result = compareE3(inputs, config.e3TopKs, config.e3RandomDraws, config.randomSeed);
-          for (const m of e3Metrics(result)) {
-            e3.push({
+          const ablation = ablate(inputs, policy, e3Data, recovery);
+          for (const m of e7Metrics(ablation)) {
+            e7.push({
               ...base,
               run_id: s.runId,
               policy,
-              policy_version: run.channels.policyVersion,
-              k: m.k,
-              method: m.method,
+              sigma: m.sigma,
+              epsilon: m.epsilon,
+              alpha: m.alpha,
+              scoring: m.scoring,
+              is_default: m.isDefault,
+              sweeps: m.sweeps,
               metric: m.metric,
               value: m.value,
             });
           }
-        }
-        if (embedder !== undefined) {
-          const inputs = await loadRunInputs(db, s.runId, policy);
-          const recovery = await maskingRecovery(
-            inputs,
-            policy,
-            embedder,
-            inputs.config.randomSeed,
-          );
+          for (const p of ablation.sigmaPairs) {
+            e7Pairs.push({
+              ...base,
+              run_id: s.runId,
+              sigma_a: p.a,
+              sigma_b: p.b,
+              k: ablation.k,
+              jaccard: p.jaccard,
+            });
+          }
           for (const m of e6Metrics(recovery)) {
             e6.push({
               ...base,
@@ -170,6 +202,18 @@ export async function exportBatch(
               policy,
               repeat: m.repeat,
               seed: m.seed,
+              method: m.method,
+              metric: m.metric,
+              value: m.value,
+            });
+          }
+          for (const m of e3Metrics(result)) {
+            e3.push({
+              ...base,
+              run_id: s.runId,
+              policy,
+              policy_version: run.channels.policyVersion,
+              k: m.k,
               method: m.method,
               metric: m.metric,
               value: m.value,
@@ -305,6 +349,12 @@ export async function exportBatch(
       rows: e5Disagreements.length,
     },
     { name: "e6.csv", csv: toCsv(E6_COLUMNS, e6), rows: e6.length },
+    { name: "e7.csv", csv: toCsv(E7_COLUMNS, e7), rows: e7.length },
+    {
+      name: "e7_sigma_pairs.csv",
+      csv: toCsv(E7_SIGMA_PAIRS_COLUMNS, e7Pairs),
+      rows: e7Pairs.length,
+    },
     { name: "policy_pairs.csv", csv: toCsv(POLICY_PAIRS_COLUMNS, pairs), rows: pairs.length },
     { name: "sites.csv", csv: toCsv(SITES_COLUMNS, sites), rows: sites.length },
     { name: "stages.csv", csv: toCsv(STAGES_COLUMNS, stages), rows: stages.length },

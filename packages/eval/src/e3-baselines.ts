@@ -2,8 +2,11 @@ import {
   audit as auditCore,
   canonicalise,
   db as q,
+  diagnosis,
   fixes,
   graph,
+  makeConfig,
+  prominence,
   semantic,
   text,
   type LinkLensConfig,
@@ -260,33 +263,42 @@ function cosineOfVectors(a: Float32Array, b: Float32Array): number {
   return dot; // the vectors are L2-normalised
 }
 
+/** What E3 loads once per run (and E7 reuses for every ε, α and σ). */
+export interface E3Data {
+  readonly rescue: fixes.RescueInputs;
+  readonly audit: auditCore.StructuralAudit;
+  readonly prominence: prominence.RunProminence;
+  readonly effort: Map<string, fixes.DonorEffort>;
+  /** Embedding of every crawled document and fetched orphan page (the run's model). */
+  readonly vectors: Map<string, Float32Array>;
+  readonly base: fixes.Baseline;
+  readonly params: fixes.PageRankParams;
+  readonly targets: E3Inputs["targets"];
+  readonly refVariant: semantic.RefVariant;
+  /** Single-link simulations, memoised by pool entry id (they do not depend on ε, α or σ). */
+  readonly singles: Map<string, fixes.CounterfactualResult>;
+}
+
 /**
- * Everything E3 needs for a run under `policyId` (the run's stored config); nothing is written.
- * - Graph: orphan rescue's (structural prominence W, plus the orphan nodes), so fixes for weak
- *   pages and for orphans are measured on one graph.
- * - Targets: the audit's weak-authority pages and the reconciled orphans.
- * - Pool: the fix candidates of weak-authority targets (add-link or make-visible) and each
- *   orphan's rescue shortlist (donor → orphan). Every entry is simulated alone for its ΔPR.
- * - Cosine: from `embedder` (the run's model), for crawled pages and for the fetched orphan
- *   pages alike; orphans are not embedded by the pipeline.
+ * Load everything E3 needs for a run under `policyId` (the run's stored config); nothing is
+ * written. Cosine comes from `embedder` (the run's model), for crawled pages and for the fetched
+ * orphan pages alike; orphans are not embedded by the pipeline.
  */
-export async function loadE3Inputs(
+export async function loadE3Data(
   db: q.Queryable,
   runId: number,
   policyId: PolicyId,
   embedder: Embedder,
-  options: { readonly sigma?: SigmaVariant; readonly refVariant?: semantic.RefVariant } = {},
-): Promise<{ inputs: E3Inputs; config: Readonly<LinkLensConfig> }> {
-  const refVariant = options.refVariant ?? "weighted";
-  const [rescue, audit, { list }, effort, { documents }] = await Promise.all([
+  refVariant: semantic.RefVariant = "weighted",
+): Promise<E3Data> {
+  const [rescue, audit, prom, effort, { documents }] = await Promise.all([
     fixes.loadRescueInputs(db, runId, policyId, refVariant),
     auditCore.loadAudit(db, runId, policyId),
-    fixes.loadCandidates(db, runId, policyId, refVariant),
+    prominence.loadProminence(db, runId, policyId),
     fixes.loadDonorEffort(db, runId, policyId),
     text.loadRunDocuments(db, runId, policyId),
   ]);
-  const { config, graph: g, bodyWeight } = rescue;
-  const sigma = options.sigma ?? config.sigmaVariant;
+  const { config } = rescue;
   const o = embedder.options;
   if (
     o.model !== config.embeddingModel ||
@@ -302,10 +314,8 @@ export async function loadE3Inputs(
     pagerankTolerance: config.pagerankTolerance,
     pagerankMaxIterations: config.pagerankMaxIterations,
   };
-  const base = fixes.baseline(g, params);
-  const index = new Map(g.nodes.map((n, i) => [n, i]));
 
-  // Targets.
+  // Targets: the weak-authority pages and the orphans.
   const weak = [
     ...new Set(audit.issues.filter((i) => i.type === "weak-authority").map((i) => i.node)),
   ].sort();
@@ -317,7 +327,69 @@ export async function loadE3Inputs(
       .map((node) => ({ node, kind: "orphan" as const })),
   ];
 
-  // Pool: weak-authority fix candidates, and the orphans' rescue shortlists.
+  // Embeddings of every crawled document and fetched orphan page.
+  const docs = new Map(documents.map((d) => [d.node, semantic.embeddingInput(d)]));
+  for (const x of rescue.orphans) {
+    if (x.page === null) continue;
+    docs.set(
+      x.node,
+      semantic.embeddingInput({
+        node: x.node,
+        fetchId: 0,
+        url: x.node,
+        title: x.page.title,
+        links: [],
+        body: x.page.body,
+      }),
+    );
+  }
+  const nodes = [...docs.keys()].sort();
+  const embedded = await embedder.embed(
+    nodes.map((n) => {
+      const d = docs.get(n) as semantic.EmbeddingInput;
+      return { title: d.title, body: d.body };
+    }),
+  );
+  return {
+    rescue,
+    audit,
+    prominence: prom,
+    effort,
+    vectors: new Map(nodes.map((n, i) => [n, embedded.vectors[i] as Float32Array])),
+    base: fixes.baseline(rescue.graph, params),
+    params,
+    targets,
+    refVariant,
+    singles: new Map(),
+  };
+}
+
+/**
+ * Pure (but for the memo in `data.singles`): E3's pool and scores under some ε, α and σ.
+ * - Pool: the fix candidates of weak-authority targets (REF > ε; add-link or make-visible by
+ *   ω and α) and each orphan's rescue shortlist (REF > ε), all on orphan rescue's graph.
+ * - Each entry is simulated alone for its ΔPR; S = ΔPR × σ / κ.
+ */
+export function buildE3Inputs(
+  data: E3Data,
+  settings: { readonly epsilon: number; readonly alpha: number; readonly sigma: SigmaVariant },
+): E3Inputs {
+  const { rescue } = data;
+  const config = makeConfig({ ...rescue.config, epsilon: settings.epsilon, alpha: settings.alpha });
+  const g = rescue.graph;
+  const index = new Map(g.nodes.map((n, i) => [n, i]));
+  const ref = semantic.refMatrix(rescue.model, data.refVariant, config);
+  const { diagnoses } = diagnosis.diagnose({ ref, prominence: data.prominence }, config);
+  const list = fixes.generateCandidates(
+    {
+      targets: fixes.candidateTargets(data.audit.issues, diagnoses),
+      ref,
+      edges: data.prominence.edges,
+      diagnoses,
+    },
+    config,
+  );
+
   const raw: Omit<PoolEntry, "cosine" | "donorPagerank" | "deltaPr" | "kappa" | "score">[] = [];
   for (const c of list.candidates) {
     if (!c.targetReasons.includes("weak-authority")) continue;
@@ -334,7 +406,7 @@ export async function loadE3Inputs(
     rescue.orphans,
     rescue.model,
     rescue.depth,
-    refVariant,
+    data.refVariant,
     config,
   );
   for (const s of shortlists) {
@@ -350,62 +422,67 @@ export async function loadE3Inputs(
     }
   }
 
-  // Embeddings of every page a pool entry touches (crawled documents and orphan pages).
-  const docs = new Map(documents.map((d) => [d.node, semantic.embeddingInput(d)]));
-  for (const x of rescue.orphans) {
-    if (x.page === null) continue;
-    docs.set(
-      x.node,
-      semantic.embeddingInput({
-        node: x.node,
-        fetchId: 0,
-        url: x.node,
-        title: x.page.title,
-        links: [],
-        body: x.page.body,
-      }),
-    );
-  }
-  const needed = [...new Set(raw.flatMap((e) => [e.donor, e.target]))]
-    .filter((n) => docs.has(n))
-    .sort();
-  const embedded = await embedder.embed(
-    needed.map((n) => {
-      const d = docs.get(n) as semantic.EmbeddingInput;
-      return { title: d.title, body: d.body };
-    }),
-  );
-  const vector = new Map(needed.map((n, i) => [n, embedded.vectors[i] as Float32Array]));
-
   const ws = fixes.workspace(g);
   const pool: PoolEntry[] = raw.map((e) => {
     const donor = index.get(e.donor);
     const target = index.get(e.target);
     if (donor === undefined || target === undefined)
       throw new Error(`${e.id}: an end is not in the graph`);
-    const single = fixes.simulate(
-      g,
-      base,
-      { id: e.id, donor, target, action: e.action },
-      bodyWeight,
-      params,
-      true,
-      ws,
-    );
-    const vu = vector.get(e.donor);
-    const vv = vector.get(e.target);
+    let single = data.singles.get(e.id);
+    if (single === undefined) {
+      single = fixes.simulate(
+        g,
+        data.base,
+        { id: e.id, donor, target, action: e.action },
+        rescue.bodyWeight,
+        data.params,
+        true,
+        ws,
+      );
+      data.singles.set(e.id, single);
+    }
+    const vu = data.vectors.get(e.donor);
+    const vv = data.vectors.get(e.target);
     const cosine = vu === undefined || vv === undefined ? null : cosineOfVectors(vu, vv);
-    const kappa = effort.get(e.donor)?.kappa ?? 1;
-    const s = fixes.sigmaValues(e.ref, cosine, config)[sigma];
+    const kappa = data.effort.get(e.donor)?.kappa ?? 1;
+    const s = fixes.sigmaValues(e.ref, cosine, config)[settings.sigma];
     return {
       ...e,
       cosine,
-      donorPagerank: base.rank[donor] as number,
+      donorPagerank: data.base.rank[donor] as number,
       deltaPr: single.deltaPrTarget,
       kappa,
       score: fixes.fixScore(single.deltaPrTarget, s, kappa),
     };
   });
 
-  return { inputs: { graph: g, base, bodyWeight, params, targets, pool, sigma }, config };
+  return {
+    graph: g,
+    base: data.base,
+    bodyWeight: rescue.bodyWeight,
+    params: data.params,
+    targets: data.targets,
+    pool,
+    sigma: settings.sigma,
+  };
+}
+
+/** E3 inputs under the run's stored config (loadE3Data + buildE3Inputs). */
+export async function loadE3Inputs(
+  db: q.Queryable,
+  runId: number,
+  policyId: PolicyId,
+  embedder: Embedder,
+  options: { readonly sigma?: SigmaVariant; readonly refVariant?: semantic.RefVariant } = {},
+): Promise<{ inputs: E3Inputs; config: Readonly<LinkLensConfig> }> {
+  const data = await loadE3Data(db, runId, policyId, embedder, options.refVariant ?? "weighted");
+  const { config } = data.rescue;
+  return {
+    inputs: buildE3Inputs(data, {
+      epsilon: config.epsilon,
+      alpha: config.alpha,
+      sigma: options.sigma ?? config.sigmaVariant,
+    }),
+    config,
+  };
 }

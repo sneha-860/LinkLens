@@ -14,6 +14,7 @@ import {
 } from "@linklens/core";
 import type { E3Method, E3Result } from "../e3-baselines.js";
 import { E6_METHODS, type E6Method, type E6Result } from "../e6-masking.js";
+import type { E7Result } from "../e7-ablation.js";
 import { DISAGREEMENT_KINDS, type PolicyCalibration } from "../e5-screaming-frog.js";
 import {
   COMPARISONS,
@@ -446,6 +447,58 @@ export function e6Metrics(r: E6Result): E6Metric[] {
       put(method, "mrr", m.mrr);
       put(method, "auc", m.auc);
       put(method, "queries", m.queries);
+    }
+  }
+  return out;
+}
+
+/** One E7 value: a setting, a metric and its value. */
+export interface E7Metric {
+  readonly sigma: string;
+  readonly epsilon: number;
+  readonly alpha: number;
+  readonly scoring: string;
+  readonly isDefault: boolean;
+  readonly sweeps: string;
+  readonly metric: string;
+  readonly value: number;
+}
+
+/**
+ * Pure (E7): every setting as tidy values: fixes, topk_jaccard_default, e3_pool,
+ * e3_linklens@k, e3_random@k, e3_gain@k (LinkLens − random), and e6_mrr, e6_recall@k, e6_auc
+ * (left out without E6 queries).
+ */
+export function e7Metrics(r: E7Result): E7Metric[] {
+  const out: E7Metric[] = [];
+  for (const row of r.rows) {
+    const put = (metric: string, value: number | null | undefined) => {
+      if (value === null || value === undefined || !Number.isFinite(value)) return;
+      out.push({
+        sigma: row.sigma,
+        epsilon: row.epsilon,
+        alpha: row.alpha,
+        scoring: row.scoring,
+        isDefault: row.isDefault,
+        sweeps: row.sweeps.join("|"),
+        metric,
+        value,
+      });
+    };
+    put("fixes", row.fixes);
+    put("topk_jaccard_default", row.topKJaccardDefault);
+    put("e3_pool", row.e3.pool);
+    for (const k of r.e3Ks) {
+      const ours = row.e3.linklens[k];
+      const random = row.e3.random[k];
+      put(`e3_linklens@${k}`, ours);
+      put(`e3_random@${k}`, random);
+      put(`e3_gain@${k}`, ours === undefined || random === undefined ? null : ours - random);
+    }
+    if (row.e6 !== null) {
+      put("e6_mrr", row.e6.mrr);
+      for (const [k, v] of Object.entries(row.e6.recall)) put(`e6_recall@${k}`, v);
+      put("e6_auc", row.e6.auc);
     }
   }
   return out;

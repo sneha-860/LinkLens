@@ -26,7 +26,7 @@ export interface RobotsGroup {
   readonly userAgents: readonly string[];
   readonly rules: readonly RobotsRule[];
   /** Crawl-delay in seconds, or null if absent/invalid. The last valid value in the group wins. */
-  readonly crawlDelaySeconds: number | null;
+  readonly crawlDelaySeconds: number | null; 
 }
 
 export interface SitemapDirective {

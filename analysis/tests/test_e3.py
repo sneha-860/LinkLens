@@ -145,7 +145,7 @@ def test_loads_the_real_export():
 def test_rejects_unknown_methods(tmp_path):
     d = tmp_path / "b"
     d.mkdir()
-    for name in ("metrics.csv", "policy_pairs.csv", "channels.csv", "e4.csv", "e4_pages.csv", "e5.csv", "e5_categories.csv", "e5_disagreements.csv", "e6.csv", "sites.csv", "stages.csv"):
+    for name in ("metrics.csv", "policy_pairs.csv", "channels.csv", "e4.csv", "e4_pages.csv", "e5.csv", "e5_categories.csv", "e5_disagreements.csv", "e6.csv", "e7.csv", "e7_sigma_pairs.csv", "sites.csv", "stages.csv"):
         (d / name).write_bytes((FIXTURES / "corpus-export" / name).read_bytes())
     bad = synthetic_e3()
     bad.loc[0, "method"] = "oracle"
@@ -157,7 +157,7 @@ def test_rejects_unknown_methods(tmp_path):
 def test_report_and_cli(tmp_path, data, capsys):
     d = tmp_path / "batch"
     d.mkdir()
-    for name in ("metrics.csv", "policy_pairs.csv", "channels.csv", "e4.csv", "e4_pages.csv", "e5.csv", "e5_categories.csv", "e5_disagreements.csv", "e6.csv", "sites.csv", "stages.csv"):
+    for name in ("metrics.csv", "policy_pairs.csv", "channels.csv", "e4.csv", "e4_pages.csv", "e5.csv", "e5_categories.csv", "e5_disagreements.csv", "e6.csv", "e7.csv", "e7_sigma_pairs.csv", "sites.csv", "stages.csv"):
         (d / name).write_bytes((FIXTURES / "corpus-export" / name).read_bytes())
     data.to_csv(d / "e3.csv", index=False)
     md = e3.report(d)

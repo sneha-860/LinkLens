@@ -29,6 +29,11 @@ export interface RawDocument {
   readonly title: readonly string[];
   readonly links: readonly string[];
   readonly body: readonly string[];
+  /**
+   * The page's paragraphs (`<p>`, `<li>` of the main content), for element-level REF (anchor
+   * suggestions). Not part of the text model.
+   */
+  readonly paragraphs?: readonly string[];
 }
 
 /** term → TF-IDF weight. */

@@ -37,6 +37,8 @@ def ts_columns(name: str) -> list[str]:
         "E5_CATEGORIES_COLUMNS",
         "E5_DISAGREEMENTS_COLUMNS",
         "E6_COLUMNS",
+        "E7_COLUMNS",
+        "E7_SIGMA_PAIRS_COLUMNS",
         "POLICY_PAIRS_COLUMNS",
         "SITES_COLUMNS",
         "STAGES_COLUMNS",
@@ -92,6 +94,8 @@ def synthetic(tmp_path: Path) -> Path:
     pd.DataFrame(columns=corpus.E5_CATEGORIES_COLUMNS).to_csv(d / "e5_categories.csv", index=False)
     pd.DataFrame(columns=corpus.E5_DISAGREEMENTS_COLUMNS).to_csv(d / "e5_disagreements.csv", index=False)
     pd.DataFrame(columns=corpus.E6_COLUMNS).to_csv(d / "e6.csv", index=False)
+    pd.DataFrame(columns=corpus.E7_COLUMNS).to_csv(d / "e7.csv", index=False)
+    pd.DataFrame(columns=corpus.E7_SIGMA_PAIRS_COLUMNS).to_csv(d / "e7_sigma_pairs.csv", index=False)
     return d
 
 

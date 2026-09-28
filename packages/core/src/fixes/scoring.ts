@@ -1,5 +1,11 @@
 import { POLICIES, type PolicyId } from "../canonicalise/index.js";
-import { SIGMA_VARIANTS, type LinkLensConfig, type SigmaVariant } from "../config.js";
+import {
+  SIGMA_VARIANTS,
+  type FixScoring,
+  type LinkLensConfig,
+  type SigmaVariant,
+} from "../config.js";
+import { importanceFor } from "../importance/run.js";
 import { insertArtefact, listArtefacts } from "../db/queries.js";
 import type { ArtefactRow, Json, Queryable } from "../db/types.js";
 import { COSINE_ARTEFACT, cosineOf, type CosineMatrix } from "../semantic/cosine.js";
@@ -14,7 +20,7 @@ import { COUNTERFACTUAL_ARTEFACT, type CounterfactualResult } from "./counterfac
 import { loadDonorEffort, type DonorEffort } from "./effort.js";
 
 /** Bump whenever the output can change (σ definitions, S, ordering, record fields). */
-export const SCORING_VERSION = "scoring@1.1.0";
+export const SCORING_VERSION = "scoring@1.2.0";
 export const FIX_RANKING_ARTEFACT = "fix-ranking";
 
 type SigmaConfig = Pick<LinkLensConfig, "epsilon" | "sigmaBlendLambda">;
@@ -44,6 +50,9 @@ export function sigmaValues(
 /** S(u→v) = ΔPR_v × σ(u,v) / κ(u). */
 export const fixScore = (deltaPr: number, sigma: number, kappa: number) =>
   (deltaPr * sigma) / kappa;
+
+/** S_imp(u→v) = S(u→v) × importance(v) (L12; experimental, off by default). */
+export const importanceScore = (s: number, importance: number) => s * importance;
 
 export interface FixRecord {
   /** The candidate id: `${type}:${donor}->${target}`. */
@@ -75,8 +84,13 @@ export interface FixRecord {
   };
   readonly kappa: number;
   readonly templateReach: number;
-  /** S(u→v) = ΔPR_v × σ / κ. */
+  /** The ranking score: S, or S_imp = S × importance(target) when `scoring` is "S_imp". */
   readonly score: number;
+  /** S(u→v) = ΔPR_v × σ / κ, whatever the scoring mode. */
+  readonly scoreS: number;
+  readonly scoring: FixScoring;
+  /** importance(target) in [0, 1] (L12); null when the ranking did not use it (mode "S"). */
+  readonly importance: number | null;
   /** 1-based, over all fixes. */
   readonly rank: number;
   /** 1-based, among the fixes for the same target. */
@@ -94,6 +108,8 @@ export interface ScoringInput {
   /** cos(u,v), or null when unknown. */
   readonly cosine: (u: string, v: string) => number | null;
   readonly effort: ReadonlyMap<string, Pick<DonorEffort, "kappa" | "templateReach">>;
+  /** importance(v) of a target (L12): needed only when scoring is "S_imp". */
+  readonly importance?: (node: string) => number | null;
 }
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -105,13 +121,24 @@ const byRank = (
 ) => b.score - a.score || b.deltaPr - a.deltaPr || cmp(a.donor, b.donor) || cmp(a.target, b.target);
 
 /**
- * Pure: score every candidate with S(u→v) = ΔPR_v × σ(u,v) / κ(u) and rank them, globally and
- * per target. Returns the fixes in global rank order.
+ * Pure: score every candidate with S(u→v) = ΔPR_v × σ(u,v) / κ(u), or with S_imp = S ×
+ * importance(v) when `fixScoring` is "S_imp", and rank them, globally and per target. Returns the
+ * fixes in global rank order.
  */
 export function scoreFixes(
   input: ScoringInput,
-  config: SigmaConfig & { readonly sigmaVariant: SigmaVariant },
+  config: SigmaConfig & {
+    readonly sigmaVariant: SigmaVariant;
+    readonly fixScoring?: FixScoring;
+  },
 ): FixRecord[] {
+  const scoring = config.fixScoring ?? "S";
+  const importanceOf = (target: string): number | null => {
+    if (scoring !== "S_imp") return null;
+    const x = input.importance?.(target) ?? null;
+    if (x === null) throw new Error(`S_imp scoring needs importance(${target})`);
+    return x;
+  };
   const results = new Map(input.results.map((r) => [r.candidateId, r]));
   const unranked = input.candidates.map((c): Omit<FixRecord, "rank" | "targetRank"> => {
     const r = results.get(c.id);
@@ -121,6 +148,8 @@ export function scoreFixes(
     const cosine = input.cosine(c.donor, c.target);
     const sigmas = sigmaValues(c.ref, cosine, config);
     const sigma = sigmas[config.sigmaVariant];
+    const scoreS = fixScore(r.deltaPrTarget, sigma, effort.kappa);
+    const importance = importanceOf(c.target);
     return {
       id: c.id,
       donor: c.donor,
@@ -146,7 +175,10 @@ export function scoreFixes(
       },
       kappa: effort.kappa,
       templateReach: effort.templateReach,
-      score: fixScore(r.deltaPrTarget, sigma, effort.kappa),
+      score: importance === null ? scoreS : importanceScore(scoreS, importance),
+      scoreS,
+      scoring,
+      importance,
       targetReasons: c.targetReasons,
       diagnosis: c.diagnosis,
       policyVersion: input.policyVersion,
@@ -167,11 +199,14 @@ export function scoreFixes(
 }
 
 /** The k best fixes overall (from a ranked list). */
-export const topK = (fixes: readonly FixRecord[], k: number): FixRecord[] => fixes.slice(0, k);
+export const topK = <F>(fixes: readonly F[], k: number): F[] => fixes.slice(0, k);
 
 /** The k best fixes for each target, targets in the order of their best fix. */
-export function topKPerTarget(fixes: readonly FixRecord[], k: number): Map<string, FixRecord[]> {
-  const out = new Map<string, FixRecord[]>();
+export function topKPerTarget<F extends { readonly target: string }>(
+  fixes: readonly F[],
+  k: number,
+): Map<string, F[]> {
+  const out = new Map<string, F[]>();
   for (const f of fixes) {
     const list = out.get(f.target) ?? [];
     if (list.length === 0) out.set(f.target, list);
@@ -185,6 +220,8 @@ export interface FixRanking {
   readonly runId: number;
   readonly policyVersion: string;
   readonly sigmaVariant: SigmaVariant;
+  /** "S" (default) or "S_imp" (L12). Rankings stored before scoring@1.2.0 lack it: "S". */
+  readonly scoring: FixScoring;
   readonly lambda: number;
   readonly epsilon: number;
   readonly sources: {
@@ -228,7 +265,7 @@ export async function buildFixRanking(
   db: Queryable,
   runId: number,
   policyId: PolicyId,
-  options: { readonly sigmaVariant?: SigmaVariant } = {},
+  options: { readonly sigmaVariant?: SigmaVariant; readonly scoring?: FixScoring } = {},
 ): Promise<PersistedFixRanking> {
   const policyVersion = POLICIES[policyId].version;
   const [cf, cos] = await Promise.all([
@@ -252,6 +289,8 @@ export async function buildFixRanking(
   }
   const sigmaVariant = options.sigmaVariant ?? config.sigmaVariant;
   if (!SIGMA_VARIANTS.includes(sigmaVariant)) throw new Error(`unknown σ variant ${sigmaVariant}`);
+  const scoring = options.scoring ?? config.fixScoring;
+  const importance = scoring === "S_imp" ? (await importanceFor(db, runId, policyId)).nodes : null;
   const fixes = scoreFixes(
     {
       policyVersion,
@@ -259,14 +298,18 @@ export async function buildFixRanking(
       results: cf.payload.results,
       cosine: (u, v) => cosineOf(cos.payload, u, v),
       effort,
+      ...(importance === null
+        ? {}
+        : { importance: (node: string) => importance[node]?.importance ?? null }),
     },
-    { ...config, sigmaVariant },
+    { ...config, sigmaVariant, fixScoring: scoring },
   );
   const ranking: FixRanking = {
     version: SCORING_VERSION,
     runId,
     policyVersion,
     sigmaVariant,
+    scoring,
     lambda: config.sigmaBlendLambda,
     epsilon: config.epsilon,
     sources: {

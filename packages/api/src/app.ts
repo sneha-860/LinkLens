@@ -4,6 +4,7 @@ import {
   db as q,
   makeConfig,
   prominence,
+  rating,
   type canonicalise,
   type SigmaVariant,
 } from "@linklens/core";
@@ -35,6 +36,8 @@ import {
   IdParamsSchema,
   IssuesQuerySchema,
   PolicyQuerySchema,
+  RatingQuerySchema,
+  RatingSchema,
   SensitivityQuerySchema,
   SessionSchema,
 } from "./schemas.js";
@@ -46,7 +49,9 @@ import {
   fixesView,
   graphView,
   issuesView,
+  linksView,
   orphansView,
+  ratingView,
   reconciliationView,
   requireAudit,
   sensitivityView,
@@ -271,7 +276,7 @@ export function createApp(options: AppOptions): Express {
       const config = makeConfig(run?.config ?? {});
       const sigma: SigmaVariant =
         qs.sigma ?? (a.options["sigma"] as SigmaVariant | undefined) ?? config.sigmaVariant;
-      res.json(await fixesView(db, a, sigma, qs.k ?? config.fixTopK, qs.scope));
+      res.json(await fixesView(db, a, sigma, qs.k ?? config.fixTopK, qs.scope, qs.scoring));
     }),
   );
 
@@ -304,6 +309,79 @@ export function createApp(options: AppOptions): Express {
         );
       }
       res.status(202).json({ id: a.runId, job: await service.rankAllPolicies(a.runId) });
+    }),
+  );
+
+  api.get(
+    "/audits/:id/links",
+    asyncHandler(async (req, res) => {
+      const a = await requireAudit(db, idOf(req));
+      res.json(await linksView(db, a));
+    }),
+  );
+
+  // ---------- E8 rating page ----------
+
+  api.get(
+    "/audits/:id/rating",
+    asyncHandler(async (req, res) => {
+      const { rater } = RatingQuerySchema.parse(req.query);
+      const a = await requireAudit(db, idOf(req));
+      res.json(await ratingView(db, a, rater));
+    }),
+  );
+
+  api.post(
+    "/audits/:id/rating/sample",
+    asyncHandler(async (req, res) => {
+      const a = await requireAudit(db, idOf(req));
+      const policy = a.policy as canonicalise.PolicyId;
+      // One sample per audit: asking again returns it (so both raters rate the same items).
+      if ((await rating.loadRatingSample(db, a.runId, policy)) === null) {
+        const view = await ratingView(db, a);
+        if (!view.canCreate) throw notReady("fix scoring");
+        await rating.buildRatingSample(
+          db,
+          a.runId,
+          policy,
+          a.options["sigma"] as SigmaVariant | undefined,
+        );
+        res.status(201);
+      }
+      res.json(await ratingView(db, a));
+    }),
+  );
+
+  api.post(
+    "/audits/:id/rating/answers",
+    asyncHandler(async (req, res) => {
+      const body = RatingSchema.parse(req.body);
+      const a = await requireAudit(db, idOf(req));
+      const sample = await rating.loadRatingSample(db, a.runId, a.policy as canonicalise.PolicyId);
+      if (sample === null) throw notReady("the rating sample");
+      const row = await rating.recordRating(db, sample, {
+        itemId: body.itemId,
+        rater: body.rater,
+        raterName: body.name,
+        relevant: body.relevant,
+        placement: body.placement,
+      });
+      res.status(201).json({
+        itemId: row.itemId,
+        rater: row.rater,
+        relevant: row.relevant,
+        placement: row.placement,
+      });
+    }),
+  );
+
+  api.get(
+    "/audits/:id/rating/summary",
+    asyncHandler(async (req, res) => {
+      const a = await requireAudit(db, idOf(req));
+      const sample = await rating.loadRatingSample(db, a.runId, a.policy as canonicalise.PolicyId);
+      if (sample === null) throw notReady("the rating sample");
+      res.json(await rating.ratingSummaryOf(db, sample));
     }),
   );
 

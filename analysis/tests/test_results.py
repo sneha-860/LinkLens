@@ -47,12 +47,10 @@ def test_e3_table_has_every_k_and_method():
     assert pool.loc["orphans", "value"] == 1
 
 
-def test_recovery_tables_have_mrr_with_a_confidence_interval():
-    df = results.recovery_table(fixture("E7")["result"])
-    assert set(df.index) == {"refGateCosine", "cosineOnly", "refOnly", "blended"}
-    assert {"MRR", "MRR 95% CI", "recall@1", "recall@10"} <= set(df.columns)
-    pairs = results.sigma_paired_tests(fixture("E7")["result"])
-    assert len(pairs) == 6
+def test_e7_tables_have_every_sigma():
+    tables = dict(results.tables(fixture("E7")))
+    assert set(tables["σ ablation"].index) == {"refGateCosine", "cosineOnly", "refOnly", "blended"}
+    assert len(tables["σ pairs"]) == 6
 
 
 def test_bootstrap_is_seeded_and_brackets_the_mean():

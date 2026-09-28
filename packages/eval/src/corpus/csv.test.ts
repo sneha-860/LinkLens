@@ -8,6 +8,8 @@ import {
   E5_COLUMNS,
   E5_DISAGREEMENTS_COLUMNS,
   E6_COLUMNS,
+  E7_COLUMNS,
+  E7_SIGMA_PAIRS_COLUMNS,
   METRICS_COLUMNS,
   POLICY_PAIRS_COLUMNS,
   SITES_COLUMNS,
@@ -75,6 +77,31 @@ describe("toCsv", () => {
       "channel",
       "metric",
       "value",
+    ]);
+    expect(E7_COLUMNS).toEqual([
+      "batch_id",
+      "site_id",
+      "architecture_class",
+      "run_id",
+      "policy",
+      "sigma",
+      "epsilon",
+      "alpha",
+      "scoring",
+      "is_default",
+      "sweeps",
+      "metric",
+      "value",
+    ]);
+    expect(E7_SIGMA_PAIRS_COLUMNS).toEqual([
+      "batch_id",
+      "site_id",
+      "architecture_class",
+      "run_id",
+      "sigma_a",
+      "sigma_b",
+      "k",
+      "jaccard",
     ]);
     expect(E6_COLUMNS).toEqual([
       "batch_id",

@@ -185,3 +185,42 @@ def report(directory: str | Path, measure: str = "raw") -> str:
         label = "All sites" if cls == ALL else style.class_label(cls)
         parts += ["", f"### {label}", "", table.to_markdown(floatfmt=".4g")]
     return "\n".join(parts) + "\n"
+
+
+def paired_figure(e3: pd.DataFrame, measure: str = "relative"):
+    """Per site, LinkLens minus each baseline (one panel per k): points coloured by class, the
+    median as a bar, zero dashed. Above zero, LinkLens's top-k gains more ΔPR."""
+    import matplotlib.pyplot as plt
+
+    totals = site_totals(e3, measure)
+    ks = sorted(totals.index.get_level_values("k").unique())
+    fig, axes = plt.subplots(1, len(ks), figsize=(style.DOUBLE_COLUMN, 2.6), sharey=True, squeeze=False)
+    rng = np.random.default_rng(0)
+    for ax, k in zip(axes[0], ks):
+        t = totals.xs(k, level="k")
+        for i, b in enumerate(BASELINES):
+            if "linklens" not in t or b not in t:
+                continue
+            d = (t["linklens"] - t[b]).dropna()
+            for cls in style.ordered_classes(list(d.index.get_level_values("architecture_class").unique())):
+                v = d.xs(cls, level="architecture_class").to_numpy()
+                ax.scatter(
+                    i + rng.uniform(-0.15, 0.15, v.size),
+                    v,
+                    s=18,
+                    color=style.class_colour(cls),
+                    marker=style.CLASS_MARKERS.get(cls, "o"),
+                    edgecolors=style.surface,
+                    linewidths=0.8,
+                    zorder=3,
+                    label=style.class_label(cls) if (k == ks[0] and i == 0) else None,
+                )
+            if len(d):
+                ax.hlines(np.median(d), i - 0.3, i + 0.3, color=style.ink_secondary, linewidth=1.5, zorder=2)
+        ax.axhline(0, color=style.muted, linewidth=0.8, linestyle=(0, (3, 3)), zorder=1)
+        ax.set_xticks(range(len(BASELINES)), ["Random", "Cosine", "PageRank"])
+        ax.set_title(f"top-{k}", fontsize=9.5)
+    unit = "Δ total ΔPR" if measure == "raw" else "Δ (total ΔPR ÷ targets' PR)"
+    axes[0][0].set_ylabel(f"LinkLens − baseline\n{unit}")
+    fig.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncols=3, frameon=False)
+    return fig

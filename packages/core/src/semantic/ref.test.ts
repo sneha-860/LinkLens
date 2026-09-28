@@ -193,7 +193,7 @@ describe("output", () => {
     );
     expect(JSON.stringify(reversed)).toBe(JSON.stringify(one));
     expect(one).toMatchObject({
-      version: "ref@1.1.0",
+      version: "ref@1.2.0",
       textVersion: "text@1.1.0",
       policyVersion: "P0@1.0.0",
       variant: "weighted",

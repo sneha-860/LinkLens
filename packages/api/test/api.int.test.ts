@@ -293,6 +293,39 @@ describe("an audit through the whole pipeline", () => {
     expect(p3.body.graph.attributes.nodes).toBeLessThan(own.body.graph.attributes.nodes);
   });
 
+  it("types every page and gives its importance with the graph (L12), and quotes it in explanations", async () => {
+    const own = await request(app).get(`/audits/${id}/graph`);
+    type Imp = { type: string; rule: string; importance: number };
+    const imp = own.body.importance as Record<string, Imp>;
+    expect(Object.keys(imp).sort()).toEqual(
+      (own.body.graph.nodes as { key: string }[]).map((n) => n.key).sort(),
+    );
+    expect(imp[`${o}/`]).toMatchObject({ type: "homepage", rule: "seed" });
+    expect(imp[`${o}/blog/`]).toMatchObject({ type: "hub" });
+    expect(imp[`${o}/blog/post-1.html`]).toMatchObject({ type: "article" });
+    for (const n of Object.values(imp)) {
+      expect(n.importance).toBeGreaterThanOrEqual(0);
+      expect(n.importance).toBeLessThanOrEqual(1);
+    }
+    // Stored once as a page-importance artefact with the run id and policy version.
+    const again = await request(app).get(`/audits/${id}/graph`);
+    expect(again.body.importance).toEqual(imp);
+
+    // Every fix explanation names its target's page type and importance.
+    const fixesRes = await request(app).get(`/audits/${id}/fixes?k=50`);
+    for (const f of fixesRes.body.fixes as { explanation: { lines: string[] } }[]) {
+      expect(f.explanation.lines.some((l) => /^Target page: .+ importance \d\.\d\d/.test(l))).toBe(
+        true,
+      );
+    }
+    // S stays the default scoring: no importance on the fix records.
+    expect(
+      (fixesRes.body.fixes as { scoring: string; importance: unknown }[]).every(
+        (f) => f.scoring === "S" && f.importance === null,
+      ),
+    ).toBe(true);
+  });
+
   it("filters issues by type and severity", async () => {
     const deep = await request(app).get(`/audits/${id}/issues?type=deep-page`);
     expect(deep.body.issues.map((i: { node: string }) => i.node.replace(o, "")).sort()).toEqual([
@@ -318,10 +351,34 @@ describe("an audit through the whole pipeline", () => {
     const res = await request(app).get(`/audits/${id}/fixes`);
     expect(res.body).toMatchObject({ sigma: "refGateCosine", k: 10, scope: "global" });
     expect(res.body.fixes.length).toBeLessThanOrEqual(10);
-    res.body.fixes.forEach((f: { rank: number; explanation: { sentence: string } }, i: number) => {
-      expect(f.rank).toBe(i + 1);
-      expect(f.explanation.sentence.length).toBeGreaterThan(0);
+    res.body.fixes.forEach(
+      (
+        f: { rank: number; explanation: { sentence: string; anchor: { status: string } | null } },
+        i: number,
+      ) => {
+        expect(f.rank).toBe(i + 1);
+        expect(f.explanation.sentence.length).toBeGreaterThan(0);
+        // Every fix carries the element-level REF result: an anchor, or why there is none.
+        expect(["suggested", "none"]).toContain(f.explanation.anchor?.status);
+      },
+    );
+    // Element-level REF on the fixture: post-2 mentions "post one" in a sentence, so the fix to
+    // post-1 gets that anchor; the home page's link lists are already linked text, never anchors.
+    const all50 = await request(app).get(`/audits/${id}/fixes?k=50`);
+    type Card = { id: string; explanation: { anchor: Record<string, unknown> | null } };
+    const card = (from: string, to: string) =>
+      (all50.body.fixes as Card[]).find((f) => f.id === `add-link:${o}${from}->${o}${to}`)
+        ?.explanation.anchor;
+    expect(card("/blog/post-2.html", "/blog/post-1.html")).toMatchObject({
+      status: "suggested",
+      anchor: "post one",
+      excerpt: {
+        text: "Duplicate of post one; canonicalises to it.",
+        anchorStart: 13,
+        anchorEnd: 21,
+      },
     });
+    expect(card("/", "/only-from-nofollow-page.html")).toMatchObject({ status: "none" });
     const refOnly = await request(app).get(`/audits/${id}/fixes?sigma=refOnly&k=25&scope=target`);
     expect(refOnly.body).toMatchObject({ sigma: "refOnly", k: 25, scope: "target" });
     for (const t of refOnly.body.targets) {
@@ -331,6 +388,60 @@ describe("an audit through the whole pipeline", () => {
     // The refOnly ranking was computed on demand and stored; asking again reuses it.
     const again = await request(app).get(`/audits/${id}/fixes?sigma=refOnly&k=50`);
     expect(again.body.artefactId).toBe(refOnly.body.artefactId);
+  });
+
+  it("serves the L13 learned priority as a scoring mode once it is imported", async () => {
+    const missing = await request(app).get(`/audits/${id}/fixes?scoring=learned`);
+    expect(missing.status).toBe(409);
+    expect(missing.body.error.code).toBe("not_ready");
+    const formula = await request(app).get(`/audits/${id}/fixes?k=50`);
+    type F = { id: string; rank: number; score: number; scoring: string; learned: unknown };
+    const ids = (formula.body.fixes as F[]).map((f) => f.id);
+    expect(formula.body.fixes.every((f: F) => f.learned === null)).toBe(true);
+    // A model that reverses S: the last fix gets the highest priority.
+    const learnedFixes = Object.fromEntries(
+      ids.map((fid, i) => [
+        fid,
+        {
+          priority: (i + 0.5) / ids.length,
+          raw: i,
+          shap: [{ feature: "ref", value: 0.3, contribution: 0.1 * i }],
+        },
+      ]),
+    );
+    await q.insertArtefact(asQueryable(pool), {
+      runId: id,
+      policyVersion: "P0@1.0.0",
+      kind: "learned-priority",
+      payload: {
+        version: "learned@1.0.0",
+        runId: id,
+        policyVersion: "P0@1.0.0",
+        model: {
+          site: "fixture",
+          trainedOn: ["a", "b"],
+          labels: "e6",
+          features: ["ref"],
+          params: {},
+          dataset: "x",
+          createdAt: "2026-01-01T00:00:00Z",
+        },
+        fixes: learnedFixes,
+      },
+    });
+    const res = await request(app).get(`/audits/${id}/fixes?scoring=learned&k=50`);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ scoring: "learned", learnedModel: { trainedOn: ["a", "b"] } });
+    const got = res.body.fixes as F[];
+    expect(got.map((f) => f.id)).toEqual([...ids].reverse());
+    got.forEach((f, i) => {
+      expect(f).toMatchObject({ rank: i + 1, scoring: "learned" });
+      expect(f.score).toBeCloseTo((ids.length - i - 0.5) / ids.length, 12);
+    });
+    // The formula ranking keeps its order but now carries the model's view too.
+    const again = await request(app).get(`/audits/${id}/fixes?k=50`);
+    expect((again.body.fixes as F[]).map((f) => f.id)).toEqual(ids);
+    expect(again.body.fixes[0].learned).toMatchObject({ raw: 0, shap: [{ feature: "ref" }] });
   });
 
   it("lists the orphans with rescue donors and the channels that revealed them", async () => {
@@ -492,6 +603,8 @@ describe("an audit through the whole pipeline", () => {
         "fixes.json",
         "issues.csv",
         "issues.json",
+        "broken-links.csv",
+        "redirect-chains.csv",
         "orphans.csv",
         "orphans.json",
         "summary.json",
@@ -499,12 +612,164 @@ describe("an audit through the whole pipeline", () => {
     );
     const fixesCsv = strFromU8(files["fixes.csv"] as Uint8Array);
     expect(fixesCsv.split("\r\n")[0]).toBe(
-      "rank,target_rank,type,donor,target,score,delta_pr,delta_depth,sigma_variant,sigma,ref,cosine,kappa,policy_version,explanation",
+      "rank,target_rank,type,donor,target,score,delta_pr,delta_depth,sigma_variant,sigma,ref,cosine,kappa,policy_version,suggested_anchor,anchor_paragraph,anchor_ref,explanation",
     );
     expect(JSON.parse(strFromU8(files["audit.json"] as Uint8Array))).toMatchObject({
       id,
       status: "completed",
     });
+  });
+
+  it("reports broken internal links and redirect chains from the recorded fetches", async () => {
+    const res = await request(app).get(`/audits/${id}/links`);
+    expect(res.status).toBe(200);
+    type Target = {
+      url: string;
+      finalStatus: number;
+      class?: string;
+      hops: number;
+      endsBroken?: boolean;
+      chain: { url: string; statusCode: number }[];
+      sources: { page: string; anchors: string[]; regions: string[] }[];
+    };
+    const body = res.body as {
+      summary: Record<string, number>;
+      broken: Target[];
+      redirectChains: Target[];
+    };
+    const find = (list: Target[], path: string) => list.find((t) => t.url === `${o}${path}`);
+
+    // 404s (a missing page, and /About.html: paths are case-sensitive) and a 500 kept after retries.
+    expect(find(body.broken, "/missing.html")).toMatchObject({
+      finalStatus: 404,
+      class: "4xx",
+      hops: 0,
+    });
+    expect(find(body.broken, "/About.html")).toMatchObject({ finalStatus: 404 });
+    expect(find(body.broken, "/always-500")).toMatchObject({ finalStatus: 500, class: "5xx" });
+    // /flaky answered 503 once, then 200 on the retry: not broken.
+    expect(find(body.broken, "/flaky")).toBeUndefined();
+    // Each broken target names the page that links to it, with the anchor.
+    expect(find(body.broken, "/missing.html")?.sources[0]).toMatchObject({
+      page: `${o}/`,
+      anchors: ["Missing"],
+    });
+
+    // Chains of 2+ hops: /chain-a → /chain-b → /about.html; the loop never ends.
+    expect(find(body.redirectChains, "/chain-a")).toMatchObject({
+      hops: 2,
+      finalStatus: 200,
+      endsBroken: false,
+    });
+    expect(find(body.redirectChains, "/chain-a")?.chain.map((h) => h.url)).toEqual([
+      `${o}/chain-a`,
+      `${o}/chain-b`,
+    ]);
+    expect(find(body.redirectChains, "/loop-a")).toMatchObject({ endsBroken: true });
+    // A single hop (/old-page → /moved.html) is counted, not listed.
+    expect(find(body.redirectChains, "/old-page")).toBeUndefined();
+    expect(body.summary["redirectTargets"]).toBeGreaterThan(body.summary["chainTargets"] as number);
+    expect(body.summary["brokenTargets"]).toBe(body.broken.length);
+
+    const csv = await request(app).get(`/audits/${id}/export/broken-links.csv`);
+    expect(csv.text.split(/\r?\n/)[0]).toBe(
+      "source_url,target_url,status,class,redirect_hops,final_url,links,anchors,regions",
+    );
+    expect(csv.text).toContain(`${o}/missing.html`);
+    const chains = await request(app).get(`/audits/${id}/export/redirect-chains.csv`);
+    expect(chains.text).toContain(
+      `${o}/chain-a (302) -> ${o}/chain-b (301) -> ${o}/about.html (200)`,
+    );
+  });
+
+  it("runs the E8 rating page: a blind sample, two raters, precision@k and kappa", async () => {
+    expect((await request(app).get(`/audits/${id}/rating`)).body).toEqual({
+      sample: null,
+      canCreate: true,
+    });
+    expect((await request(app).get(`/audits/${id}/rating/summary`)).status).toBe(409);
+
+    const created = await request(app).post(`/audits/${id}/rating/sample`);
+    expect(created.status).toBe(201);
+    const { sample } = created.body as {
+      sample: { id: number; size: number; items: Record<string, unknown>[] };
+    };
+    expect(sample.size).toBe(sample.items.length);
+    expect(sample.items.length).toBeGreaterThan(1);
+    // Blind: no rank, score, ΔPR, REF, σ or explanation lines reach the raters.
+    for (const item of sample.items) {
+      for (const hidden of ["rank", "score", "deltaPr", "ref", "sigma", "lines", "sentence"]) {
+        expect(item).not.toHaveProperty(hidden);
+      }
+      expect(item).toHaveProperty("donorTitle");
+    }
+    // Asking again returns the same sample (both raters rate the same items).
+    const again = await request(app).post(`/audits/${id}/rating/sample`);
+    expect(again.status).toBe(200);
+    expect(again.body.sample.id).toBe(sample.id);
+
+    const answer = (body: Record<string, unknown>) =>
+      request(app).post(`/audits/${id}/rating/answers`).send(body);
+    const [first, second] = sample.items as { itemId: string }[];
+    const one = first?.itemId as string;
+    const two = second?.itemId as string;
+    expect(
+      (await answer({ itemId: one, rater: "A", name: "Ana", relevant: true, placement: "good" }))
+        .status,
+    ).toBe(201);
+    await answer({ itemId: two, rater: "A", name: "Ana", relevant: false, placement: "na" });
+    // A changes their mind: the latest answer counts.
+    await answer({ itemId: two, rater: "A", name: "Ana", relevant: true, placement: "poor" });
+    await answer({ itemId: one, rater: "B", name: "Ben", relevant: true, placement: "acceptable" });
+    await answer({ itemId: two, rater: "B", name: "Ben", relevant: false, placement: "na" });
+
+    // Invalid answers are refused.
+    const bad = await answer({
+      itemId: one,
+      rater: "A",
+      name: "Ana",
+      relevant: false,
+      placement: "good",
+    });
+    expect(bad.status).toBe(400);
+    const unknown = await answer({
+      itemId: "nope",
+      rater: "A",
+      name: "Ana",
+      relevant: true,
+      placement: "good",
+    });
+    expect(unknown.body.error.code).toBe("invalid_rating");
+    expect(
+      (await answer({ itemId: one, rater: "C", name: "X", relevant: true, placement: "good" }))
+        .status,
+    ).toBe(400);
+
+    // Each rater sees only their own answers.
+    const a = (await request(app).get(`/audits/${id}/rating?rater=A`)).body;
+    expect(a.name).toBe("Ana");
+    expect(a.answers).toEqual({
+      [one]: { relevant: true, placement: "good" },
+      [two]: { relevant: true, placement: "poor" },
+    });
+    const b = (await request(app).get(`/audits/${id}/rating?rater=B`)).body;
+    expect(b.answers[two]).toEqual({ relevant: false, placement: "na" });
+
+    const summary = (await request(app).get(`/audits/${id}/rating/summary`)).body;
+    expect(
+      summary.raters.map((r: { rated: number; relevant: number }) => [r.rated, r.relevant]),
+    ).toEqual([
+      [2, 2],
+      [2, 1],
+    ]);
+    expect(summary.agreement).toMatchObject({ items: 2, relevance: { observed: 0.5 } });
+    expect(summary.ks.length).toBeGreaterThan(0);
+
+    const csv = await request(app).get(`/audits/${id}/export/ratings.csv`);
+    expect(csv.status).toBe(200);
+    const lines = csv.text.trim().split(/\r?\n/);
+    expect(lines[0]).toBe("sample_id,item_id,rank,rater,rater_name,relevant,placement,rated_at");
+    expect(lines).toHaveLength(1 + 5); // every answer, history included
   });
 
   it("imports analytics and re-runs from prominence only", async () => {

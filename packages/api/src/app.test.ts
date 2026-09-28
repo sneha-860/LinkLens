@@ -155,6 +155,7 @@ describe("routing and errors", () => {
     "/audits/1/fixes?k=7",
     "/audits/1/fixes?sigma=cosine",
     "/audits/1/fixes?scope=everywhere",
+    "/audits/1/fixes?scoring=magic",
     "/audits/1/graph?policy=P7",
     "/audits/1/issues?severity=urgent",
     "/audits/1/diagnosis?case=v9",
@@ -338,6 +339,11 @@ describe("OpenAPI", () => {
         "/audits/{id}/sensitivity",
         "/audits/{id}/sensitivity/fixes",
         "/audits/{id}/reconciliation",
+        "/audits/{id}/links",
+        "/audits/{id}/rating",
+        "/audits/{id}/rating/sample",
+        "/audits/{id}/rating/answers",
+        "/audits/{id}/rating/summary",
         "/audits/{id}/report",
         "/audits/{id}/export/{file}",
         "/audits/{id}/analytics",
@@ -350,7 +356,7 @@ describe("OpenAPI", () => {
     const fixesParams = doc.paths["/audits/{id}/fixes"].get.parameters.map(
       (p: { name: string }) => p.name,
     );
-    expect(fixesParams).toEqual(["id", "sigma", "k", "scope"]);
+    expect(fixesParams).toEqual(["id", "sigma", "k", "scope", "scoring"]);
     expect(doc.info.description).toContain(STAGES.join(" → "));
   });
 

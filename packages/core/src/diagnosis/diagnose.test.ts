@@ -37,7 +37,8 @@ const entry = (s: string, t: string, ref: number, rho: number) => ({
   matched: [{ term: `${s}${t}`, contribution: ref }],
 });
 const refM: RefMatrix = {
-  version: "ref@1.1.0",
+  version: "ref@1.2.0",
+  prefilter: null,
   textVersion: "text@1.1.0",
   runId: 7,
   policyVersion: "P0@1.0.0",
@@ -152,7 +153,7 @@ describe("diagnose (constructed example)", () => {
       version: "diagnosis@1.0.0",
       runId: 7,
       policyVersion: "P0@1.0.0",
-      refVersion: "ref@1.1.0",
+      refVersion: "ref@1.2.0",
       refVariant: "weighted",
       prominenceVersion: "prominence@1.0.0",
       alpha: ALPHA,

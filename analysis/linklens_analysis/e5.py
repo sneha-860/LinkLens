@@ -84,10 +84,9 @@ def large_categories(categories: pd.DataFrame) -> pd.DataFrame:
     """Every category that is large on at least one site, per policy × kind: on how many sites it
     is large, its disagreements pooled over all sites (and their share of the kind), example sites,
     and its explanation (the most common filled text)."""
+    empty = pd.DataFrame(columns=["sites large", "count", "share of kind", "example sites", "explanation"])
     if categories.empty:
-        return pd.DataFrame(
-            columns=["sites large", "count", "share of kind", "example sites", "explanation"]
-        )
+        return empty
     totals = categories.groupby(["policy", "kind"])["count"].sum()
     rows = []
     for (policy, kind, category), g in categories.groupby(["policy", "kind", "category"], sort=False):
@@ -107,6 +106,8 @@ def large_categories(categories: pd.DataFrame) -> pd.DataFrame:
                 "explanation": g["explanation"].value_counts().index[0],
             }
         )
+    if not rows:
+        return empty
     out = pd.DataFrame(rows)
     order = {p: i for i, p in enumerate(style.POLICIES)}
     out = out.sort_values(

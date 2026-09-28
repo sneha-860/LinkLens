@@ -203,6 +203,9 @@ importers:
       '@linklens/counterfactual':
         specifier: workspace:^
         version: link:../counterfactual
+      '@linklens/crawler':
+        specifier: workspace:^
+        version: link:../crawler
       '@linklens/db':
         specifier: workspace:^
         version: link:../db

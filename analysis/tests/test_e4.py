@@ -124,7 +124,7 @@ def test_single_run_e4_tables():
 def write_batch(tmp_path: Path, rows: pd.DataFrame) -> Path:
     d = tmp_path / "batch"
     d.mkdir()
-    for name in ("metrics.csv", "policy_pairs.csv", "channels.csv", "e3.csv", "e4_pages.csv", "e5.csv", "e5_categories.csv", "e5_disagreements.csv", "e6.csv", "sites.csv", "stages.csv"):
+    for name in ("metrics.csv", "policy_pairs.csv", "channels.csv", "e3.csv", "e4_pages.csv", "e5.csv", "e5_categories.csv", "e5_disagreements.csv", "e6.csv", "e7.csv", "e7_sigma_pairs.csv", "sites.csv", "stages.csv"):
         (d / name).write_bytes((FIXTURES / "corpus-export" / name).read_bytes())
     rows.to_csv(d / "e4.csv", index=False)
     return d

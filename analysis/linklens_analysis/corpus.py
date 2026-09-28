@@ -106,6 +106,31 @@ E6_COLUMNS = [
     "metric",
     "value",
 ]
+E7_COLUMNS = [
+    "batch_id",
+    "site_id",
+    "architecture_class",
+    "run_id",
+    "policy",
+    "sigma",
+    "epsilon",
+    "alpha",
+    "scoring",
+    "is_default",
+    "sweeps",
+    "metric",
+    "value",
+]
+E7_SIGMA_PAIRS_COLUMNS = [
+    "batch_id",
+    "site_id",
+    "architecture_class",
+    "run_id",
+    "sigma_a",
+    "sigma_b",
+    "k",
+    "jaccard",
+]
 POLICY_PAIRS_COLUMNS = [
     "batch_id",
     "site_id",
@@ -183,6 +208,9 @@ class Batch:
     e5_disagreements: pd.DataFrame
     # E6: site × repeat × method × metric (see e6.py).
     e6: pd.DataFrame
+    # E7: site × setting × metric, and the σ pairs' top-k overlap (see e7.py).
+    e7: pd.DataFrame
+    e7_pairs: pd.DataFrame
     sites: pd.DataFrame
     stages: pd.DataFrame
 
@@ -200,9 +228,22 @@ def _read(path: Path, columns: list[str]) -> pd.DataFrame:
     return df
 
 
+def _read_e7(path: Path) -> pd.DataFrame:
+    """e7.csv; an export from before the scoring sweep (L12) has no `scoring` column: all S."""
+    legacy = [c for c in E7_COLUMNS if c != "scoring"]
+    head = pd.read_csv(path, nrows=0)
+    if list(head.columns) == legacy:
+        df = _read(path, legacy)
+        df.insert(legacy.index("alpha") + 1, "scoring", "S")
+        return df
+    df = _read(path, E7_COLUMNS)
+    df["scoring"] = df["scoring"].fillna("S")
+    return df
+
+
 def load_batch(directory: str | Path) -> Batch:
     """Every CSV of a batch export (metrics, policy_pairs, channels, e3, e4, e4_pages, e5,
-    e5_categories, e5_disagreements, e6, sites, stages)."""
+    e5_categories, e5_disagreements, e6, e7, e7_sigma_pairs, sites, stages)."""
     d = Path(directory)
     metrics = _read(d / "metrics.csv", METRICS_COLUMNS)
     metrics["value"] = metrics["value"].astype(float)
@@ -248,6 +289,13 @@ def load_batch(directory: str | Path) -> Batch:
     e6["value"] = e6["value"].astype(float)
     if e6.duplicated(["site_id", "repeat", "method", "metric"]).any():
         raise ValueError(f"{d}: a site × repeat × method × metric appears twice in e6.csv")
+    e7 = _read_e7(d / "e7.csv")
+    e7["value"] = e7["value"].astype(float)
+    e7["sweeps"] = e7["sweeps"].astype(str)
+    e7["is_default"] = e7["is_default"].astype(int).astype(bool)
+    if e7.duplicated(["site_id", "sigma", "epsilon", "alpha", "scoring", "metric"]).any():
+        raise ValueError(f"{d}: a site × setting × metric appears twice in e7.csv")
+    e7_pairs = _read(d / "e7_sigma_pairs.csv", E7_SIGMA_PAIRS_COLUMNS)
     sites = _read(d / "sites.csv", SITES_COLUMNS)
     stages = _read(d / "stages.csv", STAGES_COLUMNS)
     return Batch(
@@ -261,6 +309,8 @@ def load_batch(directory: str | Path) -> Batch:
         e5_categories=e5_categories,
         e5_disagreements=e5_disagreements,
         e6=e6,
+        e7=e7,
+        e7_pairs=e7_pairs,
         sites=sites,
         stages=stages,
     )

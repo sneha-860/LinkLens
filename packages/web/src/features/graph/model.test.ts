@@ -218,6 +218,21 @@ describe("nodeDetails", () => {
     expect(d.attributes?.depth).toBe(7);
   });
 
+  it("carries the page type and importance when the graph has them, else null", () => {
+    expect(nodeDetails(`${S}/a`, data, issues, fixes).importance).toBeNull();
+    const imp = {
+      type: "hub" as const,
+      rule: "url:hub",
+      evidence: "(^|/)category/",
+      importance: 0.7,
+      components: { typePrior: 0.7, pagerank: 0.8, depth: 0.5, inboundBodyLinks: 1 },
+      raw: { pagerank: 0.1, depth: 1, inboundBodyLinks: 3 },
+      schemaTypes: [],
+    };
+    const d = nodeDetails(`${S}/a`, { ...data, importance: { [`${S}/a`]: imp } }, issues, fixes);
+    expect(d.importance).toEqual(imp);
+  });
+
   it("handles an orphan that is not in the link graph", () => {
     const d = nodeDetails(`${S}/sitemap-only`, data, issues, fixes);
     expect(d).toMatchObject({ inGraph: false, attributes: null, inbound: [], outbound: [] });

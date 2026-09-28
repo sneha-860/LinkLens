@@ -1,22 +1,14 @@
-import {
-  SIGMA_VARIANTS,
-  canonicalise,
-  db as q,
-  discovery,
-  fixes,
-  stats,
-  type SigmaVariant,
-} from "@linklens/core";
+import { canonicalise, db as q, discovery, fixes, stats, type SigmaVariant } from "@linklens/core";
 import { channelAblation } from "./e2-channels.js";
 import type { Embedder } from "@linklens/embeddings";
-import { compareE3, loadE3Inputs } from "./e3-baselines.js";
+import { compareE3, loadE3Data, loadE3Inputs } from "./e3-baselines.js";
+import { runAblation } from "./e7-ablation.js";
 import { compareStoredRuns } from "./e4-stability.js";
 import { calibrateRun, parseExports, type ScreamingFrogCsvs } from "./e5-screaming-frog.js";
 import { maskingRecovery } from "./e6-masking.js";
 import { loadRunInputs } from "./in-memory.js";
 import { parseRatings, ratingSheet, summariseRatings } from "./e8-ratings.js";
 import { experiments } from "./experiments.js";
-import { hideAndRecover, loadRecoveryInputs } from "./recovery.js";
 
 type PolicyId = canonicalise.PolicyId;
 export type ExperimentId = (typeof experiments)[number]["id"];
@@ -30,13 +22,12 @@ export interface ExperimentOptions {
   readonly screamingFrog?: ScreamingFrogCsvs;
   /** E8: filled rating sheets (without: E8 produces the sheet to fill). */
   readonly ratingsCsv?: string;
-  /** E6/E7: links to hide, and the seed. */
-  readonly sample?: number;
+  /** E3/E6: the seed (default config.randomSeed). */
   readonly seed?: number;
   /** E1/E4: top k; E3: one k instead of config.e3TopKs. E3: the σ of LinkLens's score. */
   readonly k?: number;
   readonly sigma?: SigmaVariant;
-  /** E3 and E6: embeds pages (E3: the orphans; E6: the masked site); the run's model. */
+  /** E3, E6 and E7: embeds pages (the orphans; the masked site); the run's model. */
   readonly embedder?: Embedder;
 }
 
@@ -47,8 +38,6 @@ export interface ExperimentRun {
   readonly artefact: q.ArtefactRow;
 }
 
-const KS = [1, 3, 5, 10];
-
 /** Run one experiment on a run (and a second run for E4); the result is stored as an artefact. */
 export async function runExperiment(
   db: q.Queryable,
@@ -57,7 +46,6 @@ export async function runExperiment(
 ): Promise<ExperimentRun> {
   const { runId, policy } = options;
   const k = options.k ?? 10;
-  const seed = options.seed ?? 42;
   let result: unknown;
   switch (id) {
     case "E1": {
@@ -125,15 +113,11 @@ export async function runExperiment(
       break;
     }
     case "E7": {
-      // Every σ on the same pool (no REF pre-filter), on the fix pipeline's candidates.
-      const inputs = await loadRecoveryInputs(db, runId, policy);
-      result = hideAndRecover(inputs, {
-        sample: options.sample ?? 20,
-        seed,
-        ks: KS,
-        sigmas: SIGMA_VARIANTS,
-        requireRef: false,
-      });
+      if (options.embedder === undefined)
+        throw new Error("E7 needs an embedder with the run's embedding model (E3 and E6 inside)");
+      const inputs = await loadRunInputs(db, runId, policy);
+      const e3Data = await loadE3Data(db, runId, policy, options.embedder);
+      result = await runAblation(inputs, policy, e3Data, options.embedder);
       break;
     }
     case "E8": {

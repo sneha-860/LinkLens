@@ -1,12 +1,19 @@
-import type { LinkLensConfig } from "../config.js";
+import { defaultConfig, type LinkLensConfig } from "../config.js";
 import type { PolicyId } from "../canonicalise/index.js";
 import { insertArtefact } from "../db/queries.js";
 import type { ArtefactRow, Json, Queryable } from "../db/types.js";
 import { viewWeights, type TextDocument, type TextModel } from "../text/model.js";
 import { loadTextModel } from "../text/run.js";
+import {
+  buildLshEnsemble,
+  hashTerm,
+  minhash,
+  queryLshEnsemble,
+  type LshParams,
+} from "./lsh-ensemble.js";
 
 /** Bump whenever the output can change (formula, cutoff, normalisation, explanation). */
-export const REF_VERSION = "ref@1.1.0";
+export const REF_VERSION = "ref@1.2.0";
 export const REF_ARTEFACT = "ref-matrix";
 
 /**
@@ -63,13 +70,15 @@ export interface RefMatrix {
   readonly variant: RefVariant;
   readonly epsilon: number;
   readonly explainTerms: number;
+  /** The candidate pre-filter used (null: every pair scored, exact). */
+  readonly prefilter: RefPrefilterInfo | null;
   /** Document nodes, sorted; entries refer to them by index. */
   readonly nodes: string[];
   readonly stats: {
     readonly nodes: number;
     /** Ordered pairs u ≠ v. */
     readonly pairs: number;
-    /** Pairs with REF > 0 before the ε cutoff. */
+    /** Pairs with REF > 0 before the ε cutoff (among the candidates, with a pre-filter). */
     readonly nonZero: number;
     /** Pairs with REF > ε (stored). */
     readonly kept: number;
@@ -85,21 +94,29 @@ export interface RefMatrix {
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
- * Pure: REF(u,v) for every ordered pair of the model's documents, u ≠ v, with S_A = donor(u)
- * and S_B = target(v). Scores ≤ ε become 0 and are not stored; the rest are normalised per
- * source (ρ) and explained by their matched n-grams.
- *
- * Exact all-pairs, but through an inverted index of target terms, so a donor only touches the
- * targets it shares a term with: O(Σ_u Σ_{t ∈ S_A(u)} |postings(t)|) rather than O(n² · |S|).
+ * A model's documents interned for REF: target terms as integer ids with their weights (in term
+ * order), CSR postings from term to targets, and each donor's S_A as the ids of its terms that
+ * are in some target (other terms cannot match).
  */
-export function refMatrix(
-  model: TextModel,
-  variant: RefVariant,
-  config: Pick<LinkLensConfig, "epsilon" | "refExplainTerms">,
-): RefMatrix {
+export interface PreparedRef {
+  readonly model: TextModel;
+  readonly variant: RefVariant;
+  /** Documents sorted by node; indices below refer to them. */
+  readonly docs: readonly TextDocument[];
+  readonly termOf: readonly string[];
+  readonly tIds: readonly Int32Array[];
+  readonly tW: readonly Float64Array[];
+  readonly total: Float64Array;
+  readonly off: Int32Array;
+  readonly postV: Int32Array;
+  readonly postW: Float64Array;
+  readonly donorIds: readonly Int32Array[];
+}
+
+/** Pure: intern a model's documents for REF (see PreparedRef). */
+export function prepareRef(model: TextModel, variant: RefVariant): PreparedRef {
   const docs = [...model.documents].sort((a, b) => cmp(a.node, b.node));
   const n = docs.length;
-  const k = config.refExplainTerms;
   const unit = (w: number) => (variant === "weighted" ? w : 1);
 
   // Intern target terms as integers; each target's terms in term order (so a fully matched
@@ -150,40 +167,204 @@ export function refMatrix(
     }
   }
 
+  // S_A(u) as term ids, in term order; terms in no target cannot match and are left out.
+  const donorIds = docs.map((d) => {
+    const ids: number[] = [];
+    for (const t of d.donor) {
+      const id = termId.get(t);
+      if (id !== undefined) ids.push(id);
+    }
+    return Int32Array.from(ids);
+  });
+  return { model, variant, docs, termOf, tIds, tW, total, off, postV, postW, donorIds };
+}
+
+/** How the candidate pairs were chosen (null: every pair, exact). */
+export interface RefPrefilterInfo {
+  readonly method: "lsh-ensemble";
+  readonly threshold: number;
+  readonly numPerm: number;
+  readonly partitions: number;
+  readonly maxRows: number;
+  /** Candidate ordered pairs u ≠ v that were scored. */
+  readonly candidates: number;
+}
+
+type RefConfig = Pick<LinkLensConfig, "epsilon" | "refExplainTerms"> &
+  Partial<
+    Pick<
+      LinkLensConfig,
+      | "refPrefilter"
+      | "lshNumPerm"
+      | "lshPartitions"
+      | "lshMaxRows"
+      | "lshThreshold"
+      | "lshFalsePositiveWeight"
+      | "lshFalseNegativeWeight"
+      | "randomSeed"
+    >
+  >;
+
+/**
+ * Pure: REF(u,v) for every ordered pair of the model's documents, u ≠ v, with S_A = donor(u)
+ * and S_B = target(v). Scores ≤ ε become 0 and are not stored; the rest are normalised per
+ * source (ρ) and explained by their matched n-grams.
+ *
+ * Exact all-pairs, but through an inverted index of target terms, so a donor only touches the
+ * targets it shares a term with: O(Σ_u Σ_{t ∈ S_A(u)} |postings(t)|) rather than O(n² · |S|).
+ * With `refPrefilter: "lsh-ensemble"`, only the pairs an LSH Ensemble returns are scored
+ * (exactly); a pair it misses is absent, as if its REF were ≤ ε.
+ */
+export function refMatrix(model: TextModel, variant: RefVariant, config: RefConfig): RefMatrix {
+  const prep = prepareRef(model, variant);
+  if ((config.refPrefilter ?? "none") === "none") return refMatrixPrepared(prep, config);
+  const params = lshParams(config);
+  const threshold = config.lshThreshold ?? defaultConfig.lshThreshold;
+  const { byDonor, pairs } = lshCandidates(prep, params, threshold);
+  return refMatrixPrepared(prep, config, byDonor, {
+    method: "lsh-ensemble",
+    threshold,
+    numPerm: params.numPerm,
+    partitions: params.partitions,
+    maxRows: params.maxRows,
+    candidates: pairs,
+  });
+}
+
+/** The LSH Ensemble parameters of a config (defaults for the keys it lacks). */
+export function lshParams(config: RefConfig): LshParams {
+  return {
+    numPerm: config.lshNumPerm ?? defaultConfig.lshNumPerm,
+    partitions: config.lshPartitions ?? defaultConfig.lshPartitions,
+    maxRows: config.lshMaxRows ?? defaultConfig.lshMaxRows,
+    falsePositiveWeight: config.lshFalsePositiveWeight ?? defaultConfig.lshFalsePositiveWeight,
+    falseNegativeWeight: config.lshFalseNegativeWeight ?? defaultConfig.lshFalseNegativeWeight,
+    seed: config.randomSeed ?? defaultConfig.randomSeed,
+  };
+}
+
+/** Each donor's and each target's term set as 32-bit term hashes (for MinHash). */
+export function lshSets(prep: PreparedRef): { donors: Uint32Array[]; targets: Uint32Array[] } {
+  const hash = Uint32Array.from(prep.termOf, hashTerm);
+  const of = (ids: Int32Array) => Uint32Array.from(ids, (id) => hash[id] as number);
+  return { donors: prep.donorIds.map(of), targets: prep.tIds.map(of) };
+}
+
+/**
+ * Candidate pairs from an LSH Ensemble over the donors' S_A, queried with each target's S_B at
+ * containment `threshold`: per donor, its candidate targets (sorted, never itself).
+ */
+export function lshCandidates(
+  prep: PreparedRef,
+  params: LshParams,
+  threshold: number,
+): { byDonor: Int32Array[]; pairs: number } {
+  const sets = lshSets(prep);
+  const index = buildLshEnsemble(sets.donors, params);
+  const perTarget = sets.targets.map((t) =>
+    queryLshEnsemble(index, minhash(t, index.family), t.length, threshold),
+  );
+  return candidatesByDonor(perTarget, prep.docs.length);
+}
+
+/** Invert per-target candidate donors into per-donor candidate targets (self-pairs dropped). */
+export function candidatesByDonor(
+  perTarget: readonly (readonly number[])[],
+  n: number,
+): { byDonor: Int32Array[]; pairs: number } {
+  const lists: number[][] = Array.from({ length: n }, () => []);
+  let pairs = 0;
+  perTarget.forEach((donors, v) => {
+    for (const u of donors) {
+      if (u === v) continue;
+      (lists[u] as number[]).push(v);
+      pairs += 1;
+    }
+  });
+  // Targets were visited in increasing order, so each list is sorted.
+  return { byDonor: lists.map((l) => Int32Array.from(l)), pairs };
+}
+
+/**
+ * Pure: the REF matrix of a prepared model, over every pair (exact, through the postings) or
+ * only over `candidates` (per donor, sorted target indices), each scored exactly.
+ */
+export function refMatrixPrepared(
+  prep: PreparedRef,
+  config: Pick<LinkLensConfig, "epsilon" | "refExplainTerms">,
+  candidates?: readonly Int32Array[],
+  prefilter: RefPrefilterInfo | null = null,
+): RefMatrix {
+  const { docs, termOf, tIds, tW, total, off, postV, postW, donorIds } = prep;
+  const n = docs.length;
+  const k = config.refExplainTerms;
+  const m = termOf.length;
+
   const entries: RefEntry[] = [];
   let nonZero = 0;
   let sourcesWithEntries = 0;
   let maxRef: number | null = null;
   const acc = new Float64Array(n);
   const seen = new Uint8Array(n);
+  const mask = new Uint8Array(n);
   const inDonor = new Uint8Array(m);
   for (let u = 0; u < n; u++) {
-    // S_A(u) as term ids, in term order; terms in no target cannot match and are skipped.
-    const donor: number[] = [];
-    for (const t of (docs[u] as TextDocument).donor) {
-      const id = termId.get(t);
-      if (id !== undefined) donor.push(id);
-    }
-    const touched: number[] = [];
-    for (const t of donor) {
-      for (let p = off[t] as number, end = off[t + 1] as number; p < end; p++) {
-        const v = postV[p] as number;
-        if (seen[v] === 0) {
-          seen[v] = 1;
-          touched.push(v);
-        }
-        acc[v] = (acc[v] as number) + (postW[p] as number);
-      }
-    }
-    touched.sort((a, b) => a - b);
+    const donor = donorIds[u] as Int32Array;
     const row: { v: number; ref: number }[] = [];
-    for (const v of touched) {
-      const r = (acc[v] as number) / (total[v] as number);
-      acc[v] = 0;
-      seen[v] = 0;
-      if (v === u) continue;
-      nonZero += 1;
-      if (r > config.epsilon) row.push({ v, ref: r });
+    const cands = candidates?.[u];
+    // With candidates, walk the postings (masked to them) when that touches fewer entries than
+    // scanning each candidate's terms. Both sum the matched weights in term order, so the
+    // scores are identical to the exact matrix's either way.
+    let walk = cands === undefined;
+    if (cands !== undefined) {
+      let scan = 0;
+      for (const v of cands) scan += (tIds[v] as Int32Array).length;
+      let postings = 0;
+      for (const t of donor) postings += (off[t + 1] as number) - (off[t] as number);
+      walk = postings < scan;
+      if (walk) for (const v of cands) mask[v] = 1;
+    }
+    if (walk) {
+      const touched: number[] = [];
+      for (const t of donor) {
+        for (let p = off[t] as number, end = off[t + 1] as number; p < end; p++) {
+          const v = postV[p] as number;
+          if (cands !== undefined && mask[v] === 0) continue;
+          if (seen[v] === 0) {
+            seen[v] = 1;
+            touched.push(v);
+          }
+          acc[v] = (acc[v] as number) + (postW[p] as number);
+        }
+      }
+      if (cands !== undefined) for (const v of cands) mask[v] = 0;
+      touched.sort((a, b) => a - b);
+      for (const v of touched) {
+        const r = (acc[v] as number) / (total[v] as number);
+        acc[v] = 0;
+        seen[v] = 0;
+        if (v === u) continue;
+        nonZero += 1;
+        if (r > config.epsilon) row.push({ v, ref: r });
+      }
+    } else {
+      // Only the candidates, each scored exactly: Σ w_B over S_B's terms that S_A contains, in
+      // S_B's term order (the same order as the division's total).
+      for (const t of donor) inDonor[t] = 1;
+      for (const v of cands as Int32Array) {
+        if (v === u) continue;
+        const ids = tIds[v] as Int32Array;
+        const ws = tW[v] as Float64Array;
+        let s = 0;
+        for (let i = 0; i < ids.length; i++) {
+          if (inDonor[ids[i] as number] === 1) s += ws[i] as number;
+        }
+        if (s === 0) continue;
+        nonZero += 1;
+        const r = s / (total[v] as number);
+        if (r > config.epsilon) row.push({ v, ref: r });
+      }
+      for (const t of donor) inDonor[t] = 0;
     }
     if (row.length === 0) continue;
     sourcesWithEntries += 1;
@@ -212,12 +393,13 @@ export function refMatrix(
 
   return {
     version: REF_VERSION,
-    textVersion: model.version,
-    runId: model.runId,
-    policyVersion: model.policyVersion,
-    variant,
+    textVersion: prep.model.version,
+    runId: prep.model.runId,
+    policyVersion: prep.model.policyVersion,
+    variant: prep.variant,
     epsilon: config.epsilon,
     explainTerms: config.refExplainTerms,
+    prefilter,
     nodes: docs.map((d) => d.node),
     stats: {
       nodes: n,

@@ -10,6 +10,8 @@ import type {
   FetchBodyRow,
   FetchPurpose,
   FetchRow,
+  FixRatingRow,
+  NewFixRating,
   Id,
   NewFetchBody,
   Json,
@@ -212,6 +214,21 @@ export function getFetchBody(db: Queryable, fetchId: Id): Promise<FetchBodyRow |
   return maybeOne(db, `SELECT ${FETCH_BODY_COLS} FROM fetch_bodies WHERE fetch_id = $1`, [fetchId]);
 }
 
+/** The stored bodies of these fetches of a run (those without one are absent), in fetch order. */
+export async function listFetchBodies(
+  db: Queryable,
+  runId: Id,
+  fetchIds: readonly Id[],
+): Promise<FetchBodyRow[]> {
+  if (fetchIds.length === 0) return [];
+  const { rows } = await db.query<FetchBodyRow>(
+    `SELECT ${FETCH_BODY_COLS} FROM fetch_bodies
+     WHERE run_id = $1 AND fetch_id = ANY($2::bigint[]) ORDER BY fetch_id`,
+    [runId, [...fetchIds]],
+  );
+  return rows;
+}
+
 // ---------- pages ----------
 const PAGE_SPEC: readonly ColumnSpec<NewPage>[] = [
   { column: "run_id", get: (p) => p.runId },
@@ -337,6 +354,40 @@ export async function listAnalyticsClicks(db: Queryable, runId: Id): Promise<Ana
   const { rows } = await db.query<AnalyticsClickRow>(
     `SELECT ${ANALYTICS_COLS} FROM analytics_clicks WHERE run_id = $1 ORDER BY id`,
     [runId],
+  );
+  return rows;
+}
+
+// ---------- fix_ratings (append-only: insert + read only) ----------
+const RATING_COLS = `id, run_id AS "runId", sample_artefact_id AS "sampleArtefactId",
+  item_id AS "itemId", rater, rater_name AS "raterName", relevant, placement,
+  rated_at AS "ratedAt"`;
+const RATING_SPEC: readonly ColumnSpec<NewFixRating>[] = [
+  { column: "run_id", get: (r) => r.runId },
+  { column: "sample_artefact_id", get: (r) => r.sampleArtefactId },
+  { column: "item_id", get: (r) => r.itemId },
+  { column: "rater", get: (r) => r.rater },
+  { column: "rater_name", get: (r) => r.raterName },
+  { column: "relevant", get: (r) => r.relevant },
+  { column: "placement", get: (r) => r.placement },
+];
+
+export async function insertFixRating(db: Queryable, rating: NewFixRating): Promise<FixRatingRow> {
+  const [row] = await insertMany<NewFixRating, FixRatingRow>(
+    db,
+    "fix_ratings",
+    RATING_SPEC,
+    [rating],
+    RATING_COLS,
+  );
+  return row as FixRatingRow;
+}
+
+/** Every rating row of a sample, oldest first (the latest per rater and item is the answer). */
+export async function listFixRatings(db: Queryable, sampleArtefactId: Id): Promise<FixRatingRow[]> {
+  const { rows } = await db.query<FixRatingRow>(
+    `SELECT ${RATING_COLS} FROM fix_ratings WHERE sample_artefact_id = $1 ORDER BY id`,
+    [sampleArtefactId],
   );
   return rows;
 }

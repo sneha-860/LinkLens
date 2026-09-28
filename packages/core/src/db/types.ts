@@ -218,6 +218,32 @@ export interface NewAnalyticsClick {
   lineNumber: number;
 }
 
+// ---------- fix_ratings (append-only) ----------
+export const RATERS = ["A", "B"] as const;
+export type Rater = (typeof RATERS)[number];
+export const PLACEMENTS = ["good", "acceptable", "poor", "na"] as const;
+export type Placement = (typeof PLACEMENTS)[number];
+export interface FixRatingRow {
+  id: Id;
+  runId: Id;
+  sampleArtefactId: Id;
+  itemId: string;
+  rater: Rater;
+  raterName: string;
+  relevant: boolean;
+  placement: Placement;
+  ratedAt: Date;
+}
+export interface NewFixRating {
+  runId: Id;
+  sampleArtefactId: Id;
+  itemId: string;
+  rater: Rater;
+  raterName: string;
+  relevant: boolean;
+  placement: Placement;
+}
+
 // ---------- audits (pipeline state; mutable) ----------
 export const AUDIT_STATUSES = ["queued", "running", "completed", "failed"] as const;
 export type AuditStatus = (typeof AUDIT_STATUSES)[number];

@@ -1,0 +1,27 @@
+{
+  "experiment": "fixture",
+  "threshold": 0.1,
+  "thresholds": [
+    0.05,
+    0.1,
+    0.2
+  ],
+  "caps": [
+    6,
+    12,
+    18
+  ],
+  "epsilon": 0.2,
+  "repeats": 1,
+  "params": {
+    "numPerm": 128,
+    "partitions": 16,
+    "maxRows": 16,
+    "falsePositiveWeight": 0.5,
+    "falseNegativeWeight": 0.5,
+    "seed": 42
+  },
+  "host": {
+    "cpu": "fixture"
+  }
+}

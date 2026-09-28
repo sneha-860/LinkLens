@@ -158,6 +158,9 @@ describe("scoreFixes", () => {
       kappa: 3,
       templateReach: 6,
       score: fixScore(0.02, 0.9, 3),
+      scoreS: fixScore(0.02, 0.9, 3),
+      scoring: "S",
+      importance: null,
       rank: 2,
       targetRank: 2,
       targetReasons: ["deep-page"],
@@ -175,6 +178,30 @@ describe("scoreFixes", () => {
     expect(order("refOnly")).toEqual(["C→T1", "D→T2", "A→T1", "A→T2", "B→T1"]);
     // blended (λ 0.5): A→T1 0.0065, C 0.00625, B 0.004, A→T2 0.0022, D 0.0015.
     expect(order("blended")).toEqual(["A→T1", "C→T1", "B→T1", "A→T2", "D→T2"]);
+  });
+
+  it("scores S_imp = S × importance(target) when asked, keeping S on every record", () => {
+    // T2 matters much more than T1: its fixes move up.
+    const importance = (n: string) => ({ T1: 0.1, T2: 0.9 })[n] ?? null;
+    const imp = scoreFixes({ ...input(), importance }, { ...config, fixScoring: "S_imp" });
+    expect(imp.map((f) => `${f.donor}→${f.target}`)).toEqual([
+      "A→T2",
+      "A→T1",
+      "B→T1",
+      "C→T1",
+      "D→T2",
+    ]);
+    for (const f of imp) {
+      expect(f.scoring).toBe("S_imp");
+      expect(f.importance).toBe(importance(f.target));
+      expect(f.scoreS).toBe(fixes.find((g) => g.id === f.id)?.score);
+      expect(f.score).toBeCloseTo(f.scoreS * (f.importance as number), 15);
+    }
+    // In the default mode importance is neither used nor needed.
+    expect(scoreFixes({ ...input(), importance }, config).every((f) => f.importance === null)).toBe(
+      true,
+    );
+    expect(() => scoreFixes(input(), { ...config, fixScoring: "S_imp" })).toThrow(/importance/);
   });
 
   it("reports every variant on each record, whichever one scores", () => {

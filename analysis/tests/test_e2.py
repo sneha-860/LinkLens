@@ -94,7 +94,7 @@ def test_loads_the_real_export():
 def test_rejects_unknown_channels(tmp_path):
     d = tmp_path / "b"
     d.mkdir()
-    for name in ("metrics.csv", "policy_pairs.csv", "e3.csv", "e4.csv", "e4_pages.csv", "e5.csv", "e5_categories.csv", "e5_disagreements.csv", "e6.csv", "sites.csv", "stages.csv"):
+    for name in ("metrics.csv", "policy_pairs.csv", "e3.csv", "e4.csv", "e4_pages.csv", "e5.csv", "e5_categories.csv", "e5_disagreements.csv", "e6.csv", "e7.csv", "e7_sigma_pairs.csv", "sites.csv", "stages.csv"):
         (d / name).write_bytes((FIXTURES / "corpus-export" / name).read_bytes())
     bad = synthetic_channels()
     bad.loc[0, "channel"] = "twitter"
@@ -169,7 +169,7 @@ def test_single_run_e2_has_a_removals_table():
 def write_batch(tmp_path: Path, channels: pd.DataFrame) -> Path:
     d = tmp_path / "batch"
     d.mkdir()
-    for name in ("metrics.csv", "policy_pairs.csv", "e3.csv", "e4.csv", "e4_pages.csv", "e5.csv", "e5_categories.csv", "e5_disagreements.csv", "e6.csv", "sites.csv", "stages.csv"):
+    for name in ("metrics.csv", "policy_pairs.csv", "e3.csv", "e4.csv", "e4_pages.csv", "e5.csv", "e5_categories.csv", "e5_disagreements.csv", "e6.csv", "e7.csv", "e7_sigma_pairs.csv", "sites.csv", "stages.csv"):
         (d / name).write_bytes((FIXTURES / "corpus-export" / name).read_bytes())
     channels.to_csv(d / "channels.csv", index=False)
     return d

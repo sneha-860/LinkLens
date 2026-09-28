@@ -7,10 +7,13 @@ import {
   discovery,
   fixes,
   graph,
+  importance,
+  makeConfig,
+  rating,
   type SigmaVariant,
 } from "@linklens/core";
 import { toCsv } from "./csv.js";
-import { notFound, notReady } from "./errors.js";
+import { HttpError, notFound, notReady } from "./errors.js";
 import { STAGES, type PolicyJob } from "./pipeline.js";
 import { stats } from "@linklens/core";
 
@@ -84,15 +87,27 @@ export async function auditView(db: q.Queryable, a: q.AuditRow, active: boolean)
 
 // ---------- artefact views ----------
 
+/**
+ * The policy's link graph, with each node's page type and importance (L12; from the stored
+ * `page-importance` artefact, computed once when missing; null until the crawl has completed).
+ */
 export async function graphView(db: q.Queryable, a: q.AuditRow, policy: PolicyId) {
   let row = await latest<q.Json>(db, a.runId, graph.LINK_GRAPH_ARTEFACT, policy);
+  const run = await q.getRun(db, a.runId);
   if (row === null) {
-    const run = await q.getRun(db, a.runId);
     if (run?.status !== "completed") throw notReady("the link graph");
     const g = await graph.deriveGraph(db, a.runId, policy);
     row = { id: g.artefact.id, payload: g.artefact.payload };
   }
-  return { policy, policyVersion: versionOf(policy), artefactId: row.id, graph: row.payload };
+  const pageImportance =
+    run?.status === "completed" ? await importance.importanceFor(db, a.runId, policy) : null;
+  return {
+    policy,
+    policyVersion: versionOf(policy),
+    artefactId: row.id,
+    graph: row.payload,
+    importance: pageImportance?.nodes ?? null,
+  };
 }
 
 export async function issuesView(
@@ -151,15 +166,29 @@ export async function diagnosisView(db: q.Queryable, a: q.AuditRow, only?: strin
   };
 }
 
-/** The ranking for a σ variant: stored, or computed from the stored counterfactual. */
+/**
+ * Broken internal links and redirect chains, from the recorded crawl fetches (computed on
+ * request; available once the crawl stage has completed).
+ */
+export async function linksView(db: q.Queryable, a: q.AuditRow) {
+  const stages = await q.listAuditStages(db, a.runId);
+  if (stages.find((s) => s.stage === "crawl")?.status !== "completed") throw notReady("the crawl");
+  return auditCore.loadLinkHealth(db, a.runId, a.policy as PolicyId);
+}
+
+/**
+ * The ranking for a σ variant under the run's scoring mode (config.fixScoring: S, or S_imp):
+ * stored, or computed from the stored counterfactual. Rankings stored before scoring@1.2.0 are S.
+ */
 export async function rankingFor(db: q.Queryable, a: q.AuditRow, sigma: SigmaVariant) {
   const policy = a.policy as PolicyId;
+  const scoring = makeConfig((await q.getRun(db, a.runId))?.config ?? {}).fixScoring;
   const stored = await latest<fixes.FixRanking>(
     db,
     a.runId,
     fixes.FIX_RANKING_ARTEFACT,
     policy,
-    (p) => p.sigmaVariant === sigma,
+    (p) => p.sigmaVariant === sigma && (p.scoring ?? "S") === scoring,
   );
   if (stored !== null) return stored;
   const stages = await q.listAuditStages(db, a.runId);
@@ -170,14 +199,37 @@ export async function rankingFor(db: q.Queryable, a: q.AuditRow, sigma: SigmaVar
   return { id: r.artefact.id, payload: r as fixes.FixRanking };
 }
 
+/** What a fix card shows: the sentence, the lines and the anchor suggestion (null if none). */
+const cardOf = (e: fixes.FixExplanation) => ({
+  sentence: e.sentence,
+  lines: e.lines,
+  anchor: e.anchor ?? null,
+});
+
 export async function fixesView(
   db: q.Queryable,
   a: q.AuditRow,
   sigma: SigmaVariant,
   k: number,
   scope: "global" | "target",
+  scoring: "formula" | "learned" = "formula",
 ) {
   const ranking = await rankingFor(db, a, sigma);
+  // L13: the model's priority and SHAP contributions ride along on every fix when imported;
+  // "learned" also reorders by them (S stays the default).
+  const learned = await latest<fixes.LearnedPriority>(
+    db,
+    a.runId,
+    fixes.LEARNED_ARTEFACT,
+    a.policy as PolicyId,
+  );
+  if (scoring === "learned" && learned === null) {
+    throw new HttpError(
+      409,
+      "not_ready",
+      "No learned priority for this audit: train the L13 model and import it (`l13 import`)",
+    );
+  }
   const expl = await latest<fixes.ExplanationSet>(
     db,
     a.runId,
@@ -185,16 +237,26 @@ export async function fixesView(
     a.policy as PolicyId,
   );
   const byId = new Map((expl?.payload.fixes ?? []).map((e) => [e.id, e]));
-  const withExplanation = (f: fixes.FixRecord) => {
+  const withExplanation = (f: fixes.FixRecord | fixes.LearnedFixRecord) => {
     const e = byId.get(f.id);
-    return { ...f, explanation: e === undefined ? null : { sentence: e.sentence, lines: e.lines } };
+    return {
+      ...f,
+      learned: learned?.payload.fixes[f.id] ?? null,
+      explanation: e === undefined ? null : cardOf(e),
+    };
   };
-  const all = ranking.payload.fixes;
+  const all: readonly (fixes.FixRecord | fixes.LearnedFixRecord)[] =
+    scoring === "learned" && learned !== null
+      ? fixes.applyLearned(ranking.payload.fixes, learned.payload)
+      : ranking.payload.fixes;
   return {
     sigma,
     k,
     scope,
+    scoring,
     artefactId: ranking.id,
+    learnedArtefactId: learned?.id ?? null,
+    learnedModel: learned?.payload.model ?? null,
     total: all.length,
     ...(scope === "global"
       ? { fixes: fixes.topK(all, k).map(withExplanation) }
@@ -204,6 +266,40 @@ export async function fixesView(
             fixes: list.map(withExplanation),
           })),
         }),
+  };
+}
+
+/**
+ * The rating page: the latest blind sample (no ranks or scores) and, for `rater`, only that
+ * rater's own latest answers (never the other rater's).
+ */
+export async function ratingView(db: q.Queryable, a: q.AuditRow, rater?: q.Rater) {
+  const policy = a.policy as PolicyId;
+  const sample = await rating.loadRatingSample(db, a.runId, policy);
+  if (sample === null) {
+    const ranking = await latest(db, a.runId, fixes.FIX_RANKING_ARTEFACT, policy);
+    return { sample: null, canCreate: ranking !== null };
+  }
+  const mine =
+    rater === undefined
+      ? new Map<string, rating.Answer>()
+      : (rating.latestAnswers(await q.listFixRatings(db, sample.artefactId)).get(rater) ??
+        new Map<string, rating.Answer>());
+  return {
+    sample: {
+      id: sample.artefactId,
+      version: sample.version,
+      size: sample.size,
+      pool: sample.pool,
+      sigmaVariant: sample.sigmaVariant,
+      items: rating.blindItems(sample.items),
+    },
+    canCreate: false,
+    rater: rater ?? null,
+    name: [...mine.values()].at(-1)?.raterName ?? null,
+    answers: Object.fromEntries(
+      [...mine].map(([id, x]) => [id, { relevant: x.relevant, placement: x.placement }]),
+    ),
   };
 }
 
@@ -228,7 +324,7 @@ export async function orphansView(db: q.Queryable, a: q.AuditRow) {
         const e = byId.get(`rescue:${d.donor}->${o.node}`);
         return {
           ...d,
-          explanation: e === undefined ? null : { sentence: e.sentence, lines: e.lines },
+          explanation: e === undefined ? null : cardOf(e),
         };
       }),
     })),
@@ -370,6 +466,12 @@ export async function exportFiles(
     "summary.json": json(summary),
   };
   const fixSentence = new Map((expl?.payload.fixes ?? []).map((e) => [e.id, e.sentence]));
+  const fixAnchor = new Map(
+    (expl?.payload.fixes ?? []).map((e) => [
+      e.id,
+      e.anchor?.status === "suggested" ? e.anchor : null,
+    ]),
+  );
   const diagSentence = new Map((expl?.payload.diagnoses ?? []).map((e) => [e.id, e.sentence]));
   const rescueSentence = new Map((expl?.payload.rescues ?? []).map((e) => [e.id, e.sentence]));
   if (issues !== null) {
@@ -421,6 +523,15 @@ export async function exportFiles(
         ["cosine", (f) => f.cosine],
         ["kappa", (f) => f.kappa],
         ["policy_version", (f) => f.policyVersion],
+        ["suggested_anchor", (f) => fixAnchor.get(f.id)?.anchor ?? null],
+        [
+          "anchor_paragraph",
+          (f) => {
+            const a = fixAnchor.get(f.id);
+            return a === null || a === undefined ? null : a.paragraphIndex + 1;
+          },
+        ],
+        ["anchor_ref", (f) => fixAnchor.get(f.id)?.ref ?? null],
         ["explanation", (f) => fixSentence.get(f.id) ?? null],
       ]),
     );
@@ -451,5 +562,66 @@ export async function exportFiles(
     );
   }
   if (expl !== null) files["explanations.json"] = json(expl.payload);
+  const crawled =
+    (await q.listAuditStages(db, a.runId)).find((s) => s.stage === "crawl")?.status === "completed";
+  if (crawled) {
+    const health = await auditCore.loadLinkHealth(db, a.runId, policy);
+    const hops = (t: auditCore.RedirectChain | auditCore.BrokenTarget) =>
+      [
+        ...t.chain.map((h) => `${h.url} (${h.statusCode})`),
+        `${t.finalUrl ?? ""} (${t.finalStatus ?? ""})`,
+      ].join(" -> ");
+    // One row per source page and target: where to fix the link.
+    files["broken-links.csv"] = strToU8(
+      toCsv(
+        health.broken.flatMap((t) => t.sources.map((s) => ({ t, s }))),
+        [
+          ["source_url", (r) => r.s.page],
+          ["target_url", (r) => r.t.url],
+          ["status", (r) => r.t.finalStatus],
+          ["class", (r) => r.t.class],
+          ["redirect_hops", (r) => r.t.hops],
+          ["final_url", (r) => r.t.finalUrl],
+          ["links", (r) => r.s.links],
+          ["anchors", (r) => r.s.anchors.join(" | ")],
+          ["regions", (r) => r.s.regions.join(" ")],
+        ],
+      ),
+    );
+    files["redirect-chains.csv"] = strToU8(
+      toCsv(
+        health.redirectChains.flatMap((t) => t.sources.map((s) => ({ t, s }))),
+        [
+          ["source_url", (r) => r.s.page],
+          ["target_url", (r) => r.t.url],
+          ["hops", (r) => r.t.hops],
+          ["chain", (r) => hops(r.t)],
+          ["final_url", (r) => r.t.finalUrl],
+          ["final_status", (r) => r.t.finalStatus],
+          ["ends_broken", (r) => (r.t.endsBroken ? 1 : 0)],
+          ["links", (r) => r.s.links],
+          ["anchors", (r) => r.s.anchors.join(" | ")],
+        ],
+      ),
+    );
+  }
+  const sample = await rating.loadRatingSample(db, a.runId, policy);
+  if (sample !== null) {
+    const rows = await q.listFixRatings(db, sample.artefactId);
+    const rankOf = new Map(sample.items.map((i) => [i.itemId, i.rank]));
+    // Every answer (append-only history) with the item's rank, which the raters never saw.
+    files["ratings.csv"] = strToU8(
+      toCsv(rows, [
+        ["sample_id", (r) => r.sampleArtefactId],
+        ["item_id", (r) => r.itemId],
+        ["rank", (r) => rankOf.get(r.itemId) ?? null],
+        ["rater", (r) => r.rater],
+        ["rater_name", (r) => r.raterName],
+        ["relevant", (r) => (r.relevant ? 1 : 0)],
+        ["placement", (r) => r.placement],
+        ["rated_at", (r) => new Date(r.ratedAt).toISOString()],
+      ]),
+    );
+  }
   return files;
 }

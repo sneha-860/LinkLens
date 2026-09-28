@@ -14,7 +14,6 @@ const USAGE = `Usage: pnpm --filter @linklens/eval e <E1…E8> --run <id> [optio
   --sf <file>        E5: Screaming Frog internal_all.csv (URLs, depth, its inlink column)
   --sf-dir <dir>     E5: a folder with internal_all.csv, all_inlinks.csv, orphan_pages.csv
   --ratings <file>   E8: filled rating sheet(s) (without: writes the sheet to fill)
-  --sample <n>       E7: links to hide (default 20)
   --seed <n>         seed (default config.randomSeed; E6: repeat r uses seed + r)
   --k <n>            top k (default 10; E3: one k instead of config.e3TopKs)
   --out <file>       also write the JSON result here (for analysis/)
@@ -51,7 +50,6 @@ async function main(): Promise<void> {
         ? {}
         : { screamingFrog: { internal: file("sf") as string } }),
     ...(file("ratings") === undefined ? {} : { ratingsCsv: file("ratings") as string }),
-    ...(num("sample") === undefined ? {} : { sample: num("sample") as number }),
     ...(num("seed") === undefined ? {} : { seed: num("seed") as number }),
     ...(num("k") === undefined ? {} : { k: num("k") as number }),
   };
@@ -59,7 +57,7 @@ async function main(): Promise<void> {
   const db = asQueryable(pool);
   let embedder: EmbeddingWorker | undefined;
   try {
-    if (id === "E3" || id === "E6") {
+    if (id === "E3" || id === "E6" || id === "E7") {
       // The run's model; cached embeddings are reused (E3 embeds the orphans' pages, E6 the
       // masked pages).
       const stored = await q.getRun(db, options.runId);

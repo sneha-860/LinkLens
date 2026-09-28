@@ -47,6 +47,7 @@ describe("migrations", () => {
       "discovery_observations",
       "fetch_bodies",
       "fetches",
+      "fix_ratings",
       "link_observations",
       "pages",
       "pgmigrations",
@@ -311,6 +312,7 @@ describe("append-only enforcement", () => {
     discovery_observations: "url",
     fetch_bodies: "sha256",
     analytics_clicks: "source_url",
+    fix_ratings: "rater_name",
   } as const;
 
   for (const table of [
@@ -318,6 +320,7 @@ describe("append-only enforcement", () => {
     "discovery_observations",
     "fetch_bodies",
     "analytics_clicks",
+    "fix_ratings",
   ] as const) {
     describe(table, () => {
       let runId: number;
@@ -341,6 +344,21 @@ describe("append-only enforcement", () => {
         await q.insertAnalyticsClicks(db, [
           { runId, sourceUrl: "https://example.com/", targetUrl: "/x", clicks: 3, lineNumber: 2 },
         ]);
+        const sample = await q.insertArtefact(db, {
+          runId,
+          policyVersion: "P3@1.0.0",
+          kind: "rating-sample",
+          payload: { items: [] },
+        });
+        await q.insertFixRating(db, {
+          runId,
+          sampleArtefactId: sample.id,
+          itemId: "add-link:a->b",
+          rater: "A",
+          raterName: "Ana",
+          relevant: true,
+          placement: "good",
+        });
       });
 
       it("blocks UPDATE", async () => {
@@ -425,6 +443,39 @@ describe("analytics_clicks", () => {
     const row = { runId: run.id, sourceUrl: "/a", targetUrl: "/b", clicks: 1, lineNumber: 2 };
     expect(await sqlState(q.insertAnalyticsClicks(db, [{ ...row, clicks: -1 }]))).toBe("23514");
     expect(await sqlState(q.insertAnalyticsClicks(db, [{ ...row, lineNumber: 1 }]))).toBe("23514");
+  });
+});
+
+describe("fix_ratings", () => {
+  it("keeps every answer in order and checks the rater, the placement and the item", async () => {
+    const { run } = await seedRun();
+    const sample = await q.insertArtefact(db, {
+      runId: run.id,
+      policyVersion: "P3@1.0.0",
+      kind: "rating-sample",
+      payload: { items: [] },
+    });
+    const base = {
+      runId: run.id,
+      sampleArtefactId: sample.id,
+      itemId: "add-link:https://e.test/a->https://e.test/b",
+      rater: "B" as const,
+      raterName: "Ben",
+      relevant: false,
+      placement: "na" as const,
+    };
+    const first = await q.insertFixRating(db, base);
+    const second = await q.insertFixRating(db, { ...base, relevant: true, placement: "poor" });
+    expect(await q.listFixRatings(db, sample.id)).toEqual([first, second]);
+    expect(second).toMatchObject({ relevant: true, placement: "poor", raterName: "Ben" });
+    expect(await sqlState(q.insertFixRating(db, { ...base, rater: "C" as never }))).toBe("23514");
+    expect(await sqlState(q.insertFixRating(db, { ...base, placement: "great" as never }))).toBe(
+      "23514",
+    );
+    expect(await sqlState(q.insertFixRating(db, { ...base, raterName: "" }))).toBe("23514");
+    expect(await sqlState(q.insertFixRating(db, { ...base, sampleArtefactId: 999_999_999 }))).toBe(
+      "23503",
+    );
   });
 });
 

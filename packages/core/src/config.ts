@@ -34,6 +34,45 @@ export type ProminenceRegion = (typeof PROMINENCE_REGIONS)[number];
  * (the default), and the blend λ·REF + (1 − λ)·cosine.
  */
 export const SIGMA_VARIANTS = ["cosineOnly", "refOnly", "refGateCosine", "blended"] as const;
+/** Page types of the page-importance estimator (L12). */
+export const PAGE_TYPES = ["homepage", "hub", "product", "article", "utility", "other"] as const;
+export type PageType = (typeof PAGE_TYPES)[number];
+
+/** One page type's evidence: regexes on path + query (case-insensitive), and schema.org types. */
+export interface PageTypeEvidence {
+  readonly url: readonly string[];
+  readonly schema: readonly string[];
+}
+
+/**
+ * The page-type classifier's rules (L12). First match wins: homepage (the seed), utility (URL or
+ * schema), then schema.org types (product, article, hub), then URL patterns (product, hub,
+ * article), then structure, else "other".
+ */
+export interface PageTypeRules {
+  readonly utility: PageTypeEvidence;
+  readonly product: PageTypeEvidence;
+  readonly hub: PageTypeEvidence;
+  readonly article: PageTypeEvidence;
+  readonly structure: {
+    /** Hub: at least this many main-content links and this share of body words in links… */
+    readonly hubMinBodyLinks: number;
+    readonly hubMinLinkDensity: number;
+    /** …or pagination with at least this many main-content links. */
+    readonly hubPaginationMinBodyLinks: number;
+    /** Article: at least this many body words and at most this share of them in links. */
+    readonly articleMinWords: number;
+    readonly articleMaxLinkDensity: number;
+  };
+}
+
+/** Fix scores: S = ΔPR × σ / κ, or S_imp = S × importance(target) (L12; experimental). */
+export const FIX_SCORINGS = ["S", "S_imp"] as const;
+export type FixScoring = (typeof FIX_SCORINGS)[number];
+
+/** REF candidate generation: every pair (exact) or an LSH Ensemble containment pre-filter. */
+export const REF_PREFILTERS = ["none", "lsh-ensemble"] as const;
+export type RefPrefilter = (typeof REF_PREFILTERS)[number];
 export type SigmaVariant = (typeof SIGMA_VARIANTS)[number];
 
 export interface LinkLensConfig {
@@ -53,6 +92,32 @@ export interface LinkLensConfig {
   readonly epsilon: number;
   /** Matched n-grams kept per REF pair as its explanation (highest target weight first). */
   readonly refExplainTerms: number;
+  /**
+   * REF candidate pairs: "none" scores every ordered pair exactly (default); "lsh-ensemble" scores
+   * only the pairs a MinHash LSH Ensemble returns for containment of S_B in S_A (approximate:
+   * a pair it misses is absent, as if REF ≤ ε).
+   */
+  readonly refPrefilter: RefPrefilter;
+  /** LSH Ensemble: MinHash permutations per signature. */
+  readonly lshNumPerm: number;
+  /** LSH Ensemble: donor sets split into this many equi-depth partitions by size. */
+  readonly lshPartitions: number;
+  /** LSH Ensemble: most rows per band indexed (≤ lshNumPerm); bands = ⌊lshNumPerm / r⌋. */
+  readonly lshMaxRows: number;
+  /**
+   * LSH Ensemble: containment threshold t* for |S_B ∩ S_A| / |S_B| (unweighted). Below ε by
+   * default, since weighted REF can pass ε with a lower unweighted containment.
+   */
+  readonly lshThreshold: number;
+  /** LSH Ensemble: weights of the false-positive and false-negative areas when (b, r) is tuned. */
+  readonly lshFalsePositiveWeight: number;
+  readonly lshFalseNegativeWeight: number;
+  /** LSH experiment: page caps compared (the first N admitted URLs of one crawl at the largest). */
+  readonly lshEvalCaps: readonly number[];
+  /** LSH experiment: containment thresholds compared (the index is built once per cap). */
+  readonly lshEvalThresholds: readonly number[];
+  /** LSH experiment: timing repeats per method (the median is reported). */
+  readonly lshEvalRepeats: number;
   /**
    * Diagnosis threshold α, applied to both normalised scores: a pair is semantically strong when
    * ρ(u,v) > α and its link is prominent when ω(u,v) ≥ α (see diagnosis).
@@ -248,6 +313,13 @@ export interface LinkLensConfig {
   readonly e6StripAnchorsFromBody: boolean;
   /** E6: also rank donors by Common Neighbours and Adamic–Adar on the masked link graph. */
   readonly e6GraphBaselines: boolean;
+  /**
+   * E7: the ε values swept (each σ variant at the default α). ε is the REF cutoff: it decides
+   * which pairs are candidates and gates cosine in the hybrid σ.
+   */
+  readonly e7Epsilons: readonly number[];
+  /** E7: the α values swept (each σ variant at the default ε). */
+  readonly e7Alphas: readonly number[];
   /** Orphan rescue: donors reported per orphan (the REF shortlist ordered by ΔPR). */
   readonly rescueTopK: number;
   /**
@@ -257,6 +329,58 @@ export interface LinkLensConfig {
   readonly rescueMaxFetches: number;
   /** Explanations: matched n-grams quoted per fix or diagnosis (at most refExplainTerms). */
   readonly explainTerms: number;
+  /**
+   * Anchor suggestion: the most characters of the donor paragraph quoted around the suggested
+   * anchor (cut at word boundaries, with an ellipsis).
+   */
+  readonly anchorExcerptChars: number;
+  /** E8 rating page: the sample is drawn from the top ratingPoolSize fixes by global rank. */
+  readonly ratingPoolSize: number;
+  /** E8 rating page: fixes shown to the raters (≤ ratingPoolSize), in a seeded random order. */
+  readonly ratingSampleSize: number;
+  /** E8 rating page: precision@k at these k (by global rank, among the rated items). */
+  readonly ratingKs: readonly number[];
+  /** Proxy validation: bootstrap resamples (of sources, or of pages) for the Spearman CIs. */
+  readonly proxyBootstrap: number;
+  /** Proxy validation: a source enters the within-source Spearman with at least this many edges. */
+  readonly proxyMinEdgesPerSource: number;
+  /** Page importance (L12): the page-type classifier's rules. */
+  readonly pageTypeRules: PageTypeRules;
+  /**
+   * Page importance (L12): a prior per page type, in [0, 1]. Heuristic: our judgement of how much
+   * a page of that type is usually worth, not fitted to data.
+   */
+  readonly pageTypePriors: Readonly<Record<PageType, number>>;
+  /**
+   * Page importance (L12): importance(v) = Σ w_i·x_i / Σ w_i over the page-type prior, the
+   * PageRank percentile, 1 / (1 + depth) and the log-scaled inbound body-link count. Heuristic
+   * weights, not fitted.
+   */
+  readonly importanceWeights: Readonly<{
+    typePrior: number;
+    pagerank: number;
+    depth: number;
+    inboundBodyLinks: number;
+  }>;
+  /** The fix score: "S" (default) or "S_imp" = S × importance(target) (L12, experimental). */
+  readonly fixScoring: FixScoring;
+  /**
+   * L13 ML prioritiser: E6 masked repeats per site used as training labels (seeds randomSeed,
+   * randomSeed + 1, …; at most e6Repeats). Each costs one counterfactual per candidate pair.
+   */
+  readonly l13Repeats: number;
+  /**
+   * L13: LightGBM lambdarank parameters, by LightGBM's own names (num_boost_round is the number
+   * of trees). Heuristic defaults for small data, not tuned on the evaluation sites.
+   */
+  readonly l13Lightgbm: Readonly<Record<string, number>>;
+  /** L13: the largest SHAP contributions shown per fix. */
+  readonly l13ShapTop: number;
+  /**
+   * Link health: a link target reached through at least this many redirect hops is reported as
+   * a redirect chain (2 = longer than one hop).
+   */
+  readonly linkHealthMinChainHops: number;
   /** Audit: a crawled page deeper than this many clicks from the seed is a "deep page". */
   readonly auditDeepPageDepth: number;
   /** Audit: a deep page deeper than this is high severity (else medium). */
@@ -286,6 +410,16 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   userAgent: "LinkLensBot/0.1 (+https://github.com/sneha-860/LinkLens)",
   epsilon: 0.2,
   refExplainTerms: 10,
+  refPrefilter: "none",
+  lshNumPerm: 128,
+  lshPartitions: 16,
+  lshMaxRows: 16,
+  lshThreshold: 0.1,
+  lshFalsePositiveWeight: 0.5,
+  lshFalseNegativeWeight: 0.5,
+  lshEvalCaps: Object.freeze([500, 1000, 2000]),
+  lshEvalThresholds: Object.freeze([0.05, 0.1, 0.2]),
+  lshEvalRepeats: 3,
   alpha: 0.1,
   frequentNgramDropPct: 0.07,
   frequentNgramMinDf: 2,
@@ -368,9 +502,112 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   e6Ks: Object.freeze([5, 10, 20]),
   e6StripAnchorsFromBody: true,
   e6GraphBaselines: true,
+  e7Epsilons: Object.freeze([0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]),
+  e7Alphas: Object.freeze([0.05, 0.1, 0.15, 0.2, 0.25, 0.3]),
   rescueTopK: 5,
   rescueMaxFetches: 50,
   explainTerms: 5,
+  anchorExcerptChars: 240,
+  ratingPoolSize: 50,
+  ratingSampleSize: 50,
+  ratingKs: Object.freeze([5, 10, 25, 50]),
+  proxyBootstrap: 2000,
+  proxyMinEdgesPerSource: 3,
+  linkHealthMinChainHops: 2,
+  pageTypeRules: Object.freeze({
+    utility: Object.freeze({
+      url: Object.freeze([
+        "(^|/)(log-?in|sign-?in|log-?out|sign-?out|register|sign-?up)([/.?]|$)",
+        "(^|/)(cart|basket|checkout|wishlist)([/.?]|$)",
+        "(^|/)(my-?)?(account|profile)s?([/.?]|$)",
+        "(^|/)search([/.?]|$)",
+        "[?&](q|s|query|search)=",
+        "(^|/)tags?/",
+        "[?&]route=(account|checkout)/",
+      ]),
+      schema: Object.freeze(["SearchResultsPage", "CheckoutPage"]),
+    }),
+    product: Object.freeze({
+      url: Object.freeze([
+        "(^|/)(products?|items?|p|dp)/[^/?#]+",
+        "[?&]route=product/product",
+        "[?&](product_id|productid|pid)=",
+      ]),
+      schema: Object.freeze([
+        "Product",
+        "ProductGroup",
+        "ProductModel",
+        "IndividualProduct",
+        "Offer",
+        "AggregateOffer",
+      ]),
+    }),
+    hub: Object.freeze({
+      url: Object.freeze([
+        "(^|/)(categor(y|ies)|collections?|archives?|topics?|sections?|departments?)(/|$)",
+        "(^|/)page/\\d+/?$",
+        "[?&]route=product/category",
+        "^/?(blog|news|docs?|shop|catalog(ue)?|guides?)/?$",
+      ]),
+      schema: Object.freeze(["CollectionPage", "ItemList", "OfferCatalog", "Blog"]),
+    }),
+    article: Object.freeze({
+      url: Object.freeze([
+        "(^|/)(blog|news|posts?|articles?|stories)/[^?#]+",
+        "(^|/)\\d{4}/\\d{2}/",
+        "(^|/)(docs?|documentation|guides?|manual|reference|tutorials?|learn|api)/[^?#]+",
+      ]),
+      schema: Object.freeze([
+        "Article",
+        "BlogPosting",
+        "NewsArticle",
+        "TechArticle",
+        "APIReference",
+        "Report",
+        "ScholarlyArticle",
+        "HowTo",
+        "Recipe",
+        "FAQPage",
+        "QAPage",
+        "DiscussionForumPosting",
+        "LiveBlogPosting",
+      ]),
+    }),
+    structure: Object.freeze({
+      hubMinBodyLinks: 20,
+      hubMinLinkDensity: 0.35,
+      hubPaginationMinBodyLinks: 5,
+      articleMinWords: 300,
+      articleMaxLinkDensity: 0.15,
+    }),
+  }),
+  pageTypePriors: Object.freeze({
+    homepage: 1,
+    product: 0.8,
+    hub: 0.7,
+    article: 0.6,
+    other: 0.4,
+    utility: 0.05,
+  }),
+  importanceWeights: Object.freeze({
+    typePrior: 0.4,
+    pagerank: 0.25,
+    depth: 0.2,
+    inboundBodyLinks: 0.15,
+  }),
+  fixScoring: "S",
+  l13Repeats: 2,
+  l13Lightgbm: Object.freeze({
+    num_boost_round: 300,
+    learning_rate: 0.05,
+    num_leaves: 15,
+    min_data_in_leaf: 20,
+    feature_fraction: 0.8,
+    bagging_fraction: 0.8,
+    bagging_freq: 1,
+    lambda_l2: 1,
+  }),
+  l13ShapTop: 3,
   auditDeepPageDepth: 3,
   auditDeepPageHighDepth: 6,
   auditWeakAuthorityPercentile: 20,
@@ -379,6 +616,31 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   apiAuditLeaseMs: 30_000,
   apiStageWorkers: 2,
 });
+
+function validatePageTypeRules(rules: PageTypeRules): void {
+  for (const t of ["utility", "product", "hub", "article"] as const) {
+    const e = rules?.[t];
+    if (!Array.isArray(e?.url) || !Array.isArray(e?.schema)) {
+      throw new RangeError(`config.pageTypeRules.${t} needs url and schema lists`);
+    }
+    for (const p of e.url) {
+      try {
+        new RegExp(p, "i");
+      } catch {
+        throw new RangeError(`config.pageTypeRules.${t}.url: invalid regex ${p}`);
+      }
+    }
+  }
+  const s = rules.structure;
+  const ints = [s?.hubMinBodyLinks, s?.hubPaginationMinBodyLinks, s?.articleMinWords];
+  const shares = [s?.hubMinLinkDensity, s?.articleMaxLinkDensity];
+  if (!ints.every((x) => Number.isInteger(x) && (x as number) >= 0)) {
+    throw new RangeError("config.pageTypeRules.structure: counts must be non-negative integers");
+  }
+  if (!shares.every((x) => typeof x === "number" && x >= 0 && x <= 1)) {
+    throw new RangeError("config.pageTypeRules.structure: densities must be in [0, 1]");
+  }
+}
 
 function assertUnitInterval(name: keyof LinkLensConfig, value: number): void {
   if (!Number.isFinite(value) || value < 0 || value > 1) {
@@ -486,11 +748,68 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   ) {
     throw new RangeError("config.e6Ks must be positive integers");
   }
+  for (const key of ["e7Epsilons", "e7Alphas"] as const) {
+    const xs = cfg[key];
+    if (
+      !Array.isArray(xs) ||
+      xs.length === 0 ||
+      !xs.every((x) => Number.isFinite(x) && x >= 0 && x <= 1) ||
+      new Set(xs).size !== xs.length
+    ) {
+      throw new RangeError(`config.${key} must be distinct values in [0, 1]`);
+    }
+  }
   assertPositiveInt("rescueTopK", cfg.rescueTopK);
   assertPositiveInt("rescueMaxFetches", cfg.rescueMaxFetches);
   assertPositiveInt("explainTerms", cfg.explainTerms);
   if (cfg.explainTerms > cfg.refExplainTerms) {
     throw new RangeError("config.explainTerms must be ≤ refExplainTerms (only those are stored)");
+  }
+  assertPositiveInt("anchorExcerptChars", cfg.anchorExcerptChars);
+  assertPositiveInt("ratingPoolSize", cfg.ratingPoolSize);
+  assertPositiveInt("ratingSampleSize", cfg.ratingSampleSize);
+  if (cfg.ratingSampleSize > cfg.ratingPoolSize) {
+    throw new RangeError("config.ratingSampleSize must be ≤ ratingPoolSize");
+  }
+  if (
+    !Array.isArray(cfg.ratingKs) ||
+    cfg.ratingKs.length === 0 ||
+    !cfg.ratingKs.every((k) => Number.isInteger(k) && k > 0)
+  ) {
+    throw new RangeError("config.ratingKs must be positive integers");
+  }
+  assertPositiveInt("proxyBootstrap", cfg.proxyBootstrap);
+  assertPositiveInt("proxyMinEdgesPerSource", cfg.proxyMinEdgesPerSource);
+  assertPositiveInt("linkHealthMinChainHops", cfg.linkHealthMinChainHops);
+  validatePageTypeRules(cfg.pageTypeRules);
+  for (const t of PAGE_TYPES) {
+    const p = cfg.pageTypePriors?.[t];
+    if (typeof p !== "number" || !(p >= 0 && p <= 1)) {
+      throw new RangeError(`config.pageTypePriors.${t} must be in [0, 1]`);
+    }
+  }
+  const w = cfg.importanceWeights;
+  const ws = [w?.typePrior, w?.pagerank, w?.depth, w?.inboundBodyLinks];
+  if (
+    !ws.every((x) => typeof x === "number" && Number.isFinite(x) && x >= 0) ||
+    ws.reduce((a, b) => (a as number) + (b as number), 0) === 0
+  ) {
+    throw new RangeError("config.importanceWeights must be non-negative numbers, not all 0");
+  }
+  assertPositiveInt("l13Repeats", cfg.l13Repeats);
+  if (cfg.l13Repeats > cfg.e6Repeats) {
+    throw new RangeError("config.l13Repeats must be ≤ e6Repeats");
+  }
+  if (
+    cfg.l13Lightgbm === null ||
+    typeof cfg.l13Lightgbm !== "object" ||
+    !Object.values(cfg.l13Lightgbm).every((v) => typeof v === "number" && Number.isFinite(v))
+  ) {
+    throw new RangeError("config.l13Lightgbm must map LightGBM parameter names to numbers");
+  }
+  assertPositiveInt("l13ShapTop", cfg.l13ShapTop);
+  if (!FIX_SCORINGS.includes(cfg.fixScoring)) {
+    throw new RangeError(`config.fixScoring must be one of ${FIX_SCORINGS.join(", ")}`);
   }
   assertNonNegativeInt("auditDeepPageDepth", cfg.auditDeepPageDepth);
   if (
@@ -526,6 +845,40 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
     throw new RangeError(`config.robotsMaxRedirects must be an integer ≥ 5 (RFC 9309 §2.3.1.2)`);
   }
   assertUnitInterval("epsilon", cfg.epsilon);
+  if (!REF_PREFILTERS.includes(cfg.refPrefilter)) {
+    throw new RangeError(`config.refPrefilter must be one of ${REF_PREFILTERS.join(", ")}`);
+  }
+  assertPositiveInt("lshNumPerm", cfg.lshNumPerm);
+  assertPositiveInt("lshPartitions", cfg.lshPartitions);
+  assertPositiveInt("lshMaxRows", cfg.lshMaxRows);
+  if (cfg.lshMaxRows > cfg.lshNumPerm) {
+    throw new RangeError("config.lshMaxRows must be ≤ lshNumPerm");
+  }
+  if (!(cfg.lshThreshold > 0 && cfg.lshThreshold <= 1)) {
+    throw new RangeError("config.lshThreshold must be in (0, 1]");
+  }
+  assertUnitInterval("lshFalsePositiveWeight", cfg.lshFalsePositiveWeight);
+  assertUnitInterval("lshFalseNegativeWeight", cfg.lshFalseNegativeWeight);
+  if (cfg.lshFalsePositiveWeight + cfg.lshFalseNegativeWeight <= 0) {
+    throw new RangeError("config.lshFalsePositiveWeight + lshFalseNegativeWeight must be > 0");
+  }
+  if (
+    !Array.isArray(cfg.lshEvalCaps) ||
+    cfg.lshEvalCaps.length === 0 ||
+    !cfg.lshEvalCaps.every((c) => Number.isInteger(c) && c > 1) ||
+    new Set(cfg.lshEvalCaps).size !== cfg.lshEvalCaps.length
+  ) {
+    throw new RangeError("config.lshEvalCaps must be distinct integers > 1");
+  }
+  if (
+    !Array.isArray(cfg.lshEvalThresholds) ||
+    cfg.lshEvalThresholds.length === 0 ||
+    !cfg.lshEvalThresholds.every((t) => Number.isFinite(t) && t > 0 && t <= 1) ||
+    new Set(cfg.lshEvalThresholds).size !== cfg.lshEvalThresholds.length
+  ) {
+    throw new RangeError("config.lshEvalThresholds must be distinct values in (0, 1]");
+  }
+  assertPositiveInt("lshEvalRepeats", cfg.lshEvalRepeats);
   assertUnitInterval("alpha", cfg.alpha);
   assertUnitInterval("frequentNgramDropPct", cfg.frequentNgramDropPct);
   assertPositiveInt("refExplainTerms", cfg.refExplainTerms);

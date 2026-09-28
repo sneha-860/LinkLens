@@ -248,6 +248,38 @@ exports[`determinism > matches the stored snapshot of every explanation 1`] = `
   ],
   "fixes": [
     {
+      "anchor": {
+        "anchor": "Turtle Nesting",
+        "excerpt": {
+          "anchorEnd": 49,
+          "anchorStart": 35,
+          "text": "Volunteers guard the beaches where Turtle Nesting happens each summer.",
+        },
+        "matched": [
+          {
+            "contribution": 0.3333333333333333,
+            "term": "nest",
+            "words": "Nesting",
+          },
+          {
+            "contribution": 0.3333333333333333,
+            "term": "turtl",
+            "words": "Turtle",
+          },
+          {
+            "contribution": 0.3333333333333333,
+            "term": "turtl nest",
+            "words": "Turtle Nesting",
+          },
+        ],
+        "paragraphIndex": 1,
+        "paragraphs": 2,
+        "ref": 1,
+        "share": 0.3333333333333333,
+        "status": "suggested",
+        "term": "turtl nest",
+        "weight": 1.6931471805599454,
+      },
       "case": {
         "label": "v4",
         "name": "v4 (missing)",
@@ -291,7 +323,9 @@ exports[`determinism > matches the stored snapshot of every explanation 1`] = `
       "kind": "fix",
       "lines": [
         "Why the target: /turtle is 5 clicks from the home page (deeper than 3); is in the bottom 20% by PageRank (1.20e-3 < 1.80e-3); is missing a link from 1 related page (v4).",
+        "Target page: /turtle is an article/doc page (its URL); importance 0.50 (type prior 0.60, PageRank percentile 0.25, depth 1, 1 inbound main-content link).",
         "Why this donor: REF(u,v) 1.00 > ε 0.2, on 'nesting', 'turtle', 'turtle nesting'; cosine 0.80.",
+        "Where: suggested anchor 'Turtle Nesting' in paragraph 2 of 2 of /ocean (REF to /turtle's title 1.00 > ε 0.2): "Volunteers guard the beaches where [Turtle Nesting] happens each summer."",
         "There is no link from /ocean to /turtle yet.",
         "Predicted: PageRank +3.00e-2 (+30.0%); /turtle goes from 2 to 1 click deep (-1).",
         "Effort: κ 2 (2 body link blocks); its widest body block is a template on 4 pages.",
@@ -321,11 +355,31 @@ exports[`determinism > matches the stored snapshot of every explanation 1`] = `
       ],
       "rank": 1,
       "score": 0.024,
-      "sentence": "Add a link from /ocean to /turtle: the target is 5 clicks from the home page (deeper than 3); REF 1.00 on 'nesting', 'turtle'; predicted PageRank +3.00e-2 (+30.0%); κ 2.",
+      "sentence": "Add a link from /ocean to /turtle: the target is 5 clicks from the home page (deeper than 3); REF 1.00 on 'nesting', 'turtle'; anchor 'Turtle Nesting' in paragraph 2; predicted PageRank +3.00e-2 (+30.0%); κ 2.",
       "target": "https://site.test/turtle",
+      "targetPage": {
+        "components": {
+          "depth": 0.5,
+          "inboundBodyLinks": 0.5,
+          "pagerank": 0.25,
+          "typePrior": 0.6,
+        },
+        "depth": 1,
+        "importance": 0.5,
+        "inboundBodyLinks": 1,
+        "rule": "url:article",
+        "type": "article",
+      },
       "type": "add-link",
     },
     {
+      "anchor": {
+        "bestParagraphIndex": 0,
+        "bestRef": 0,
+        "paragraphs": 2,
+        "reason": "not-above-epsilon",
+        "status": "none",
+      },
       "case": {
         "label": "v3",
         "name": "v3 (buried)",
@@ -370,6 +424,7 @@ exports[`determinism > matches the stored snapshot of every explanation 1`] = `
       "lines": [
         "Why the target: /shark is buried: 1 related page links to it only faintly (v3).",
         "Why this donor: REF(u,v) 1.00 > ε 0.2, on 'shark', 'shark teeth', 'teeth'; cosine 0.80.",
+        "Where: /ocean has no paragraph about /shark's title (best: paragraph 1 of 2, REF 0.00 ≤ ε 0.2); write a sentence that introduces /shark.",
         "/ocean already links to /shark from the footer, with low prominence ω 0.05 (< α 0.1).",
         "Predicted: PageRank +2.00e-2 (+25.0%); /shark stays 1 click deep.",
         "Effort: κ 2 (2 body link blocks); its widest body block is a template on 4 pages.",
@@ -392,11 +447,13 @@ exports[`determinism > matches the stored snapshot of every explanation 1`] = `
       "score": 0.016000000000000004,
       "sentence": "Make the link from /ocean to /shark more visible: the target is buried: 1 related page links to it only faintly (v3); REF 1.00 on 'shark', 'shark teeth'; predicted PageRank +2.00e-2 (+25.0%); κ 2.",
       "target": "https://site.test/shark",
+      "targetPage": null,
       "type": "make-visible",
     },
   ],
   "rescues": [
     {
+      "anchor": null,
       "case": {
         "label": null,
         "name": "orphan rescue (not diagnosed: the orphan has no link to judge)",
@@ -463,6 +520,7 @@ exports[`determinism > matches the stored snapshot of every explanation 1`] = `
       "score": null,
       "sentence": "Add a link from /whale to /whale-songs: the target is linked from nowhere and was found only via the XML sitemap; REF 0.61 on 'whale', 'facts'; predicted PageRank +3.00e-2 (+150.0%); κ 1.",
       "target": "https://site.test/whale-songs",
+      "targetPage": null,
       "type": "add-link",
     },
   ],

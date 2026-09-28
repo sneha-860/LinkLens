@@ -139,6 +139,38 @@ export const E6_COLUMNS = [
   "value",
 ] as const;
 
+/**
+ * E7: one row per site × setting (σ, ε, α) × metric. `sweeps` lists the sweeps the setting is
+ * in ("sigma|epsilon|alpha").
+ */
+export const E7_COLUMNS = [
+  "batch_id",
+  "site_id",
+  "architecture_class",
+  "run_id",
+  "policy",
+  "sigma",
+  "epsilon",
+  "alpha",
+  "scoring",
+  "is_default",
+  "sweeps",
+  "metric",
+  "value",
+] as const;
+
+/** E7: the top-k Jaccard between every pair of σ variants (default ε and α), per site. */
+export const E7_SIGMA_PAIRS_COLUMNS = [
+  "batch_id",
+  "site_id",
+  "architecture_class",
+  "run_id",
+  "sigma_a",
+  "sigma_b",
+  "k",
+  "jaccard",
+] as const;
+
 export const SITES_COLUMNS = [
   "batch_id",
   "site_id",

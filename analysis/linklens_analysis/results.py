@@ -210,40 +210,30 @@ def bootstrap_ci(
     return (float(lo), float(hi))
 
 
-def recovery_table(result: dict[str, Any]) -> pd.DataFrame:
-    """E6/E7: MRR (with a bootstrap 95% CI over the hidden links) and recall@k per σ."""
+def e7_table(result: dict[str, Any]) -> pd.DataFrame:
+    """E7 on one site: the σ variants at the default ε and α."""
     rows = []
-    for sigma, m in result["bySigma"].items():
-        rr = np.array([0.0 if r is None else 1.0 / r for r in m["ranks"]])
-        lo, hi = bootstrap_ci(rr)
-        row = {"sigma": sigma, "hidden": len(rr), "MRR": m["mrr"], "MRR 95% CI": f"[{lo:.3f}, {hi:.3f}]"}
-        for k, v in m["recall"].items():
-            row[f"recall@{k}"] = v
-        rows.append(row)
-    return pd.DataFrame(rows).set_index("sigma")
+    k = result["k"]
+    for r in result["rows"]:
+        if "sigma" not in r["sweeps"]:
+            continue
+        e6 = r["e6"] or {}
+        rows.append(
+            {
+                "σ": r["sigma"],
+                "fixes": r["fixes"],
+                f"top-{k} overlap with default": r["topKJaccardDefault"],
+                **{f"E3 ΔPR@{kk}": r["e3"]["linklens"][str(kk)] for kk in result["e3Ks"]},
+                "E6 MRR": e6.get("mrr"),
+                "E6 AUC": e6.get("auc"),
+            }
+        )
+    return pd.DataFrame(rows).set_index("σ")
 
 
-def sigma_paired_tests(result: dict[str, Any]) -> pd.DataFrame:
-    """E7: each pair of σ variants on the same hidden links, Wilcoxon on reciprocal ranks."""
-    rr = {
-        s: np.array([0.0 if r is None else 1.0 / r for r in m["ranks"]])
-        for s, m in result["bySigma"].items()
-    }
-    names = sorted(rr)
-    rows = []
-    for i, a in enumerate(names):
-        for b in names[i + 1 :]:
-            diff = rr[a] - rr[b]
-            nonzero = diff[diff != 0]
-            rows.append(
-                {
-                    "a": a,
-                    "b": b,
-                    "mean RR difference": float(diff.mean()) if len(diff) else float("nan"),
-                    "wilcoxon p": float(stats.wilcoxon(nonzero).pvalue) if len(nonzero) >= 1 else float("nan"),
-                }
-            )
-    return pd.DataFrame(rows)
+def e7_pairs_table(result: dict[str, Any]) -> pd.DataFrame:
+    """E7 on one site: the top-k Jaccard between σ variants."""
+    return pd.DataFrame(result["sigmaPairs"]).set_index(["a", "b"])
 
 
 def summary_series(result: dict[str, Any], keys: list[str]) -> pd.Series:
@@ -268,7 +258,7 @@ TABLES = {
     "E4": lambda r: [("Pages", e4_pages_table(r)), ("Comparisons", e4_comparisons_table(r))],
     "E5": lambda r: [("Calibration", e5_table(r)), ("Disagreement categories", e5_categories_table(r))],
     "E6": lambda r: [("Link-masking recovery", e6_table(r)), ("Repeats", e6_repeats_table(r))],
-    "E7": lambda r: [("σ ablation", recovery_table(r)), ("σ pairs", sigma_paired_tests(r))],
+    "E7": lambda r: [("σ ablation", e7_table(r)), ("σ pairs", e7_pairs_table(r))],
     "E8": lambda r: [
         (
             "Ratings",

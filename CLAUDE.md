@@ -280,6 +280,72 @@ whenever the output can change.**
 - The summary has counts by type, severity and rule, `nodesWithIssues`, `pagesAudited`, and the
   thresholds used (including the computed PageRank cut-offs).
 
+### Link health: broken links and redirect chains (packages/core/src/audit/link-health.ts)
+
+- `loadLinkHealth(db, runId, policyId)` builds the report on request; nothing is stored and
+  nothing is requested again. The pure core is `linkHealth` (`LINK_HEALTH_VERSION`).
+- A link on a crawled page is joined to the crawl fetch of `stripFragment(resolved_url)`, the
+  exact string the frontier admitted and requested. The final attempt (`final_fetches`, so a
+  retried 5xx counts once) gives its outcome. Only crawl pages' links are used, and external
+  and non-http links are left out by the crawler's scope rule.
+  - **Broken**: the final status is 4xx or 5xx, answered directly or at the end of redirects
+    (`hops` > 0).
+  - **Redirect chain**: at least `linkHealthMinChainHops` (2) redirect hops (each 3xx of
+    `redirect_chain`), with the chain, the final URL and status. It `endsBroken` when it ends in
+    4xx/5xx or never reaches a page: its last response is still a 3xx (too many redirects,
+    off-site or bad Location, a hop blocked by robots.txt). Single hops are only counted
+    (`redirectTargets`).
+  - Counted, not judged: `uncheckedLinks` (the target was never fetched: page cap, nofollow,
+    unparsable) and `failedLinks` (fetched without a status: robots.txt, network error, timeout).
+- Per target: URL, node under the policy, links, and the source pages (page, node, link count,
+  distinct anchors and regions in document order). Broken targets are sorted by most links;
+  chains by most hops, then most links. The summary adds counts per status code and the
+  distinct broken source pages.
+
+### Page importance (L12; packages/core/src/importance)
+
+- **Page type** (`classifyPage`, rules in `config.pageTypeRules`): homepage, hub (category /
+  hub), product, article (article / doc), utility (login, cart, account, search, tag) or other.
+  Rule-based, first match wins, and the result names the rule (`rule`, `evidence`):
+  1. the seed → homepage;
+  2. a utility URL pattern or schema type;
+  3. page-level schema.org types: product, then article, then hub;
+  4. URL patterns (path + query, case-insensitive): product, then hub (so `/blog/page/2` is not
+     an article), then article;
+  5. structure, for crawled pages: hub when it has ≥ `hubMinBodyLinks` main-content links with
+     ≥ `hubMinLinkDensity` of its words in links, or pagination with ≥
+     `hubPaginationMinBodyLinks`; article with ≥ `articleMinWords` words and ≤
+     `articleMaxLinkDensity` in links;
+  6. otherwise other.
+- **schema.org types** (`schemaTypes`): parsed from the stored raw HTML (`fetch_bodies`, read in
+  batches), so it works on runs crawled before it existed. Only page-level types count:
+  - JSON-LD roots, `@graph` members, and a WebPage's `mainEntity`;
+  - microdata `itemtype` without `itemprop`;
+  - a listing whose ItemList holds Products is a hub, not a product page;
+  - breadcrumbs, WebSite, Organization, Person and the like are ignored.
+- **Signals** (`pageSignals`, shared by the pipeline and the fixture tests): the body text's
+  words, the node's out-links in the main content (dom_region main/body) and their anchor
+  words, and pagination (a pagination region or rel=next/prev).
+- **Importance** (`computeImportance`, `IMPORTANCE_VERSION`):
+  `importance(v) = Σ w_i·x_i / Σ w_i` over:
+  - the type prior (`pageTypePriors`);
+  - the PageRank percentile (mid-rank);
+  - 1 / (1 + depth), 0 when unreachable;
+  - ln(1 + inbound main-content links) / ln(1 + the site's largest such count).
+
+  The weights (`importanceWeights`: 0.4 / 0.25 / 0.2 / 0.15) and the priors are **heuristic**,
+  not fitted to any outcome. An orphan (not a graph node) gets `detachedImportance`: only its
+  URL's type prior counts.
+
+- `loadImportance` (in memory) and `buildImportanceRun` (a `page-importance` artefact).
+  `importanceFor` reuses the latest one of the current version, else builds it; the graph view,
+  explanations and S_imp scoring use it.
+- Tests: the rules and importance in core, plus the classifier on real HTML in
+  `crawler/src/page-type.test.ts`:
+  - `test/fixtures/page-types/`: product, category, login, search, tag, docs (microdata),
+    structure-only article and hub, and a plain page. The fixture server does not serve them;
+  - four pages of the crawler's fixture site.
+
 ### Text representation (packages/core/src/text)
 
 - `buildTextRun(db, runId, policyId)` appends a `text-representation` artefact. The pure core is
@@ -307,7 +373,7 @@ whenever the output can change.**
 
 - `buildRefRun(db, runId, policyId, variant)` builds the text model in memory (`loadTextModel`,
   with the run's stored config) and appends a `ref-matrix` artefact. The pure core is `refMatrix`.
-  `REF_VERSION` (`ref@1.1.0`) and the text version are stored in the payload. **Bump it whenever
+  `REF_VERSION` (`ref@1.2.0`) and the text version are stored in the payload. **Bump it whenever
   the output can change.**
 - Variants: `weighted` (default; `w_B` = the target view's summed field TF-IDF weights) and
   `unweighted`. `ref()` computes one pair.
@@ -322,6 +388,24 @@ whenever the output can change.**
 - Runtime at 500 pages (249,500 pairs): see `src/semantic/ref.bench.ts`. It is under 1 s even
   when every pair shares terms. A very low ε on a dense site stores every pair with an
   explanation (hundreds of MB), which is why ε matters.
+- Optional candidate pre-filter (`config.refPrefilter`: `none`, the default, or `lsh-ensemble`;
+  `semantic/lsh-ensemble.ts`). The payload's `prefilter` records it (null when exact).
+  - LSH Ensemble (Zhu et al., VLDB 2016) for containment: the donors' S_A (only terms in some
+    target) are indexed, and each target's S_B is a query at containment
+    t* = `lshThreshold` (0.1, unweighted |S_B ∩ S_A| / |S_B|). The candidates are then scored
+    exactly (`refMatrixPrepared` with per-donor candidates); a missed pair is absent, as if
+    REF ≤ ε, and ρ is normalised over what was found.
+  - MinHash: `lshNumPerm` (128) simple-tabulation hash functions drawn from `randomSeed`. They
+    are near min-wise independent: on the test site the collision rate matched the prediction
+    (0.977 observed, 0.971 predicted), where a seeded `fmix32(h ⊕ seed)` gave 0.853.
+  - Donors are split into `lshPartitions` (16) equi-depth partitions by |S_A|. Each partition
+    has a banded index per row count r = 1…`lshMaxRows` (16). A query picks, per partition, the
+    (b, r) minimising `lshFalsePositiveWeight`·FP + `lshFalseNegativeWeight`·FN areas over
+    containment (Simpson's rule, up to min(1, u/q)). J = x·q/(u + q − x·q) uses the partition's
+    largest size u, and results are cached per log-size-ratio bin. A partition with u < t*·q is
+    skipped (exact pruning).
+  - Weighted REF can exceed ε with a lower unweighted containment, which is why t* < ε. The
+    experiment below measures what is missed.
 
 ### Semantic engine: embeddings and cosine (packages/embeddings, core/src/semantic/cosine.ts)
 
@@ -489,6 +573,11 @@ The structural stand-in for the patent's session counts. Always call it **promin
   - `blended`: `sigmaBlendLambda`·REF + (1 − λ)·cos
 - `S(u→v) = ΔPR_v × σ(u,v) / κ(u)` (`fixScore`). A negative cosine gives a negative S, which
   ranks last.
+- Optional scoring mode (`config.fixScoring`, default `S`; `buildFixRanking(…, { scoring })`):
+  `S_imp(u→v) = S(u→v) × importance(v)` (L12, experimental), with the targets' importance from
+  `importanceFor`. Every record keeps `scoreS` (S), `scoring` and `importance` (null under S).
+  The ranking artefact records `scoring` (`SCORING_VERSION` scoring@1.2.0; an older ranking
+  counts as S), and the API reuses only a ranking of the run's mode.
 - Order: S (highest first), then ΔPR_v, then donor, then target. `rank` is global and
   `targetRank` is within the target. `topK(fixes, k)` and `topKPerTarget(fixes, k)` return the
   top k (`fixTopK`, default 10; tested with 10, 25 and 50).
@@ -496,6 +585,42 @@ The structural stand-in for the patent's session counts. Always call it **promin
   before/after/Δ, the σ used and every variant, REF, ρ, cosine, prominence (existing ω, link
   weight before and after), κ, templateReach, score, rank, targetRank, target reasons, diagnosis
   and policy version.
+
+### Learned prioritiser (L13; eval/src/l13, analysis/ml, core/src/fixes/learned.ts)
+
+An experimental, offline-trained alternative to S. **S stays the default**; "learned" only
+reorders the fixes, and the rule-based explanation stays the explanation of record.
+
+- Labels: E6 hide-and-recover. `e6Rows` masks `l13Repeats` (2) repeats exactly as E6 does
+  (`maskSite`, `maskedInputs`), rebuilds the masked world in memory (`prepareRun`, re-embedded)
+  and emits every candidate of every query (target, hidden donor): the hidden donor is the one
+  positive, the other admissible candidates are negatives. Every feature is computed in the
+  masked world, so no hidden link leaks. The `sigma_hybrid` column reproduces E6's refGateCosine
+  metrics (tested). E8 ratings are a second label set when at least two sites have them.
+- Features (`l13/features.ts`, `FEATURES`): ΔPR, depth gain, newly reachable, REF, cosine, term
+  Jaccard, ω of the existing link (always 0 in E6 rows: candidates never link to the target),
+  κ, template reach, donor/target PageRank, depth, in/out neighbours, largest-SCC flags,
+  importance, same section, and the page types (categorical).
+- `pnpm --filter @linklens/eval l13 export --batch <b> --out <dir>` writes
+  `<batch>/l13/dataset/<site>/{e6,fixes,pool,ratings}.csv` and `dataset.json` (features, the
+  `l13Lightgbm` parameters, `l13ShapTop`, seed, SHA-256 per file).
+- `python -m ml train <dataset> --out <model>` (analysis/ml, LightGBM ≥ 4.3, `pip install -e
+  ".[ml]"`): lambdarank grouped by query, **leave-one-site-out**: each site's predictions come
+  from a model trained on the other sites only. Deterministic (seed, one thread). Priority =
+  the raw score's mid-rank percentile among the site's fixes (in (0, 1)). TreeSHAP
+  (`pred_contrib`, exact) gives each fix its top `l13ShapTop` (3) contributions. Writes
+  `predictions/<site>.json`, `e6_metrics.csv` (learned vs S vs the σ hybrid, E6's metric
+  definitions), `shap_sample.csv`, `model.json`.
+- `l13 import --batch <b>` stores each site's predictions as a `learned-priority` artefact
+  (`LEARNED_VERSION`) and writes `e3.csv` (E3 total ΔPR of the top k by S, learned and random).
+  `python -m ml report <model>` writes `REPORT.md` (per-site E6, paired Wilcoxon learned vs S,
+  E3, mean |SHAP|, verdict) and `figures/shap_summary` (beeswarm).
+- API: `GET /audits/:id/fixes?scoring=learned` reorders by priority (`applyLearned`: score =
+  priority, fixes without one last in S order; 409 without an artefact). Every fix carries
+  `learned` {priority, raw, shap} (null without a model). The Fixes tab has a Scoring selector,
+  and the explanation card shows "Model view (learned)" under the rule-based lines.
+- **Limitations.** E6 labels are a proxy (a link the site already had), not editorial judgement;
+  the learned mode is not validated by humans unless E8 ratings exist.
 
 ### Orphan rescue (crawler/src/rescue.ts, core/src/fixes/rescue*.ts, counterfactual/src/rescue.ts)
 
@@ -536,7 +661,13 @@ The structural stand-in for the patent's session counts. Always call it **promin
 - `buildExplanations(db, runId, policyId)` explains every fix of the latest `fix-ranking`, every
   donor of the latest `orphan-rescue` (either may be absent) and every diagnosis. It appends an
   `explanations` artefact.
-- Fix / rescue record (`explainFix`), structured, plus six `lines` and one `sentence`:
+- Fix / rescue record (`explainFix`), structured, plus six `lines` and one `sentence`. A lookup
+  can add two more lines: "Target page" after the target line and "Where" after the donor line.
+  - `targetPage` (explain@1.3.0; L12): the target's page type, the rule that decided it, and
+    its importance with the components and the depth and inbound links behind them (null
+    without a lookup). An orphan gets its detached importance. Line: "Target page: /x is a
+    product page (schema.org Product); importance 0.62 (type prior 0.80, PageRank percentile
+    …, depth 2, 3 inbound main-content links)."
   - `needs` (why the target), in this order:
     - orphan, with the non-link channels that revealed it ("found only via the XML sitemap");
     - deep page (depth > threshold);
@@ -546,6 +677,8 @@ The structural stand-in for the patent's session counts. Always call it **promin
     orphans, which are not embedded). Each n-gram keeps its `term` (Porter stems, as matched) and
     adds `words`, the surface form that the lines and sentence quote ("turtle nesting", not
     "turtl nest").
+  - `anchor`: the element-level REF result (below), or null when not computed. The sentence
+    adds "anchor '…' in paragraph N" when there is one.
   - `link`: exists, ω and regions (e.g. "only from the footer").
   - `impact`: PR before and after, ΔPR and ΔPR % (null when PR before is 0), depth before, after
     and Δ.
@@ -562,6 +695,38 @@ The structural stand-in for the patent's session counts. Always call it **promin
   - Without a lookup, explanations quote the stems (explain@1.1.0 added the words).
 - Tests: snapshot tests (inline for the key sentences, plus a file snapshot of the full output)
   on the four-case example, and end-to-end runs on the counterfactual and crawler fixtures.
+
+### Anchor suggestions: element-level REF (packages/core/src/fixes/anchor.ts)
+
+The patent's element-level REF, applied where the link would go. `buildExplanations` runs it
+for every fix and rescue donor (explain@1.2.0); the pure core is `suggestAnchor`.
+
+- Elements: the donor's `paragraphs` (the extractor's `<p>` and `<li>` of the main content; they
+  ride along on `RawDocument`, which the text model ignores). Target: its **Title** field weights
+  (`<title>` and `<h1>`, TF-IDF, boilerplate dropped); for an orphan, its rescue page's title
+  weighted against the site model (`externalTargetWeights`).
+- `REF(p, Title(v)) = Σ_{t ∈ S_p ∩ T_v} w_T(t) / Σ_{t ∈ T_v} w_T(t)` (or `|S_p ∩ T_v| / |T_v|`
+  with the ranking's `unweighted` variant), S_p = the paragraph's n-grams under the site's
+  tokeniser. The best paragraph (ties: the earlier) is used only when its REF is above
+  `config.epsilon`.
+- Anchor: the matched n-gram with the largest Title weight (ties: more words, the earlier
+  occurrence, then the term), quoted **verbatim** from the paragraph: `text/tokenise.ts`
+  `spannedPhrases` gives wordPhrases' words with their offsets in the original text (tested to
+  agree with wordPhrases; null in the rare case where per-character NFKC differs from the whole
+  text's), so "Terms of Service" is quoted for the term "term servic".
+- Text the donor already links (its content-region anchor texts, the Links field, found verbatim
+  in the paragraph by `linkedRanges`) is out of S_p and breaks n-grams: an anchor never wraps an
+  existing link, and a paragraph that is only a link (a list of links) scores 0.
+- Result: `suggested` (paragraph index and count, REF, term, weight and share of Σ w_T, the
+  anchor, an `excerpt` of at most `anchorExcerptChars` (240) cut at word boundaries with the
+  anchor's offsets, and the paragraph's top `explainTerms` matched n-grams with their words) or
+  `none` with a reason (`no-paragraphs`, `no-title-terms`, `not-above-epsilon` with the best REF).
+- Line: "Where: suggested anchor 'X' in paragraph N of M of /donor (REF to /target's title R > ε
+  E): "… [X] …"", or why there is none and "write a sentence that introduces /target".
+- **Limitations.** Paragraphs are `<p>`/`<li>` only (headings, table cells and bare text blocks
+  are not candidates). A title of one generic word ("Orphan" on the fixture) rarely matches any
+  paragraph. Linked text is found by exact substring, so an anchor whose text differs from how
+  it renders in the paragraph (an image alt, an aria-label) is not excluded.
 
 ### HTTP API and pipeline runner (packages/api)
 
@@ -623,7 +788,8 @@ config } }` returns 202 with a Location header.
   - `GET /audits`, `GET /audits/:id` (status, crawl progress, each stage and its duration),
     `POST /audits/:id/resume`, `GET /audits/:id/events` (SSE: snapshot, stage, progress, done;
     closes when done).
-  - `GET /audits/:id/summary`, `/graph?policy=` (another policy is derived on demand),
+  - `GET /audits/:id/summary`, `/graph?policy=` (another policy is derived on demand; with
+    `importance`, each node's page type and importance once the run is complete),
     `/issues?policy=&type=&severity=`, `/diagnosis?case=`, `/fixes?sigma=&k=10|25|50&scope=` (a
     ranking for another σ is computed from the stored counterfactual and stored), `/orphans`, and
     `/sensitivity` (all six policies: size, reachability, orphans, issues, top-10 PageRank Jaccard
@@ -643,7 +809,21 @@ config } }` returns 202 with a Location header.
     `GET /audits/:id/export/:file` serves one file of the export.
   - `POST /audits/:id/analytics` (text/csv) imports clicks and re-runs from prominence.
   - `GET /audits/:id/export`: a zip of JSON and CSV (audit, summary, issues, diagnosis, fixes,
-    orphans, explanations).
+    orphans, explanations). `fixes.csv` has `suggested_anchor`, `anchor_paragraph` (1-based) and
+    `anchor_ref` (empty without a suggestion). With a rating sample, `ratings.csv` has every answer
+    (history included) with the item's rank, which the raters never saw. Once the crawl has
+    completed, `broken-links.csv` and `redirect-chains.csv` have one row per source page and target
+    (the chain as `url (status) -> …`).
+  - `GET /audits/:id/links`: the link-health report (409 until the crawl stage has completed).
+  - E8 rating page (`core/src/rating`, `RATING_VERSION`; only the database):
+    - `GET /audits/:id/rating?rater=A|B` returns the blind sample (`sample: null` and `canCreate`
+      until one exists) and **only that rater's own** latest answers.
+    - `POST /audits/:id/rating/sample` draws the sample once per audit; asking again returns it,
+      so both raters rate the same items.
+    - `POST /audits/:id/rating/answers` takes `{ itemId, rater, name, relevant, placement }`
+      (an invalid rating gives 400 `invalid_rating`).
+    - `GET /audits/:id/rating/summary` returns precision@k and agreement.
+  - A fix's (or rescue donor's) `explanation` is `{ sentence, lines, anchor }`.
 - Threads: the database-only stages (`stages.ts` `DB_STAGES`: extract, canonicalise, graph,
   reconcile, issues, text, REF, prominence, diagnosis, candidates, κ, scoring, explanations) run in
   a `StageWorkerPool` of `apiStageWorkers` (2) long-lived worker threads, each with its own pg
@@ -670,8 +850,8 @@ config } }` returns 202 with a Location header.
   prominence. `useAuditEvents.ts` is the SSE live state (`applyEvent` is pure) with a polling
   fallback.
 - Routes: `/` (audits list), `/audits/new` (form: URL, page cap, policy, σ, optional CSV), and
-  `/audits/:id/:tab` with the tabs summary, graph, fixes, diagnosis, orphans, canonicalisation and
-  export. The live progress panel (bar + 18 stages with durations + crawl counter + resume) shows
+  `/audits/:id/:tab` with the tabs summary, graph, fixes, diagnosis, orphans, links,
+  canonicalisation, rating and export. The live progress panel (bar + 18 stages with durations + crawl counter + resume) shows
   while an audit runs or after it fails.
 - Graph tab (`features/graph`): Cytoscape.js with the fcose layout, loaded lazily (its own chunk).
   - `model.ts` (pure, tested) builds the elements:
@@ -685,14 +865,17 @@ config } }` returns 202 with a Location header.
     always shown) and 1500 edges, main content first. A notice says what is hidden. Large graphs
     use `textureOnViewport`, `hideEdgesOnViewport` and pixel ratio 1.
   - The policy selector re-fetches the graph and its issues (`/issues?policy=`).
-  - Clicking a node opens `NodePanel`: metrics, issues with evidence, inbound and outbound links
-    (region, count, anchors), and the fixes that target it. Fixes exist only under the audit's
+  - Clicking a node opens `NodePanel`: metrics, the page type with the rule that decided it and
+    its importance with the components (L12; `importance` in the graph response), issues with
+    evidence, inbound and outbound links (region, count, anchors), and the fixes that target it. Fixes exist only under the audit's
     policy. "Preview fix" overlays the suggested edge, dashed, adding its end points if the cap
     hid them.
 - Result tabs:
   - Fixes: the top k from the API, sortable client-side (`sortFixes`: score, ΔPR, Δdepth, σ, κ,
     type; a newly reachable page counts as the largest depth gain). Each row expands into an
-    `ExplanationCard`.
+    `ExplanationCard`: the anchor block first (`AnchorBlock`: the suggested anchor, paragraph N
+    of M, REF to the title, and the excerpt with the anchor in a `<mark>`; or why there is
+    none), then the other lines (the "Where" line is the block), then the numbers.
   - Diagnosis: case count cards (they filter), a table sorted by severity, and an SVG scatter.
     ρ (or raw REF) is plotted against ω with α lines (ε when on REF), at most 3000 points,
     evenly strided.
@@ -700,6 +883,24 @@ config } }` returns 202 with a Location header.
     and orphans) plus the rescue donors.
   - Canonicalisation: the sensitivity table, with a button that starts the per-policy ranking
     job. It polls while the job runs.
+  - Links (`features/links`), shown once the crawl has completed:
+    - stat cards for broken targets (links and source pages), redirect chains (longest,
+      redirected targets) and internal links checked (not fetched, no answer);
+    - "Broken internal links": a status badge, the target (after N redirects to …), link count
+      and a filter All / 4xx / 5xx. A row opens the source pages with their anchors and
+      regions, and the chain when there is one;
+    - "Redirect chains": hops, the linked URL, where it ends (with the status, or why it never
+      reaches a page), links. A row opens the chain hop by hop (URL and status) and the source
+      pages.
+  - Rating (`features/rating`, E8): two raters mark a blind sample of top fixes.
+    - Each rater picks slot A or B and a name (kept in localStorage, a convenience only).
+    - Each card shows the From and To pages (titles and links), the action, and the suggested
+      paragraph with the anchor marked (`AnchorBlock blind`: no REF). The answers are Relevant /
+      Not relevant, and placement Good / Acceptable / Poor / N/A.
+    - Not relevant saves at once as n/a. A relevant item is saved once its placement is chosen
+      (at once as n/a when nothing was suggested).
+    - Precision@k and κ sit in a folded "Results" card; the summary is only fetched when it is
+      opened, so it does not bias the raters.
   - Export: the report, the zip and every single JSON/CSV file.
 - Sign-in (`features/session`): `SessionGate` wraps every page. It shows `SignIn` when
   `GET /session` says a key is needed and this browser has no session. It asks again after any
@@ -711,6 +912,8 @@ config } }` returns 202 with a Location header.
   `GET /session` answers "no key needed" unless a test mocks it, and is not recorded in `calls`).
   `test-setup.ts` strips the `signal` from `Request`, because jsdom's AbortSignal is not the one
   Node's Request accepts.
+  Test files run in parallel, so `testTimeout` is 20 s and Testing Library's `asyncUtilTimeout`
+  5 s: user-event flows take seconds on a busy machine.
 
 ### Evaluation (packages/eval, analysis/)
 
@@ -802,12 +1005,88 @@ orphans`.
     `commonNeighbours` / `adamicAdar` (undirected, on the masked graph). Recall@k (`e6Ks`
     5/10/20), MRR and AUC are expectations over random tie-breaking, so random is exactly k/N,
     H_N/N and ½.
-  - **E7** σ ablation (`recovery.ts` `hideAndRecover`): a seeded sample of main-content links
-    hidden, the fix pipeline rebuilt in memory, all four σ ranking the same candidates
-    (`candidateRequireRef: false`), plus the pairwise top-k Jaccard between σ rankings.
+  - **E7** σ / ε / α ablation (`e7-ablation.ts`; needs an embedder). `e7Settings`: each σ at
+    the default ε and α, each σ along `e7Epsilons` (0.05–0.40, default α) and along `e7Alphas`
+    (default ε), each setting once. Per setting: the fix ranking again (`prepareRun(...).rank`:
+    graph, audit, text, prominence and κ once; REF, diagnosis, candidates and counterfactual per
+    (ε, α), cached; scoring per σ), its top-k (`fixTopK`) Jaccard with the default setting's; E3
+    (`loadE3Data` once, `buildE3Inputs` per setting; LinkLens's top-k applied together and the
+    random baseline, per k of `e3TopKs`); E6 recovery of the σ (one masking run with the hybrid
+    also gated at every swept ε; cosineOnly → cosine, refOnly → REF, blended; α does not enter
+    E6). Plus the pairwise top-k Jaccard between σ variants at the default ε and α. At the
+    default setting E3 and E6 agree with the experiments run alone (tested).
+    - The scoring sweep (L12): each σ at the default ε and α also under `S_imp`
+      (`prepareRun(...).rank({ scoring })`; importance computed once, lazily).
+    - E3 then ranks its pool by S × importance(target); an orphan uses its detached importance.
+    - E6 is unchanged by construction: one target's donors share its importance.
   - **E8** human rating: without `--ratings` it writes a rating sheet (CSV, top 50 fixes with
     their explanation). With the filled sheets it summarises mean relevance, would-add rate,
-    top-10 vs rest, score–relevance Spearman and inter-rater agreement.
+    top-10 vs rest, score–relevance Spearman and inter-rater agreement. The dashboard's rating
+    page (below) is the interactive version.
+- E8 rating page (core `rating/`): blind samples, two raters, precision@k and Cohen's kappa.
+  - `buildRatingSample` draws `ratingSampleSize` (50) fixes with `randomSeed` from the top
+    `ratingPoolSize` (50) of the latest fix ranking for the audit's σ. With pool = size every
+    top-50 fix is rated, in a random order.
+  - Each item (`SampleItem`) has the donor and target with their titles, the action and the
+    suggested placement (`anchor` from the latest explanations). Its rank is stored but
+    `blindItems` drops it: no score, rank, ΔPR, REF, σ or explanation reaches a rater.
+  - The sample is a `rating-sample` artefact. Answers are append-only `fix_ratings` rows, and
+    the latest per (sample, rater, item) counts (`latestAnswers`).
+  - `recordRating` refuses an item outside the sample and a not-relevant item whose placement
+    is not n/a.
+  - `summariseRatings`:
+    - per rater: rated, relevant and `precisionAtK` at `ratingKs` (5/10/25/50), over the rated
+      items with rank ≤ k, plus the placement counts;
+    - consensus: `strict` (relevant to both, over items both rated) and the `mean` of the two
+      raters' precision (null unless both have one);
+    - agreement over items both rated: relevance observed agreement and Cohen's κ (null when
+      p_e = 1). Placement is judged over items both marked relevant and neither n/a: observed
+      agreement, κ, and linear-weighted κ over good > acceptable > poor.
+- Proxy validation (`proxy-validation.ts`). The CLI is `pnpm --filter @linklens/eval proxy` with
+  `--run <id>`, optional `--policy P3` and `--out f.json`; it needs DATABASE_URL. Does
+  **structural** prominence track real
+  clicks? The analytics override is never used here: it is what is being validated.
+  - `--analytics <csv>` (source_url, target_url, clicks) or `--stored` (the run's imported
+    rows): link level. For each source with clicks on one of its crawled links, every out-link's
+    ω(u,v) against its share of the source's clicks (0 without clicks).
+    - Reported: the Spearman pooled over links, the mean within-source Spearman (sources with ≥
+      `proxyMinEdgesPerSource` links), and hit@1 (the most prominent link is the most clicked;
+      ties split).
+    - Baseline: the link-count share (observations), which plain PageRank uses.
+    - Rows are accounted for: used, no crawled link, external, invalid, self-loop.
+  - `--gsc <csv>`: page level, from a Search Console "Pages" export (page and clicks columns
+    found by name; thousands separators allowed; `SearchConsoleCsvError` lists bad lines).
+    - Each crawled page's clicks, mapped through the policy, against inbound prominence
+      Σ_u ω(u,v) and prominence-weighted PageRank (structural W). Baselines: PageRank by link
+      multiplicity and distinct in-degree.
+    - Pages in both the crawl and the export are compared; with `--zero-fill`, crawled pages
+      missing from the export count as 0.
+  - Every Spearman has a seeded bootstrap 95% CI (`proxyBootstrap` resamples of sources or
+    pages, `randomSeed`). The prominence-minus-baseline difference is bootstrapped paired.
+  - The report prints Markdown and states the prominence weights used (`proxyParams`).
+- LSH pre-filter experiment (`lsh-prefilter.ts`). The CLI is `pnpm --filter @linklens/eval lsh`
+  with `crawl`, `status` or `run`, and `--batch <name>`; output goes to `results/lsh/<name>/`.
+  - `crawl --sites a,b,c`: each corpus site crawled once, sequentially, at the largest of
+    `lshEvalCaps` (500/1000/2000), with the corpus config. It is resumable, and `manifest.json`
+    holds the config hash, git state and run ids.
+  - A cap N is the first N admitted URLs of that crawl (`admissionRanks`: with BFS and one
+    worker, a cap-N crawl admits the same URLs in the same order). It keeps the documents whose
+    representative page was among them, and the text model is rebuilt at that cap.
+  - `run`: per cap and REF variant, the truth is the exact inverted index, checked pair by pair
+    against a brute-force loop (`bruteForceRef`, `ref()` on every pair; `--no-brute-force`
+    skips it). One LSH index per cap is queried at each of `lshEvalThresholds`
+    (0.05/0.1/0.2).
+  - Reported: candidate recall, REF-mass recall, recall of each target's top
+    `candidateMaxPerTarget` donors, precision and candidate share. Runtimes are the median of
+    `lshEvalRepeats` (brute force runs once): exact = interning + inverted index; LSH =
+    interning + hashing + MinHash + index + queries (tuning included) + exact scoring.
+  - Output: `lsh.csv` (`LSH_COLUMNS`: site × cap × variant × threshold × metric) and `lsh.json`
+    (parameters, host CPU, git state).
+  - Python: `python -m linklens_analysis lsh <dir> [--variant] [--figures <dir>]` (`lsh.py`).
+    `summary_table` (per site × cap at `lshThreshold`, with speed-ups), `threshold_table` (mean
+    over sites per cap × threshold) and `figure` (recall vs cap per threshold; log runtime vs
+    cap for brute force, exact and LSH). The fixture in `analysis/tests/fixtures/lsh/` is written
+    by the eval unit test with `LINKLENS_WRITE_FIXTURES=1`.
 - `analysis/` (Python): `python -m linklens_analysis report results/*.json` prints Markdown
   tables. It adds paired Wilcoxon tests (E3: LinkLens vs each baseline; E7: σ pairs) and seeded
   bootstrap CIs for MRR. Its tests read fixtures written by the eval integration test with
@@ -870,6 +1149,10 @@ import-sf | export --batch <name>` (`--corpus`, `--out` default `results/corpus`
     `nodes_a`, `nodes_b`, `node_delta`, `node_ratio`, `shared_nodes`, `node_jaccard`,
     `orphans_a/b`, `orphan_jaccard`, `pagerank_spearman`, `depth_pages`, `mean_depth_shift`,
     `mean_abs_depth_shift`, `max_abs_depth_shift`, `top_fixes_jaccard`), with `top_k`.
+  - `e7.csv` / `e7_sigma_pairs.csv` (E7, needs the embedder; E3, E6 and E7 share one E3 data
+    load and one E6 run): one row per site × setting (σ, ε, α, scoring, is_default, sweeps) × metric
+    (`e7Metrics`: fixes, topk_jaccard_default, e3_pool, e3_linklens@k, e3_random@k,
+    e3_gain@k, e6_mrr, e6_recall@k, e6_auc), and the σ pairs' top-k Jaccard.
   - `e6.csv` (E6, needs the embedder): one row per site × repeat × method × metric
     (`e6Metrics`: recall@k, mrr, auc, queries; method `masking`: share, eligible_pairs, masked,
     targets, queries).
@@ -904,6 +1187,27 @@ import-sf | export --batch <name>` (`--corpus`, `--out` default `results/corpus`
   row − column). `agreement_figure`: one heatmap per class plus all sites on a shared scale
   (sequential for agreement and magnitude, diverging around 0 for the signed depth shift;
   undefined pairs say n/a).
+- Everything at once: `python analysis/make_all.py <batch dir>` with `[--out <dir>]`,
+  `[--k 10]` and `[--alpha 0.05]` (or `python -m linklens_analysis make-all`). The output
+  (default `<batch>/results`) has `tables/<id>.csv` and `.tex` (booktabs via `latex.py`: Unicode
+  symbols as math, tables over 7 columns scaled with `\resizebox`), `figures/<id>.pdf`, `.png`
+  and a `.tex` snippet, a `README.md` mapping every output to its RQ and experiment (plus the C5
+  verdict), and `manifest.json` (inputs' SHA-256). Ids are `t<rq>_…` / `f<rq>_…`.
+  - `RQS`: RQ0 corpus, RQ1 E1, RQ2 E2, RQ3 E3, RQ4 E4 + E5, RQ5 E6 + E7 (C5). E8 is not in a
+    corpus export. `ARTIFACTS` lists every output with its RQ, experiment, title and caption.
+  - An output whose data is missing (no re-crawl yet, no Screaming Frog import, no large
+    category, an unknown architecture class for a class-coloured figure, no matplotlib) is
+    skipped with its reason, in the README and the console, never fatal. The tables and README
+    are byte-identical when re-run.
+- E7 in Python: `python -m linklens_analysis e7 <batch dir> [--k 10] [--figures <dir>]`
+  (`e7.py`). `ablation_table`: per σ at the default ε and α (all sites, or a class), the mean over
+  sites [bootstrap 95% CI] of the top-k overlap with the default, E3 ΔPR and gain over random,
+  and E6 MRR, R@10 and AUC. `sigma_pair_matrix`: the σ variants' mean pairwise top-k Jaccard.
+  `curve` / `curves_figure`: per σ, a metric's mean over sites across the ε or α sweep (the
+  default marked); σ colours blue, orange, aqua, violet (validated for every pair) with markers.
+  `scoring_table` (L12): per σ, E3 gain under S and S_imp, their difference and S_imp's top-k
+  overlap with the default. It is also `make_all`'s `t5_e7_scoring`, skipped without S_imp rows.
+  An `e7.csv` without the `scoring` column (exported before L12) loads as all S.
 - E6 in Python: `python -m linklens_analysis e6 <batch dir> [--alpha 0.05]` (`e6.py`). A
   site's value is the mean over its repeats. `results_table`: per class (and all sites) ×
   method, MRR, R@k and AUC as the mean over sites with a seeded bootstrap 95% CI. `paired_test`
@@ -943,8 +1247,8 @@ import-sf | export --batch <name>` (`--corpus`, `--out` default `results/corpus`
 - Postgres 16 + Redis 7 via `docker-compose.yml` (Postgres on host port **5433**).
 - Schema changes are **new** SQL migrations only (`pnpm --filter @linklens/db migrate:create <name>`);
   never edit an applied migration.
-- `link_observations`, `discovery_observations`, `fetch_bodies` and `analytics_clicks` are
-  **append-only**, enforced by
+- `link_observations`, `discovery_observations`, `fetch_bodies`, `analytics_clicks` and
+  `fix_ratings` are **append-only**, enforced by
   triggers that reject UPDATE, DELETE and TRUNCATE (SQLSTATE 23001). Core exposes only insert/read
   for them.
 - Every `artefacts` row has non-null `run_id` and `policy_version`.

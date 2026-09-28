@@ -11,5 +11,8 @@ export default defineConfig({
     name: "web",
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],
+    // jsdom test files run in parallel, and user-event flows (typing, clicking through a tab)
+    // take seconds when the machine is busy; the default 5 s flakes on a full workspace run.
+    testTimeout: 20_000,
   },
 });

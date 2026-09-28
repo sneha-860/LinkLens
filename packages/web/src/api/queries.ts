@@ -8,11 +8,17 @@ import type {
   DiagnosisCase,
   DiagnosisResponse,
   FixesResponse,
+  FixScoringMode,
   GraphResponse,
   IssuesResponse,
+  LinkHealthResponse,
   OrphansResponse,
   ReconciliationResponse,
   Policy,
+  Rater,
+  RatingAnswer,
+  RatingResponse,
+  RatingSummary,
   SensitivityResponse,
   SigmaVariant,
   Summary,
@@ -49,10 +55,15 @@ export const useFixes = (
   k: 10 | 25 | 50,
   scope: "global" | "target",
   enabled = true,
+  scoring: FixScoringMode = "formula",
 ) =>
   useQuery({
-    queryKey: [...keys.audit(id), "fixes", sigma, k, scope],
-    queryFn: () => api<FixesResponse>(`/audits/${id}/fixes?sigma=${sigma}&k=${k}&scope=${scope}`),
+    queryKey: [...keys.audit(id), "fixes", sigma, k, scope, scoring],
+    queryFn: () =>
+      api<FixesResponse>(
+        `/audits/${id}/fixes?sigma=${sigma}&k=${k}&scope=${scope}` +
+          (scoring === "learned" ? "&scoring=learned" : ""),
+      ),
     enabled,
     ...results,
   });
@@ -108,6 +119,62 @@ export const useReconciliation = (id: number) =>
     queryKey: [...keys.audit(id), "reconciliation"],
     queryFn: () => api<ReconciliationResponse>(`/audits/${id}/reconciliation`),
     ...results,
+  });
+
+export const useLinkHealth = (id: number, enabled = true) =>
+  useQuery({
+    queryKey: [...keys.audit(id), "links"],
+    queryFn: () => api<LinkHealthResponse>(`/audits/${id}/links`),
+    enabled,
+    ...results,
+  });
+
+// ---------- E8 rating page (not cached forever: answers change) ----------
+
+export const useRating = (id: number, rater: Rater | null) =>
+  useQuery({
+    queryKey: [...keys.audit(id), "rating", rater],
+    queryFn: () => api<RatingResponse>(`/audits/${id}/rating${rater ? `?rater=${rater}` : ""}`),
+    retry: false,
+  });
+
+export function useCreateRatingSample(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => postJson<RatingResponse>(`/audits/${id}/rating/sample`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...keys.audit(id), "rating"] }),
+  });
+}
+
+export function useSaveRating(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (a: RatingAnswer & { itemId: string; rater: Rater; name: string }) =>
+      postJson<RatingAnswer>(`/audits/${id}/rating/answers`, a),
+    onSuccess: (_d, a) => {
+      qc.setQueryData<RatingResponse>([...keys.audit(id), "rating", a.rater], (old) =>
+        old === undefined
+          ? old
+          : {
+              ...old,
+              name: a.name,
+              answers: {
+                ...old.answers,
+                [a.itemId]: { relevant: a.relevant, placement: a.placement },
+              },
+            },
+      );
+      void qc.invalidateQueries({ queryKey: [...keys.audit(id), "rating-summary"] });
+    },
+  });
+}
+
+export const useRatingSummary = (id: number, enabled: boolean) =>
+  useQuery({
+    queryKey: [...keys.audit(id), "rating-summary"],
+    queryFn: () => api<RatingSummary>(`/audits/${id}/rating/summary`),
+    enabled,
+    retry: false,
   });
 
 /** A file's text: Blob.text() where available, else FileReader (older browsers, jsdom). */

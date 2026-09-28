@@ -1,6 +1,6 @@
 import { loadAudit } from "../audit/structural.js";
 import { POLICIES, type PolicyId } from "../canonicalise/index.js";
-import { insertArtefact, listArtefacts } from "../db/queries.js";
+import { insertArtefact, listArtefacts, listFetches, listPages } from "../db/queries.js";
 import type { ArtefactRow, Json, Queryable } from "../db/types.js";
 import { diagnose } from "../diagnosis/diagnose.js";
 import { loadProminence } from "../prominence/run.js";
@@ -8,14 +8,18 @@ import { refMatrix, type RefVariant } from "../semantic/ref.js";
 import { buildTextModel } from "../text/model.js";
 import { loadRunDocuments } from "../text/run.js";
 import { SurfaceForms } from "../text/surface.js";
+import { detachedImportance } from "../importance/importance.js";
+import { importanceFor } from "../importance/run.js";
+import { suggestAnchor, type AnchorResult } from "./anchor.js";
 import { loadDonorEffort } from "./effort.js";
 import {
   EXPLAIN_VERSION,
   EXPLANATIONS_ARTEFACT,
   explainAll,
+  type TargetPage,
   type Explanations,
 } from "./explain.js";
-import { RESCUE_ARTEFACT, type RescuedOrphan } from "./rescue.js";
+import { externalTargetWeights, RESCUE_ARTEFACT, type RescuedOrphan } from "./rescue.js";
 import { FIX_RANKING_ARTEFACT, type FixRanking } from "./scoring.js";
 
 export interface ExplanationSet extends Explanations {
@@ -55,12 +59,15 @@ export async function buildExplanations(
   const rescue = (rescueRow?.payload ?? null) as unknown as { orphans: RescuedOrphan[] } | null;
   const refVariant = ranking?.sources.refVariant ?? "weighted";
 
-  const [{ documents, config }, prominence, audit, effort] = await Promise.all([
-    loadRunDocuments(db, runId, policyId),
-    loadProminence(db, runId, policyId),
-    loadAudit(db, runId, policyId),
-    loadDonorEffort(db, runId, policyId),
-  ]);
+  const [{ documents, config }, prominence, audit, effort, rescuePages, fetches] =
+    await Promise.all([
+      loadRunDocuments(db, runId, policyId),
+      loadProminence(db, runId, policyId),
+      loadAudit(db, runId, policyId),
+      loadDonorEffort(db, runId, policyId),
+      rescue === null ? [] : listPages(db, runId, "rescue"),
+      rescue === null ? [] : listFetches(db, runId),
+    ]);
   const model = buildTextModel({ runId, policyVersion, documents }, config);
   const ref = refMatrix(model, refVariant, config);
   const { diagnoses } = diagnose({ ref, prominence }, config);
@@ -83,6 +90,50 @@ export async function buildExplanations(
     maxNgram: config.textMaxNgram,
   });
 
+  // Element-level REF: each donor paragraph against the target's Title field (a crawled
+  // target's, or an orphan's rescue page weighted against the site model), for the anchor.
+  const opts = { minTokenLength: config.textMinTokenLength, maxNgram: config.textMaxNgram };
+  const docOf = new Map(documents.map((d) => [d.node, d]));
+  const titles = new Map(
+    model.documents.map((d) => [d.node, new Map(Object.entries(d.fields.title))]),
+  );
+  const rescueFetch = new Map<string, number>();
+  for (const f of fetches) if (f.purpose === "rescue") rescueFetch.set(f.requestedUrl, f.id);
+  const rescuePage = new Map(rescuePages.map((p) => [p.fetchId, p]));
+  for (const o of rescue?.orphans ?? []) {
+    const id = o.fetch === null ? undefined : rescueFetch.get(o.fetch.requestedUrl);
+    const page = id === undefined ? undefined : rescuePage.get(id);
+    if (page === undefined || titles.has(o.node)) continue;
+    const title = [page.title, page.h1].filter((t): t is string => t !== null && t !== "");
+    titles.set(o.node, externalTargetWeights({ title, body: [] }, model));
+  }
+  // The target's page type and importance (L12): a graph node's, else an orphan's detached one.
+  const pageImportance = await importanceFor(db, runId, policyId);
+  const targetPage = (v: string): TargetPage => {
+    const n = pageImportance.nodes[v];
+    if (n !== undefined) {
+      return {
+        type: n.type,
+        rule: n.rule,
+        importance: n.importance,
+        components: n.components,
+        depth: n.raw.depth,
+        inboundBodyLinks: n.raw.inboundBodyLinks,
+      };
+    }
+    const d = detachedImportance(v, config);
+    return { ...d, depth: null, inboundBodyLinks: 0 };
+  };
+  const anchor = (u: string, v: string): AnchorResult | undefined => {
+    const title = titles.get(v);
+    const donor = docOf.get(u);
+    if (title === undefined || donor === undefined) return undefined;
+    return suggestAnchor(
+      { paragraphs: donor.paragraphs ?? [], title, variant: refVariant, linked: donor.links },
+      { ...config, ...opts },
+    );
+  };
+
   const explained = explainAll({
     fixes: ranking?.fixes ?? [],
     rescues: rescue?.orphans ?? [],
@@ -90,6 +141,8 @@ export async function buildExplanations(
     issues: audit.issues,
     matched,
     surface: (term, nodes) => surfaces.of(term, nodes),
+    anchor,
+    targetPage,
     edges: prominence.edges,
     effort,
     alpha: config.alpha,

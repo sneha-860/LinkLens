@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ngrams, phrases, STOP_WORDS, terms } from "./tokenise.js";
+import { ngrams, phrases, spannedPhrases, STOP_WORDS, terms, wordPhrases } from "./tokenise.js";
 
 const opts = { minTokenLength: 2, maxNgram: 2 };
 
@@ -76,5 +76,47 @@ describe("ngrams / terms", () => {
 
   it("is empty for text with no content words", () => {
     expect(terms("The and of 42 — !!", opts)).toEqual([]);
+  });
+});
+
+describe("spannedPhrases", () => {
+  const samples = [
+    "The Running Dogs of 2024",
+    "Terms of Service, Privacy Policy | Acme",
+    "state-of-the-art whales",
+    "Company's café crème; don’t STOP",
+    "3.5 1,000 ٣ mp3 v2",
+    "ﬁne ＦＵＬＬＷＩＤＴＨ text， and ligatures",
+    "Café au lait and éclair",
+    "İstanbul ΟΔΟΣ ΚΑΛΟΣ",
+    "emoji 🐢 turtles 🐢's nests",
+    "line one\nline two\ttabbed",
+    "'quoted' words' ends 'n' rock",
+    "",
+  ];
+
+  it("gives the same words, stems and phrases as wordPhrases", () => {
+    for (const s of samples) {
+      const spanned = spannedPhrases(s, opts);
+      expect(spanned, s).not.toBeNull();
+      expect(
+        spanned?.map((p) => p.map((w) => ({ stem: w.stem, surface: w.surface }))),
+        s,
+      ).toEqual(wordPhrases(s, opts));
+    }
+  });
+
+  it("points each word at its original text", () => {
+    const s = "Read the Terms of Service, don’t skip Café́ notes";
+    const words = (spannedPhrases(s, opts) ?? []).flat();
+    expect(words.map((w) => s.slice(w.start, w.end))).toEqual([
+      "Read",
+      "Terms",
+      "Service",
+      "don’t",
+      "skip",
+      "Café́",
+      "notes",
+    ]);
   });
 });

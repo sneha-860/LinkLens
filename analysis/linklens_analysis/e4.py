@@ -173,3 +173,38 @@ def report(directory: str | Path) -> str:
         attribution(batch.e4).to_markdown(floatfmt=".3f"),
     ]
     return "\n".join(parts) + "\n"
+
+
+def attribution_figure(e4: pd.DataFrame):
+    """Median disagreement (1 − agreement) per class, one panel per metric: observed, with only
+    the site's changes, and on identical pages. Monochrome: the marker is the comparison."""
+    import matplotlib.pyplot as plt
+
+    a = attribution(e4)
+    classes = list(dict.fromkeys(a.index.get_level_values("class")))
+    series = [
+        ("observed disagreement", "observed", style.ink, "o"),
+        ("site change", "site change only", style.ink_secondary, "s"),
+        ("method (same pages)", "same pages (method)", style.muted, "^"),
+    ]
+    fig, axes = plt.subplots(1, len(METRICS), figsize=(style.DOUBLE_COLUMN, 2.5), sharey=True, squeeze=False)
+    for ax, metric in zip(axes[0], METRICS):
+        label = METRIC_LABELS[metric]
+        for j, (col, name, colour, marker) in enumerate(series):
+            y = [a.loc[(c, label), col] if (c, label) in a.index else np.nan for c in classes]
+            ax.scatter(
+                np.arange(len(classes)) + (j - 1) * 0.18,
+                y,
+                s=26,
+                color=colour,
+                marker=marker,
+                edgecolors=style.surface,
+                linewidths=0.8,
+                zorder=3,
+                label=name if metric == METRICS[0] else None,
+            )
+        ax.set_xticks(range(len(classes)), [c.replace("E-commerce / catalogue", "Catalogue").replace("All sites", "All") for c in classes], rotation=30, ha="right")
+        ax.set_title(label.replace(" (Jaccard)", ""), fontsize=9)
+    axes[0][0].set_ylabel("median 1 − agreement")
+    fig.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncols=3, frameon=False)
+    return fig

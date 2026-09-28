@@ -22,10 +22,12 @@ export const CONTENT_REGIONS: ReadonlySet<string> = new Set(["main", "body"]);
  *   main/body), in document order. Anchors pointing *to* the page are never used.
  * - Body: the stored main-content text. The extractor already stripped nav/header/footer/aside/
  *   breadcrumb/pagination from it, with the same region classifier that writes `dom_region`.
+ * The paragraphs ride along for anchor suggestions; the text model ignores them.
  */
 export function rawDocument(
   node: string,
-  page: Pick<PageRow, "fetchId" | "url" | "title" | "h1" | "bodyText">,
+  page: Pick<PageRow, "fetchId" | "url" | "title" | "h1" | "bodyText"> &
+    Partial<Pick<PageRow, "paragraphs">>,
   links: readonly Pick<LinkObservationRow, "anchorText" | "domRegion" | "positionIndex">[],
 ): RawDocument {
   const present = (xs: (string | null)[]) => xs.filter((x): x is string => x !== null && x !== "");
@@ -41,6 +43,7 @@ export function rawDocument(
         .map((l) => l.anchorText),
     ),
     body: present([page.bodyText]),
+    paragraphs: page.paragraphs ?? [],
   };
 }
 

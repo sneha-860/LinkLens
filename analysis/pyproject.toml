@@ -18,9 +18,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# L13 ML prioritiser (analysis/ml): LightGBM lambdarank and its built-in TreeSHAP.
+ml = ["lightgbm>=4.3"]
 
 [tool.setuptools.packages.find]
-include = ["linklens_analysis*"]
+include = ["linklens_analysis*", "ml*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]

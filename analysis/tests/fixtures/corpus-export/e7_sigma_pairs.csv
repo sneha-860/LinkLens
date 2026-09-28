@@ -1,0 +1,7 @@
+batch_id,site_id,architecture_class,run_id,sigma_a,sigma_b,k,jaccard
+int,ocean,docs,1,cosineOnly,refOnly,10,1
+int,ocean,docs,1,cosineOnly,refGateCosine,10,1
+int,ocean,docs,1,cosineOnly,blended,10,1
+int,ocean,docs,1,refOnly,refGateCosine,10,1
+int,ocean,docs,1,refOnly,blended,10,1
+int,ocean,docs,1,refGateCosine,blended,10,1

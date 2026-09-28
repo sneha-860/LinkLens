@@ -11,12 +11,16 @@
     "e": "tsx src/cli.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "sizes": "tsx bench/artefact-sizes.ts",
-    "corpus": "tsx src/corpus-cli.ts"
+    "corpus": "tsx src/corpus-cli.ts",
+    "lsh": "tsx src/lsh-cli.ts",
+    "proxy": "tsx src/proxy-cli.ts",
+    "l13": "tsx src/l13-cli.ts"
   },
   "dependencies": {
     "@linklens/api": "workspace:^",
     "@linklens/core": "workspace:*",
     "@linklens/counterfactual": "workspace:^",
+    "@linklens/crawler": "workspace:^",
     "@linklens/db": "workspace:^",
     "@linklens/embeddings": "workspace:^",
     "yaml": "^2.9.1",
