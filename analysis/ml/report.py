@@ -132,7 +132,6 @@ def shap_summary_figure(shap: pd.DataFrame, features: list[str], top: int = SHAP
         cb.set_label("feature value (percentile)")
         cb.outline.set_visible(False)
         ax.set_title("L13: global TreeSHAP summary (held-out sites)", loc="left")
-        fig.tight_layout()
     return fig
 
 

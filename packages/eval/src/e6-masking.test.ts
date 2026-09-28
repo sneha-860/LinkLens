@@ -248,6 +248,20 @@ describe("rankMasked", () => {
     expect(Object.keys(off.methods)).not.toContain("adamicAdar");
     expect(Object.keys(r.methods)).toContain("commonNeighbours");
   });
+
+  it("scores graphsage only when its scores are supplied; an unscored pair ranks last", () => {
+    expect(Object.keys(r.methods)).not.toContain("graphsage");
+    // A topic oracle: GraphSAGE agrees with the vectors.
+    const oracle = rankMasked(m, vector, 1, "P3@1.0.0", inputs.config, [], {
+      graphsage: (t, d) => topic(t).reduce((s, x, i) => s + x * (topic(d)[i] as number), 0),
+    });
+    expect(oracle.methods.graphsage).toEqual(oracle.methods.cosine);
+    // Nothing scored: every candidate ties at −∞, which is the random baseline.
+    const none = rankMasked(m, vector, 1, "P3@1.0.0", inputs.config, [], {
+      graphsage: () => undefined,
+    });
+    expect(none.methods.graphsage?.mrr).toBeCloseTo(none.methods.random?.mrr as number, 12);
+  });
 });
 
 describe("summariseRepeats and maskingRecovery", () => {

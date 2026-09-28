@@ -19,9 +19,11 @@ import { embeddingOptions } from "@linklens/embeddings";
 import {
   E3_METHODS,
   E6_METHODS,
+  EXTERNAL_METHODS,
   auditInMemory,
   exportBatch,
   loadRunInputs,
+  maskingRecovery,
   hashingEmbedder,
   importExports,
   modelInfo,
@@ -38,6 +40,7 @@ import {
 } from "../src/index.js";
 import { rankOf, reciprocalRank } from "../src/e6-masking.js";
 import { e6Rows, fixRows, siteFeatures } from "../src/l13/dataset.js";
+import { fullGraph, graphRepeats } from "../src/l13/graph.js";
 import { FEATURES } from "../src/l13/features.js";
 
 // LINKLENS_WRITE_FIXTURES=1 saves each result, in the CLI's --out format, as a fixture for the
@@ -481,7 +484,9 @@ describe("experiments on a stored run", () => {
       expect(r.share).toBeLessThanOrEqual(0.2);
       expect(r.masked).toBeGreaterThanOrEqual(1);
       expect(r.queries).toBeLessThanOrEqual(r.masked);
-      expect(Object.keys(r.methods).sort()).toEqual([...E6_METHODS].sort());
+      expect(Object.keys(r.methods).sort()).toEqual(
+        E6_METHODS.filter((x) => !EXTERNAL_METHODS.includes(x)).sort(),
+      );
       // The random baseline is its exact expectation.
       expect(r.methods.random?.auc ?? 0.5).toBe(0.5);
     }
@@ -529,6 +534,92 @@ describe("experiments on a stored run", () => {
     const ranking = stored[0]?.payload as fixes.FixRanking;
     const fr = fixRows(siteFeatures(inputs, "P3"), inputs.config);
     expect(fr.map((f) => f.fix_id)).toEqual(ranking.fixes.map((f) => f.id));
+  });
+
+  it("GraphSAGE graphs: E6's queries and candidates; the graphsage method reads the scores", async () => {
+    const embedder = hashingEmbedder(embeddingOptions(config, tmpdir()));
+    const inputs = await loadRunInputs(db, runA, "P3");
+    const full = await fullGraph(inputs, "P3", embedder);
+    expect(full.nodes.length).toBeGreaterThan(0);
+    expect(full.src.length).toBeGreaterThan(0);
+    const repeats = await graphRepeats(inputs, "P3", embedder);
+    expect(repeats.map((r) => r.seed)).toEqual([42, 43, 44, 45, 46]);
+    const e6 = (await runExperiment(db, "E6", { runId: runA, policy: "P3", embedder }))
+      .result as E6Result;
+    // Queries → candidates (the target's pool minus its other masked donors) → E6's metrics.
+    const mrrOf = (r: (typeof repeats)[number], score: (p: (typeof r.pairs)[number]) => number) => {
+      const rr = r.queries.map((qy) => {
+        const others = new Set(
+          r.queries
+            .filter((x) => x.target === qy.target && x.donor !== qy.donor)
+            .map((x) => x.donor),
+        );
+        const cands = r.pairs.filter((p) => p.target === qy.target && !others.has(p.donor));
+        return reciprocalRank(
+          rankOf(
+            cands.map(score),
+            cands.findIndex((p) => p.donor === qy.donor),
+          ),
+        );
+      });
+      return rr.reduce((a, b) => a + b, 0) / rr.length;
+    };
+    for (const r of repeats) {
+      const m = e6.repeats[r.repeat]?.methods;
+      expect(r.queries.length).toBe(e6.repeats[r.repeat]?.queries);
+      if (r.queries.length === 0) continue;
+      expect(mrrOf(r, (p) => p.hybrid)).toBeCloseTo(m?.refGateCosine?.mrr ?? NaN, 12);
+      expect(mrrOf(r, (p) => p.cosine ?? -Infinity)).toBeCloseTo(m?.cosine?.mrr ?? NaN, 12);
+      // The masked links are not edges of their repeat's graph.
+      const edges = new Set(
+        r.graph.src.map((s, i) => `${r.graph.nodes[s]} ${r.graph.nodes[r.graph.dst[i] as number]}`),
+      );
+      for (const qy of r.queries) expect(edges.has(`${qy.donor} ${qy.target}`)).toBe(false);
+    }
+    // Scores shaped like the artefact: "GraphSAGE" = the pairs' cosine, so E6 reports it as cosine.
+    const nodes = [
+      ...new Set(repeats.flatMap((r) => r.pairs.flatMap((p) => [p.target, p.donor]))),
+    ].sort();
+    const at = new Map(nodes.map((n, i) => [n, i]));
+    const scores: fixes.GraphSageScores = {
+      version: fixes.GRAPHSAGE_VERSION,
+      runId: runA,
+      policyVersion: "P3@1.0.0",
+      model: {
+        site: "fixture",
+        trainedOn: [],
+        params: {},
+        dataset: "",
+        createdAt: "",
+        runtimeMs: {},
+      },
+      nodes,
+      repeats: repeats.map((r) => {
+        const targets = [...new Set(r.pairs.map((p) => p.target))];
+        return {
+          repeat: r.repeat,
+          seed: r.seed,
+          targets: targets.map((t) => {
+            const ps = r.pairs.filter((p) => p.target === t && p.cosine !== null);
+            return {
+              target: at.get(t) as number,
+              donors: ps.map((p) => at.get(p.donor) as number),
+              scores: ps.map((p) => p.cosine as number),
+            };
+          }),
+        };
+      }),
+      fixes: {},
+    };
+    const withGs = await maskingRecovery(inputs, "P3", embedder, 42, { graphsage: scores });
+    for (const r of withGs.repeats) {
+      if (r.queries === 0) continue;
+      expect(r.methods.graphsage).toEqual(r.methods.cosine);
+    }
+    // A seed the scores were not made with is refused.
+    await expect(maskingRecovery(inputs, "P3", embedder, 7, { graphsage: scores })).rejects.toThrow(
+      /no repeat 0 with seed 7/,
+    );
   });
 
   it("E7: re-ranks under every σ, an ε sweep and an α sweep, with E3 and E6 per setting", async () => {

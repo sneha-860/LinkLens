@@ -132,6 +132,27 @@ python -m ml report <dir>/<b>/l13/model                                # REPORT.
 
 The model is a LightGBM lambdarank trained on E6 hide-and-recover labels (one hidden donor per query), each site scored by a model that never saw it. The report compares it with S on E6 (MRR, recall@k, AUC; paired Wilcoxon across sites) and E3 (total ΔPR of the top k), and says plainly when it does not beat S.
 
+### Optional GraphSAGE link predictor (`ml/gnn.py`)
+
+Needs PyTorch and PyTorch Geometric. On a CPU-only machine:
+
+```sh
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -e ".[gnn]"
+```
+
+Then:
+
+```sh
+pnpm --filter @linklens/eval l13 graph-export --batch <b> --out <dir>             # per-site graphs
+python -m ml gnn <dir>/<b>/l13/graphs --out <dir>/<b>/l13/gnn --dataset <dir>/<b>/l13/dataset
+pnpm --filter @linklens/eval l13 graph-import --batch <b> --out <dir>             # graphsage-scores artefacts
+python -m ml train <dir>/<b>/l13/dataset --out <dir>/<b>/l13/model-gs --graphsage <dir>/<b>/l13/gnn
+python -m ml gnn-report <dir>/<b>/l13/gnn --ranker <dir>/<b>/l13/model --ranker-graphsage <dir>/<b>/l13/model-gs
+```
+
+It is a 2-layer GraphSAGE (mean aggregator) trained leave-one-site-out on the other sites' E6-masked graphs, and it scores E6's own candidates. The report compares it with REF, cosine and the hybrid, gives the runtime, and compares the L13 ranker with and without its score as a feature. It is off by default: set `graphsageEnabled` in the config to add it to E6.
+
 ### Plotting style
 
 Every figure uses `linklens_analysis/style.py`: one fixed colour and marker per architecture class (blue ●, orange ■, aqua ▲; the three validate against each other for colour-vision deficiency), a light-to-dark blue ramp for the ordered policies P0–P5, recessive grid and axes, and `style.save()` for PDF (embedded fonts) plus PNG. Take colours from `style`, never pick them per figure; a new class needs the palette re-validated.

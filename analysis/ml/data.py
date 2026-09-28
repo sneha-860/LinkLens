@@ -14,7 +14,7 @@ import pandas as pd
 PAGE_TYPES = ["homepage", "hub", "product", "article", "utility", "other"]
 
 
-@dataclass
+@dataclass(eq=False)
 class Site:
     id: str
     architecture_class: str
@@ -25,7 +25,7 @@ class Site:
     ratings: pd.DataFrame
 
 
-@dataclass
+@dataclass(eq=False)
 class Dataset:
     directory: Path
     meta: dict

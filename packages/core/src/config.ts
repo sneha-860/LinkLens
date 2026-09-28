@@ -377,6 +377,19 @@ export interface LinkLensConfig {
   /** L13: the largest SHAP contributions shown per fix. */
   readonly l13ShapTop: number;
   /**
+   * GraphSAGE link predictor (experimental, off by default). When on, E6 adds the "graphsage"
+   * method from the run's latest graphsage-scores artefact (trained offline in analysis/ml,
+   * leave-one-site-out), and the L13 ranker adds its score as a feature.
+   */
+  readonly graphsageEnabled: boolean;
+  /**
+   * GraphSAGE training (PyTorch Geometric): layers (mean aggregator), hidden width, epochs,
+   * learning rate, weight decay, dropout, negatives per positive edge, and the share of a
+   * graph's edges held out of message passing as supervision in each epoch. Heuristic defaults
+   * for graphs of a few hundred pages, not tuned on the evaluation sites.
+   */
+  readonly graphsage: Readonly<Record<string, number>>;
+  /**
    * Link health: a link target reached through at least this many redirect hops is reported as
    * a redirect chain (2 = longer than one hop).
    */
@@ -608,6 +621,17 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
     lambda_l2: 1,
   }),
   l13ShapTop: 3,
+  graphsageEnabled: false,
+  graphsage: Object.freeze({
+    layers: 2,
+    hidden: 64,
+    epochs: 200,
+    learning_rate: 0.01,
+    weight_decay: 0.0005,
+    dropout: 0.2,
+    negative_ratio: 1,
+    supervision_share: 0.3,
+  }),
   auditDeepPageDepth: 3,
   auditDeepPageHighDepth: 6,
   auditWeakAuthorityPercentile: 20,
@@ -808,6 +832,30 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
     throw new RangeError("config.l13Lightgbm must map LightGBM parameter names to numbers");
   }
   assertPositiveInt("l13ShapTop", cfg.l13ShapTop);
+  if (typeof cfg.graphsageEnabled !== "boolean") {
+    throw new RangeError("config.graphsageEnabled must be a boolean");
+  }
+  {
+    const g = cfg.graphsage;
+    const num = (k: string) => (g as Record<string, unknown>)?.[k];
+    const ok =
+      g !== null &&
+      typeof g === "object" &&
+      Object.values(g).every((v) => typeof v === "number" && Number.isFinite(v)) &&
+      ["layers", "hidden", "epochs", "negative_ratio"].every(
+        (k) => Number.isInteger(num(k)) && (num(k) as number) >= 1,
+      ) &&
+      (num("learning_rate") as number) > 0 &&
+      (num("supervision_share") as number) > 0 &&
+      (num("supervision_share") as number) < 1 &&
+      (num("dropout") as number) >= 0 &&
+      (num("dropout") as number) < 1;
+    if (!ok) {
+      throw new RangeError(
+        "config.graphsage needs integer layers, hidden, epochs, negative_ratio ≥ 1, learning_rate > 0, dropout in [0, 1) and supervision_share in (0, 1)",
+      );
+    }
+  }
   if (!FIX_SCORINGS.includes(cfg.fixScoring)) {
     throw new RangeError(`config.fixScoring must be one of ${FIX_SCORINGS.join(", ")}`);
   }

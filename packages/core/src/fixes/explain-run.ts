@@ -116,7 +116,14 @@ export async function buildExplanations(
         type: n.type,
         rule: n.rule,
         importance: n.importance,
-        components: n.components,
+        // A fixed key order: the stored page-importance comes back from jsonb with its keys
+        // reordered, and explanations must be byte-identical whether it was built or reused.
+        components: {
+          typePrior: n.components.typePrior,
+          pagerank: n.components.pagerank,
+          depth: n.components.depth,
+          inboundBodyLinks: n.components.inboundBodyLinks,
+        },
         depth: n.raw.depth,
         inboundBodyLinks: n.raw.inboundBodyLinks,
       };

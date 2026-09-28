@@ -30,6 +30,7 @@ METHODS = [
     "jaccard",
     "commonNeighbours",
     "adamicAdar",
+    "graphsage",
     "random",
 ]
 METHOD_LABELS = {
@@ -40,6 +41,7 @@ METHOD_LABELS = {
     "jaccard": "Jaccard",
     "commonNeighbours": "Common Neighbours",
     "adamicAdar": "Adamic–Adar",
+    "graphsage": "GraphSAGE (optional)",
     "random": "Random",
 }
 HYBRID, COSINE = "refGateCosine", "cosine"

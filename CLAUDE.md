@@ -622,6 +622,45 @@ reorders the fixes, and the rule-based explanation stays the explanation of reco
 - **Limitations.** E6 labels are a proxy (a link the site already had), not editorial judgement;
   the learned mode is not validated by humans unless E8 ratings exist.
 
+### GraphSAGE link predictor (optional; eval/src/l13/graph*.ts, analysis/ml/gnn.py)
+
+Off by default (`config.graphsageEnabled: false`); the audit pipeline never runs it.
+
+- `l13 graph-export --batch <b>` writes `<batch>/l13/graphs/<site>/` per completed site: the
+  unmasked graph (`full`) and each of E6's `e6Repeats` masked repeats (`r<k>`, E6's own
+  `maskSite`, seeds randomSeed + k). Nodes: the pages with text, sorted. Edges: distinct
+  body-region links between them (self-loops dropped). Node features: the embedding (the run's
+  model, re-embedded in the masked world as E6 does), then `STRUCTURAL_FEATURES` (PageRank × N,
+  1/(1+depth), reachable, ln(1+in/out neighbours), importance). Per repeat also the E6 queries
+  and every (target, candidate) pair with REF, cosine and the hybrid σ; these reproduce E6's
+  refGateCosine and cosine metrics exactly (tested). Formats: `.nodes.txt`, `.x.f32` (float32
+  LE, N × width), `.edges.csv`, `.queries.csv`, `.pairs.csv`, plus `graphs.json` (SHA-256 per
+  file, the `graphsage` parameters, export time per site).
+- `python -m ml gnn <graphs> --out <gnn> [--dataset <l13 dataset>]` (`pip install -e ".[gnn]"`;
+  CPU torch from the PyTorch CPU index): `config.graphsage.layers` (2) SAGEConv layers with the
+  mean aggregator on the undirected body graph, and a directed MLP decoder over [z_u, z_v].
+  - Training is **leave-one-site-out** on the other sites' masked repeat graphs, so masked edges
+    never enter training and the held-out site is never seen.
+  - Each epoch splits every graph's edges into message passing and supervision
+    (`supervision_share`), with `negative_ratio` sampled non-edges per positive and BCE loss.
+  - Structural features are standardised per fold. Seeds: torch, NumPy and Python (PyG's
+    negative sampler), one thread, deterministic algorithms (tested).
+  - Writes `predictions/<site>.json` (the `graphsage-scores` payload), `scores/<site>/{e6,
+    fixes,pool}.csv` (for the ranker), `e6_metrics.csv` (graphsage, hybrid, cosine, REF per
+    repeat) and `runtime.csv` (export, train and score ms per site).
+- `l13 graph-import --batch <b>` stores each site's `graphsage-scores` artefact
+  (`GRAPHSAGE_VERSION`: nodes, per repeat each target's candidates and scores, fix scores).
+- E6: with `graphsageEnabled`, `runExperiment("E6")` and the corpus export add the `graphsage`
+  method from the run's latest artefact (`EXTERNAL_METHODS`; an unscored pair ranks last; a
+  missing repeat or seed is refused). Without it the method is absent.
+- L13 ranker: `python -m ml train <dataset> --graphsage <gnn>` adds the held-out score as the
+  `graphsage` feature (NaN when unscored). A site's GNN score comes from a GNN that never saw it;
+  the ranker for site X may use other sites' scores from GNNs that saw X's visible edges (never
+  its hidden ones).
+- `python -m ml gnn-report <gnn> [--ranker <m> --ranker-graphsage <m>]` writes `REPORT.md`: per
+  site E6, GraphSAGE vs each baseline (Wilcoxon, Holm over the baselines), runtime, and the
+  ranker with vs without the feature.
+
 ### Orphan rescue (crawler/src/rescue.ts, core/src/fixes/rescue*.ts, counterfactual/src/rescue.ts)
 
 - `new RescueFetcher({ pool, redisUrl, prefix }).run(runId, policyId)` runs after discovery,

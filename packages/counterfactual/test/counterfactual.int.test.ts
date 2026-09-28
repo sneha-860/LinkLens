@@ -166,7 +166,7 @@ describe("fix ranking (S = ΔPR × σ / κ)", () => {
       kind: "fix-ranking",
     });
     expect(ranking).toMatchObject({
-      version: "scoring@1.1.0",
+      version: fixes.SCORING_VERSION,
       sigmaVariant: "refGateCosine",
       lambda: 0.5,
       sources: { counterfactualArtefactId: cf?.id, cosineModel: config.embeddingModel },
@@ -202,12 +202,14 @@ describe("explanations", () => {
     expect(set.counts.diagnoses).toBeGreaterThan(0);
     const hub = set.fixes.find((f) => f.id === `add-link:${S}/guides/->${S}/guides/whale-song`);
     expect(hub?.needs).toContainEqual({ kind: "deep-page", depth: 5, threshold: 3 });
-    expect(hub?.lines[3]).toMatch(
+    // Optional lines ("Target page", "Where") shift positions, so find the line by its prefix.
+    expect(hub?.lines.find((l) => l.startsWith("Predicted:"))).toMatch(
       /^Predicted: PageRank \+\d\.\d{2}e-\d \(\+\d+\.\d%\); \/guides\/whale-song goes from 5 to 2 clicks deep \(-3\)\.$/,
     );
     for (const f of set.fixes) expect(f.sentence.length).toBeGreaterThan(0);
     for (const d of set.diagnoses) expect(d.sentence).toContain(`(${d.case})`);
     const again = await fixes.buildExplanations(db, runId, "P0");
+    // Byte-identical although the second run reuses the stored page importance (jsonb).
     expect(JSON.stringify(again.fixes)).toBe(JSON.stringify(set.fixes));
   });
 });

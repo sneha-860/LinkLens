@@ -136,6 +136,8 @@ export interface PreparedState {
   readonly graph: graph.LinkGraph;
   readonly seedNode: string;
   readonly model: text.TextModel;
+  /** The representative pages' raw documents (what the text model and embeddings read). */
+  readonly documents: readonly text.RawDocument[];
   readonly prominence: prominence.RunProminence;
   readonly effort: Map<string, fixes.DonorEffort>;
   /** The structural-prominence weighted graph, its baseline PageRank and node index. */
@@ -322,6 +324,7 @@ export function prepareRun(
       graph: g,
       seedNode: derived.summary.seedNode,
       model,
+      documents,
       prominence: prom,
       effort,
       weighted: wg,

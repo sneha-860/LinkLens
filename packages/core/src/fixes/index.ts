@@ -8,6 +8,7 @@ export * from "./counterfactual.js";
 export * from "./counterfactual-inputs.js";
 export * from "./anchor.js";
 export * from "./learned.js";
+export * from "./graphsage.js";
 export * from "./effort.js";
 export * from "./scoring.js";
 export * from "./rescue.js";

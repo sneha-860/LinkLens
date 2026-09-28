@@ -21,6 +21,33 @@ from .metrics import percentile_priority, query_metrics, summarise
 SHAP_SAMPLE = 2000  # E6 rows per held-out site kept for the global SHAP summary (seeded)
 
 
+def with_graphsage(ds: Dataset, gnn_dir: str | Path) -> Dataset:
+    """The dataset with the optional `graphsage` feature: each row's held-out GraphSAGE score
+    (ml.gnn scores/<site>/; a site's scores come from a GNN that never saw it)."""
+    from dataclasses import replace
+
+    from .gnn import attach_scores
+
+    scores = Path(gnn_dir) / "scores"
+    meta = {
+        **ds.meta,
+        "features": [*ds.meta["features"][: len(ds.meta["numeric"])], "graphsage", *ds.meta["categorical"]],
+        "numeric": [*ds.meta["numeric"], "graphsage"],
+        "graphsage": str(gnn_dir),
+    }
+    sites = [
+        replace(
+            s,
+            e6=attach_scores(s.e6, scores, s.id, "e6"),
+            fixes=attach_scores(s.fixes, scores, s.id, "fixes"),
+            pool=attach_scores(s.pool, scores, s.id, "pool"),
+            ratings=attach_scores(s.ratings, scores, s.id, "ratings"),
+        )
+        for s in ds.sites
+    ]
+    return Dataset(ds.directory, meta, sites)
+
+
 def lgb_params(meta: dict) -> tuple[dict, int]:
     """LightGBM parameters from the run config (l13Lightgbm), made deterministic."""
     p = dict(meta["lightgbm"])
@@ -120,7 +147,7 @@ def cross_validate(ds: Dataset, out: str | Path) -> list[FoldResult]:
         per_query: dict[str, pd.DataFrame] = {}
         summary: dict[str, dict[str, float]] = {}
         shap_sample = pd.DataFrame()
-        if site in labelled:
+        if any(s.id == site.id for s in labelled):
             e6 = _sorted(site.e6)
             raw = np.asarray(booster.predict(e6[ds.features]))
             for method, score in [("learned", raw), ("S", e6["s_score"].to_numpy()), ("hybrid", e6["sigma_hybrid"].to_numpy())]:

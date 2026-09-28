@@ -11,6 +11,7 @@ import { readExportDir } from "../e5-files.js";
 import { calibrateRun, parseExports } from "../e5-screaming-frog.js";
 import { maskingRecovery } from "../e6-masking.js";
 import { loadRunInputs } from "../in-memory.js";
+import { latestGraphSage } from "../run.js";
 import { readImport, siteExportDir } from "./screaming-frog.js";
 import {
   CHANNELS_COLUMNS,
@@ -168,6 +169,9 @@ export async function exportBatch(
           );
           const recovery = await maskingRecovery(inputs, policy, embedder, config.randomSeed, {
             gateEpsilons: [...new Set(e7Settings(config).map((x) => x.epsilon))],
+            ...(config.graphsageEnabled
+              ? { graphsage: await latestGraphSage(db, s.runId as number, policy) }
+              : {}),
           });
           const ablation = ablate(inputs, policy, e3Data, recovery);
           for (const m of e7Metrics(ablation)) {

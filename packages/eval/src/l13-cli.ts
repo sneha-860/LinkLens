@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { canonicalise, db as q, fixes } from "@linklens/core";
+import { canonicalise, db as q, fixes, makeConfig } from "@linklens/core";
 import { asQueryable, createPool, resolveDatabaseUrl } from "@linklens/db";
 import { EmbeddingWorker, embeddingOptions } from "@linklens/embeddings";
 import { toCsv, type Cell } from "./corpus/csv.js";
@@ -11,6 +11,8 @@ import { buildE3Inputs, loadE3Data } from "./e3-baselines.js";
 import { loadRunInputs } from "./in-memory.js";
 import { e6Rows, fixRows, poolRows, ratingRows, siteFeatures } from "./l13/dataset.js";
 import { e3Comparison, learnedPayload, type SitePredictions } from "./l13/evaluate.js";
+import { STRUCTURAL_FEATURES, fullGraph, graphRepeats } from "./l13/graph.js";
+import { GRAPHS_VERSION, writeSiteGraphs } from "./l13/graph-files.js";
 import { CATEGORICAL_FEATURES, FEATURES, NUMERIC_FEATURES } from "./l13/features.js";
 
 const REPO = fileURLToPath(new URL("../../../", import.meta.url));
@@ -20,6 +22,10 @@ export const L13_DATASET_VERSION = "l13-dataset@1.0.0";
 const USAGE = `Usage: pnpm --filter @linklens/eval l13 <command> --batch <name> [--out <dir>]
   export     every completed site of a corpus batch: E6 label rows (masked repeats), fix rows,
              E3 pool rows and E8 rating rows, in <batch>/l13/dataset/<site>/ (+ dataset.json)
+  graph-export  GraphSAGE inputs: per site, the unmasked graph and every E6 masked repeat
+             (body edges, node features, E6 queries and candidate pairs) in <batch>/l13/graphs/
+  graph-import  the GraphSAGE scores (<batch>/l13/gnn/predictions/<site>.json, from
+             python -m ml gnn) as graphsage-scores artefacts
   import     the model's per-site predictions (<batch>/l13/model/predictions/<site>.json, from
              python -m ml train) as learned-priority artefacts, and E3 for S, learned and random
              (<batch>/l13/model/e3.csv)
@@ -117,6 +123,7 @@ async function exportDataset(opts: Map<string, string>): Promise<void> {
     await embedder.close();
     await pool.end();
   }
+  const resolved = makeConfig(m.config);
   writeJsonAtomic(join(out, "dataset.json"), {
     version: L13_DATASET_VERSION,
     batch: m.batchId,
@@ -127,11 +134,12 @@ async function exportDataset(opts: Map<string, string>): Promise<void> {
     features: [...FEATURES],
     numeric: [...NUMERIC_FEATURES],
     categorical: [...CATEGORICAL_FEATURES],
-    lightgbm: m.config.l13Lightgbm,
-    shapTop: m.config.l13ShapTop,
-    ks: m.config.e6Ks,
-    e3Ks: m.config.e3TopKs,
-    seed: m.config.randomSeed,
+    // Resolved against the defaults: a batch whose config predates a setting still gets it.
+    lightgbm: resolved.l13Lightgbm,
+    shapTop: resolved.l13ShapTop,
+    ks: resolved.e6Ks,
+    e3Ks: resolved.e3TopKs,
+    seed: resolved.randomSeed,
     sites: records,
   });
   log(`dataset written to ${out}`);
@@ -202,11 +210,109 @@ async function importModel(opts: Map<string, string>): Promise<void> {
   log(`E3 comparison written to ${join(modelDir, "e3.csv")}`);
 }
 
+async function exportGraphs(opts: Map<string, string>): Promise<void> {
+  const { dir, m, sites } = batch(opts);
+  const out = join(dir, "l13", "graphs");
+  const policy = m.audit.policy;
+  const resolved = makeConfig(m.config);
+  const pool = createPool(resolveDatabaseUrl(env));
+  const embedder = EmbeddingWorker.start(embeddingOptions(m.config, cacheDir()));
+  const records: Record<string, unknown>[] = [];
+  try {
+    const db = asQueryable(pool);
+    for (const s of sites) {
+      const runId = s.runId as number;
+      const started = performance.now();
+      const inputs = await loadRunInputs(db, runId, policy);
+      const full = await fullGraph(inputs, policy, embedder);
+      const repeats = await graphRepeats(inputs, policy, embedder);
+      const record = writeSiteGraphs(join(out, s.id), full, repeats);
+      const exportMs = Math.round(performance.now() - started);
+      const queries = repeats.reduce((a, r) => a + r.queries.length, 0);
+      log(
+        `${s.id}: ${full.nodes.length} nodes, ${full.src.length} body edges, ${repeats.length} repeats, ${queries} E6 queries (${exportMs} ms)`,
+      );
+      records.push({
+        site: s.id,
+        architectureClass: s.architectureClass,
+        runId,
+        exportMs,
+        ...record,
+      });
+    }
+  } finally {
+    await embedder.close();
+    await pool.end();
+  }
+  mkdirSync(out, { recursive: true });
+  writeJsonAtomic(join(out, "graphs.json"), {
+    version: GRAPHS_VERSION,
+    batch: m.batchId,
+    policy,
+    policyVersion: canonicalise.POLICIES[policy].version,
+    createdAt: new Date().toISOString(),
+    git: gitState(REPO),
+    structural: [...STRUCTURAL_FEATURES],
+    graphsage: resolved.graphsage,
+    ks: resolved.e6Ks,
+    seed: resolved.randomSeed,
+    e6Repeats: resolved.e6Repeats,
+    sites: records,
+  });
+  log(`graphs written to ${out}`);
+}
+
+async function importGraphSage(opts: Map<string, string>): Promise<void> {
+  const { dir, m, sites } = batch(opts);
+  const gnnDir = resolve(opts.get("model") ?? join(dir, "l13", "gnn"));
+  const predDir = join(gnnDir, "predictions");
+  const available = new Set(existsSync(predDir) ? readdirSync(predDir) : []);
+  const policy = m.audit.policy;
+  const policyVersion = canonicalise.POLICIES[policy].version;
+  const pool = createPool(resolveDatabaseUrl(env));
+  try {
+    const db = asQueryable(pool);
+    for (const s of sites) {
+      if (!available.has(`${s.id}.json`)) {
+        log(`${s.id}: no GraphSAGE scores, skipped`);
+        continue;
+      }
+      const p = JSON.parse(readFileSync(join(predDir, `${s.id}.json`), "utf8")) as Omit<
+        fixes.GraphSageScores,
+        "version" | "policyVersion"
+      >;
+      if (p.runId !== s.runId)
+        throw new Error(`${s.id}: scores are for run ${p.runId}, not ${s.runId}`);
+      const payload: fixes.GraphSageScores = {
+        version: fixes.GRAPHSAGE_VERSION,
+        runId: p.runId,
+        policyVersion,
+        model: p.model,
+        nodes: p.nodes,
+        repeats: p.repeats,
+        fixes: p.fixes,
+      };
+      fixes.graphsageLookup(payload); // validates the arrays
+      const artefact = await q.insertArtefact(db, {
+        runId: p.runId,
+        policyVersion,
+        kind: fixes.GRAPHSAGE_ARTEFACT,
+        payload: payload as unknown as q.Json,
+      });
+      log(`${s.id}: ${fixes.GRAPHSAGE_ARTEFACT} artefact ${artefact.id} (run ${p.runId})`);
+    }
+  } finally {
+    await pool.end();
+  }
+}
+
 const [command, ...rest] = process.argv.slice(2);
 const main = async () => {
   const opts = parseArgs(rest);
   if (command === "export") await exportDataset(opts);
   else if (command === "import") await importModel(opts);
+  else if (command === "graph-export") await exportGraphs(opts);
+  else if (command === "graph-import") await importGraphSage(opts);
   else {
     console.error(USAGE);
     process.exitCode = 2;

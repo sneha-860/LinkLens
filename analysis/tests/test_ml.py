@@ -149,3 +149,24 @@ def test_report_compares_learned_with_s(dataset: Path, tmp_path: Path):
     assert "S remains the default" in text
     paired = report.e6_paired(pd.read_csv(out / "e6_metrics.csv"))
     assert "mrr" in paired.index and paired.loc["mrr", "sites"] == 3
+
+
+def test_ranker_takes_graphsage_scores_as_an_optional_feature(dataset: Path, tmp_path: Path):
+    ds = data.load(dataset)
+    scores = tmp_path / "gnn" / "scores"
+    for s in ds.sites:
+        d = scores / s.id
+        d.mkdir(parents=True)
+        # A GraphSAGE that finds the positive: the feature alone separates the queries.
+        s.e6.assign(score=s.e6["label"] * 2.0 - 1)[["repeat", "target", "donor", "score"]].to_csv(
+            d / "e6.csv", index=False
+        )
+        s.fixes.assign(score=0.5)[["fix_id", "score"]].to_csv(d / "fixes.csv", index=False)
+    gs = model.with_graphsage(ds, tmp_path / "gnn")
+    assert "graphsage" in gs.features and gs.features[-2:] == ds.categorical
+    assert gs.sites[0].e6["graphsage"].notna().all()
+    assert gs.sites[0].pool["graphsage"].isna().all()  # no pool scores: NaN, which LightGBM handles
+    folds = model.cross_validate(gs, tmp_path / "m")
+    assert all(f.summary["learned"]["mrr"] > 0.95 for f in folds)
+    pred = json.loads((tmp_path / "m" / "predictions" / "a.json").read_text())
+    assert "graphsage" in pred["features"]

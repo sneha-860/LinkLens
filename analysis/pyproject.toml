@@ -20,6 +20,9 @@ dependencies = [
 dev = ["pytest>=8"]
 # L13 ML prioritiser (analysis/ml): LightGBM lambdarank and its built-in TreeSHAP.
 ml = ["lightgbm>=4.3"]
+# Optional GraphSAGE link predictor (analysis/ml/gnn.py). On CPU-only machines install torch from
+# the CPU index first: pip install torch --index-url https://download.pytorch.org/whl/cpu
+gnn = ["torch>=2.3", "torch_geometric>=2.5"]
 
 [tool.setuptools.packages.find]
 include = ["linklens_analysis*", "ml*"]

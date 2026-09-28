@@ -33,9 +33,20 @@ export const E6_METHODS = [
   "random",
   "commonNeighbours",
   "adamicAdar",
+  "graphsage",
 ] as const;
 export type E6Method = (typeof E6_METHODS)[number];
 export const GRAPH_METHODS: readonly E6Method[] = ["commonNeighbours", "adamicAdar"];
+/**
+ * Methods scored from outside, only when their scores are supplied: "graphsage" comes from a
+ * `graphsage-scores` artefact (config.graphsageEnabled; trained offline in analysis/ml).
+ */
+export const EXTERNAL_METHODS: readonly E6Method[] = ["graphsage"];
+
+/** Outside scores for one repeat: undefined when a pair was not scored (ranks last). */
+export interface ExternalScores {
+  readonly graphsage?: (target: string, donor: string) => number | undefined;
+}
 
 export interface Ranking {
   /** Candidates scored strictly higher than the relevant donor. */
@@ -300,12 +311,17 @@ export function rankMasked(
   policyVersion: string,
   config: Readonly<LinkLensConfig>,
   gateEpsilons: readonly number[] = [],
+  external: ExternalScores = {},
 ): Pick<RepeatResult, "targets" | "queries" | "methods" | "gated"> {
   const model = text.buildTextModel({ runId, policyVersion, documents: m.documents }, config);
   const docs = [...model.documents].sort((a, b) => cmp(a.node, b.node));
   const index = new Map(docs.map((d, i) => [d.node, i]));
   const donorSets = docs.map((d) => new Set(d.donor));
-  const methods = E6_METHODS.filter((x) => config.e6GraphBaselines || !GRAPH_METHODS.includes(x));
+  const methods = E6_METHODS.filter(
+    (x) =>
+      (config.e6GraphBaselines || !GRAPH_METHODS.includes(x)) &&
+      (!EXTERNAL_METHODS.includes(x) || external[x as keyof ExternalScores] !== undefined),
+  );
   const neighbours = new Map<string, Set<string>>();
   const around = (n: string) => {
     let set = neighbours.get(n);
@@ -359,6 +375,8 @@ export function rankMasked(
       set("refGateCosine", sigmas.refGateCosine);
       set("blended", sigmas.blended);
       set("random", 0);
+      if (external.graphsage !== undefined)
+        set("graphsage", external.graphsage(target, u) ?? -Infinity);
       for (const e of gateEpsilons) scores.get(`gate:${e}`)?.set(u, r > e && hasCos ? cos : 0);
       if (config.e6GraphBaselines) {
         const nu = around(u);
@@ -464,9 +482,15 @@ export async function maskingRecovery(
   policyId: PolicyId,
   embedder: Embedder,
   seed: number = inputs.config.randomSeed,
-  options: { readonly gateEpsilons?: readonly number[] } = {},
+  options: {
+    readonly gateEpsilons?: readonly number[];
+    /** GraphSAGE scores for the masked repeats (adds the "graphsage" method). */
+    readonly graphsage?: fixes.GraphSageScores;
+  } = {},
 ): Promise<E6Result> {
   const gateEpsilons = options.gateEpsilons ?? [];
+  const gs = options.graphsage;
+  const gsLookup = gs === undefined ? undefined : fixes.graphsageLookup(gs);
   const { config } = inputs;
   const o = embedder.options;
   if (
@@ -483,6 +507,11 @@ export async function maskingRecovery(
   const repeats: RepeatResult[] = [];
   for (let r = 0; r < config.e6Repeats; r++) {
     const m = maskSite(inputs, s, seed + r, config);
+    if (gs !== undefined && !gs.repeats.some((x) => x.repeat === r && x.seed === seed + r)) {
+      throw new Error(
+        `graphsage-scores for run ${inputs.runId} has no repeat ${r} with seed ${seed + r}: export and score the graphs with the same seed and e6Repeats`,
+      );
+    }
     const inputsToEmbed = m.documents
       .map(semantic.embeddingInput)
       .sort((a, b) => cmp(a.node, b.node));
@@ -496,7 +525,15 @@ export async function maskingRecovery(
       share: m.share,
       eligiblePairs: s.eligible.length,
       masked: m.masked.length,
-      ...rankMasked(m, (n) => vector.get(n), inputs.runId, policyVersion, config, gateEpsilons),
+      ...rankMasked(
+        m,
+        (n) => vector.get(n),
+        inputs.runId,
+        policyVersion,
+        config,
+        gateEpsilons,
+        gsLookup === undefined ? {} : { graphsage: (t, d) => gsLookup(r, t, d) },
+      ),
     });
   }
   return {

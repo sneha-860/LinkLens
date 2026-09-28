@@ -10,6 +10,25 @@ import { loadRunInputs } from "./in-memory.js";
 import { parseRatings, ratingSheet, summariseRatings } from "./e8-ratings.js";
 import { experiments } from "./experiments.js";
 
+/** The run's latest GraphSAGE scores under the policy (config.graphsageEnabled needs them). */
+export async function latestGraphSage(
+  db: q.Queryable,
+  runId: number,
+  policy: canonicalise.PolicyId,
+): Promise<fixes.GraphSageScores> {
+  const rows = await q.listArtefacts(db, runId, {
+    kind: fixes.GRAPHSAGE_ARTEFACT,
+    policyVersion: canonicalise.POLICIES[policy].version,
+  });
+  const last = rows[rows.length - 1];
+  if (last === undefined) {
+    throw new Error(
+      `config.graphsageEnabled is on but run ${runId} has no ${fixes.GRAPHSAGE_ARTEFACT} artefact under ${policy}: run \`l13 graph-export\`, \`python -m ml gnn\` and \`l13 graph-import\` first`,
+    );
+  }
+  return last.payload as unknown as fixes.GraphSageScores;
+}
+
 type PolicyId = canonicalise.PolicyId;
 export type ExperimentId = (typeof experiments)[number]["id"];
 
@@ -109,6 +128,9 @@ export async function runExperiment(
         policy,
         options.embedder,
         options.seed ?? inputs.config.randomSeed,
+        inputs.config.graphsageEnabled
+          ? { graphsage: await latestGraphSage(db, runId, policy) }
+          : {},
       );
       break;
     }
