@@ -10,7 +10,12 @@ import { loadRunDocuments } from "../text/run.js";
 import { SurfaceForms } from "../text/surface.js";
 import { detachedImportance } from "../importance/importance.js";
 import { importanceFor } from "../importance/run.js";
-import { suggestAnchor, type AnchorResult } from "./anchor.js";
+import {
+  prepareParagraphs,
+  suggestAnchor,
+  type AnchorResult,
+  type PreparedParagraph,
+} from "./anchor.js";
 import { loadDonorEffort } from "./effort.js";
 import {
   EXPLAIN_VERSION,
@@ -131,12 +136,21 @@ export async function buildExplanations(
     const d = detachedImportance(v, config);
     return { ...d, depth: null, inboundBodyLinks: 0 };
   };
+  // A donor's paragraphs are split into n-grams once and reused for all its fixes (a long page,
+  // e.g. a changelog, can be the donor of thousands of fixes). Same results as without it.
+  const preparedOf = new Map<string, PreparedParagraph[]>();
   const anchor = (u: string, v: string): AnchorResult | undefined => {
     const title = titles.get(v);
     const donor = docOf.get(u);
     if (title === undefined || donor === undefined) return undefined;
+    const paragraphs = donor.paragraphs ?? [];
+    let prepared = preparedOf.get(u);
+    if (prepared === undefined) {
+      prepared = prepareParagraphs(paragraphs, donor.links, opts);
+      preparedOf.set(u, prepared);
+    }
     return suggestAnchor(
-      { paragraphs: donor.paragraphs ?? [], title, variant: refVariant, linked: donor.links },
+      { paragraphs, title, variant: refVariant, linked: donor.links, prepared },
       { ...config, ...opts },
     );
   };

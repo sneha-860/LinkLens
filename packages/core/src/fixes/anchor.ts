@@ -81,6 +81,18 @@ export interface AnchorInput {
   readonly variant: RefVariant;
   /** Anchor texts of the donor's existing content links (text already linked; see above). */
   readonly linked?: readonly string[];
+  /**
+   * The donor's paragraphs already split into n-grams (`prepareParagraphs` with the same
+   * paragraphs, links and tokeniser). Optional: a donor with many fixes is split once, not once
+   * per fix. The result is the same either way.
+   */
+  readonly prepared?: readonly PreparedParagraph[];
+}
+
+/** One paragraph's n-grams (with their first spans) and the set of its terms. */
+export interface PreparedParagraph {
+  readonly grams: ReadonlyMap<string, Occurrence>;
+  readonly terms: ReadonlySet<string>;
 }
 
 export type AnchorConfig = Pick<LinkLensConfig, "epsilon" | "explainTerms" | "anchorExcerptChars"> &
@@ -184,6 +196,18 @@ export function excerpt(
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
+/** Pure: a donor's paragraphs split into n-grams once, already-linked text blocked. */
+export function prepareParagraphs(
+  paragraphs: readonly string[],
+  linked: readonly string[],
+  opts: TokeniseOptions,
+): PreparedParagraph[] {
+  return paragraphs.map((text) => {
+    const grams = paragraphNgrams(text, opts, linkedRanges(text, linked));
+    return { grams, terms: new Set(grams.keys()) };
+  });
+}
+
 /** Pure: the best donor paragraph for the target's title and the anchor to use in it. */
 export function suggestAnchor(input: AnchorInput, config: AnchorConfig): AnchorResult {
   const paragraphs = input.paragraphs.length;
@@ -209,12 +233,19 @@ export function suggestAnchor(input: AnchorInput, config: AnchorConfig): AnchorR
   }
 
   // The best paragraph; a tie keeps the earlier one.
-  let chosen = { index: -1, ref: -1, grams: new Map<string, Occurrence>() };
+  const prepared = input.prepared ?? prepareParagraphs(input.paragraphs, input.linked ?? [], opts);
+  if (prepared.length !== paragraphs) {
+    throw new Error(`prepared paragraphs (${prepared.length}) ≠ paragraphs (${paragraphs})`);
+  }
+  let chosen: { index: number; ref: number; grams: ReadonlyMap<string, Occurrence> } = {
+    index: -1,
+    ref: -1,
+    grams: new Map(),
+  };
   for (let index = 0; index < paragraphs; index++) {
-    const text = input.paragraphs[index] as string;
-    const grams = paragraphNgrams(text, opts, linkedRanges(text, input.linked ?? []));
-    const r = ref(new Set(grams.keys()), input.title, input.variant);
-    if (r > chosen.ref) chosen = { index, ref: r, grams };
+    const p = prepared[index] as PreparedParagraph;
+    const r = ref(p.terms as Set<string>, input.title, input.variant);
+    if (r > chosen.ref) chosen = { index, ref: r, grams: p.grams };
   }
   if (!(chosen.ref > config.epsilon)) {
     return {

@@ -4,6 +4,7 @@ import {
   excerpt,
   linkedRanges,
   paragraphNgrams,
+  prepareParagraphs,
   suggestAnchor,
   type AnchorConfig,
 } from "./anchor.js";
@@ -219,5 +220,33 @@ describe("text that is already linked", () => {
       reason: "not-above-epsilon",
       bestRef: 0,
     });
+  });
+});
+
+describe("prepared paragraphs", () => {
+  it("give the same result as splitting each time, for every target", () => {
+    const paragraphs = [
+      "Whale songs travel far.",
+      "Loggerhead turtle nesting guide",
+      "Volunteers record turtle nesting on the beach.",
+    ];
+    const linked = ["Loggerhead turtle nesting guide"];
+    const prepared = prepareParagraphs(paragraphs, linked, config);
+    for (const t of [turtle, title({ whale: 1, song: 2, "whale song": 3 }), title({ absent: 1 })]) {
+      for (const variant of ["weighted", "unweighted"] as const) {
+        const plain = suggestAnchor({ paragraphs, title: t, variant, linked }, config);
+        const reused = suggestAnchor({ paragraphs, title: t, variant, linked, prepared }, config);
+        expect(reused).toEqual(plain);
+      }
+    }
+  });
+
+  it("refuses prepared paragraphs of another donor", () => {
+    expect(() =>
+      suggestAnchor(
+        { paragraphs: ["a b", "c d"], title: turtle, variant: "weighted", prepared: [] },
+        config,
+      ),
+    ).toThrow(/prepared paragraphs/);
   });
 });
