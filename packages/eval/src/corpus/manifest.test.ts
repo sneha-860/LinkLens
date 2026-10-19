@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +14,8 @@ import {
   newManifest,
   readManifest,
   resumeProblems,
+  scoringModelInfo,
+  scoringModelsInfo,
   stableJson,
   writeJsonAtomic,
   type GitState,
@@ -119,6 +122,18 @@ describe("resumeProblems", () => {
     expect(resumeProblems(old, check)[0]).toMatch(/stage versions changed/);
   });
 
+  it("lets a setting added since the batch was created keep its default, not change it", () => {
+    const m = manifest();
+    const older = { ...m.config } as Record<string, unknown>;
+    delete older["throttleStateTtlMs"];
+    const batch = { ...m, config: older as unknown as typeof m.config, configSha256: "older" };
+    expect(resumeProblems(batch, check)).toEqual([]);
+    const changed = makeConfig({ ...config, throttleStateTtlMs: 5 });
+    expect(resumeProblems(batch, { ...check, config: changed })[0]).toMatch(
+      /config differs.*\(throttleStateTtlMs\)/,
+    );
+  });
+
   it("refuses a different embedding model, once both are known", () => {
     const m = manifest();
     m.model = { ...m.model, sha256: "aaa" };
@@ -172,6 +187,46 @@ describe("modelInfo", () => {
       files: [],
       sha256: null,
     });
+  });
+});
+
+describe("scoringModelInfo", () => {
+  it("hashes a deployable model as the Python scorer does, with what it was fit on", () => {
+    const dir = tmp();
+    const ranker = join(dir, "ranker");
+    mkdirSync(ranker, { recursive: true });
+    const meta = JSON.stringify({ trainedOn: ["a", "b"], dataset: "d1", createdAt: "t" });
+    writeFileSync(join(ranker, "model.txt"), "trees");
+    writeFileSync(join(ranker, "model.json"), meta);
+    const info = scoringModelInfo(dir, "ranker");
+    const sha = (x: string) => createHash("sha256").update(x).digest("hex");
+    // analysis/ml/deploy.py model_sha256: "name\0sha256\n" per file, sorted by name.
+    expect(info.sha256).toBe(sha(`model.json\0${sha(meta)}\nmodel.txt\0${sha("trees")}\n`));
+    expect(info).toMatchObject({
+      kind: "ranker",
+      trainedOn: ["a", "b"],
+      dataset: "d1",
+      artefactVersion: "learned@1.1.0",
+    });
+    expect(scoringModelsInfo(dir).graphsage).toMatchObject({ sha256: null, files: [] });
+  });
+
+  it("refuses to resume with a different scoring model, once both are known", () => {
+    const m = manifest();
+    const models = (ranker: string | null) => ({
+      ranker: { sha256: ranker },
+      graphsage: { sha256: null },
+    });
+    m.scoringModels = {
+      ranker: { ...scoringModelInfo(tmp(), "ranker"), sha256: "r1" },
+      graphsage: scoringModelInfo(tmp(), "graphsage"),
+    };
+    const check = { corpus, config, git: clean };
+    expect(resumeProblems(m, { ...check, scoringModels: models("r2") })[0]).toMatch(
+      /ranker scoring model differs/,
+    );
+    expect(resumeProblems(m, { ...check, scoringModels: models("r1") })).toEqual([]);
+    expect(resumeProblems(m, { ...check, scoringModels: models(null) })).toEqual([]);
   });
 });
 

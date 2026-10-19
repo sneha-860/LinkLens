@@ -1,4 +1,6 @@
-"""python -m ml train <dataset dir> --out <model dir> | report <model dir>"""
+"""python -m ml train <dataset dir> --out <model dir> | report <model dir> | gnn … |
+fit <dataset dir> --out <models dir> | gnn-fit <graphs dir> --out <models dir> |
+score <request.json> --models <models dir> --out <response.json>"""
 
 from __future__ import annotations
 
@@ -29,7 +31,32 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("report", help="Markdown report and SHAP figure from a model directory")
     r.add_argument("model")
     r.add_argument("--no-figures", action="store_true")
+    f = sub.add_parser("fit", help="the deployable ranker: fit on every labelled site (for the pipeline)")
+    f.add_argument("dataset")
+    f.add_argument("--out", required=True, help="the models directory (LINKLENS_MODELS_DIR)")
+    gf = sub.add_parser("gnn-fit", help="the deployable GraphSAGE model: fit on every site's graphs")
+    gf.add_argument("graphs")
+    gf.add_argument("--out", required=True, help="the models directory (LINKLENS_MODELS_DIR)")
+    s = sub.add_parser("score", help="answer one pipeline scorer request (JSON in, JSON out)")
+    s.add_argument("request")
+    s.add_argument("--models", required=True)
+    s.add_argument("--out", required=True)
     a = p.parse_args(argv)
+
+    if a.cmd in ("fit", "gnn-fit", "score"):
+        from . import deploy
+
+        if a.cmd == "score":
+            deploy.score(a.request, a.models, a.out)
+            return 0
+        if a.cmd == "fit":
+            d = deploy.fit_ranker(data.load(a.dataset), a.out)
+        else:
+            from . import gnn
+
+            d = deploy.fit_gnn(gnn.load(a.graphs), a.out)
+        print(f"wrote {d} (sha256 {deploy.model_sha256(deploy.model_files(d))})")
+        return 0
 
     if a.cmd == "gnn":
         from . import gnn

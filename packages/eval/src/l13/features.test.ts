@@ -111,10 +111,10 @@ describe("helpers", () => {
       "P3@1.0.0",
     );
     expect(p).toMatchObject({
-      version: "learned@1.0.0",
+      version: "learned@1.1.0",
       runId: 7,
       policyVersion: "P3@1.0.0",
-      model: { site: "a", trainedOn: ["b", "c"] },
+      model: { site: "a", trainedOn: ["b", "c"], source: "import", seenSite: false },
       fixes: { f1: { priority: 0.9 } },
     });
   });

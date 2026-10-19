@@ -94,6 +94,9 @@ export const STAGE_NAMES = [
   "counterfactual",
   "kappa",
   "scoring",
+  "importance",
+  "learnedScore",
+  "graphsageScore",
   "rescue",
   "explanations",
 ];

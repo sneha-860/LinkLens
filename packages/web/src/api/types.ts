@@ -52,7 +52,18 @@ export interface CreateAuditRequest {
   url: string;
   pageCap?: number;
   policy: Policy;
-  options?: { sigma?: SigmaVariant; config?: Record<string, unknown> };
+  options?: {
+    sigma?: SigmaVariant;
+    config?: Record<string, unknown>;
+    /** The optional model stages (importance and learned default on, GraphSAGE off). */
+    models?: ModelStages;
+  };
+}
+
+export interface ModelStages {
+  importance?: boolean;
+  learned?: boolean;
+  graphsage?: boolean;
 }
 export interface CreateAuditResponse {
   id: number;
@@ -263,8 +274,10 @@ export interface Fix {
   scoreS?: number;
   scoring?: "S" | "S_imp" | "learned";
   importance?: number | null;
-  /** L13: the model's priority and top SHAP contributions (null without an imported model). */
+  /** L13: the model's priority and top SHAP contributions (null without a learned artefact). */
   learned?: LearnedFix | null;
+  /** The GraphSAGE link predictor's logit for donor → target (null without one). */
+  graphsage?: number | null;
   rank: number;
   targetRank: number;
   diagnosis: "v4" | "v3" | null;
@@ -300,15 +313,31 @@ export interface Summary {
   orphans: { orphans: number; scored: number; withDonors: number } | null;
 }
 
-export type FixScoringMode = "formula" | "learned";
+/** How /fixes orders the fixes: S, S × importance(target), or the L13 ranker's priority. */
+export type FixScoringMode = "formula" | "importance" | "learned";
+
+/** The model behind a learned or GraphSAGE artefact. */
+export interface ScoringModelView {
+  site: string;
+  trainedOn: string[];
+  createdAt: string;
+  /** import: offline leave-one-site-out; pipeline: the audit's model stage (a deployable fit). */
+  source: "import" | "pipeline";
+  sha256: string | null;
+  /** This site was a training site: its scores are in-sample. */
+  seenSite: boolean;
+  labels?: string;
+}
 
 export interface FixesResponse {
   sigma: SigmaVariant;
   k: number;
   scope: "global" | "target";
-  scoring?: FixScoringMode;
-  /** The imported L13 model: the site it scores and the sites it was trained on. */
-  learnedModel?: { site: string; trainedOn: string[]; labels: string; createdAt: string } | null;
+  mode?: FixScoringMode;
+  /** Deprecated: formula or learned. */
+  scoring?: "formula" | "learned";
+  learnedModel?: ScoringModelView | null;
+  graphsageModel?: ScoringModelView | null;
   total: number;
   fixes?: Fix[];
   targets?: { target: string; fixes: Fix[] }[];
@@ -467,7 +496,13 @@ export interface ReconciliationResponse {
 /** Server-sent events of /audits/:id/events (besides the "snapshot", which is an Audit). */
 export type AuditEvent =
   | { type: "stage"; stage: string; status: "running" }
-  | { type: "stage"; stage: string; status: "completed"; durationMs: number }
+  | {
+      type: "stage";
+      stage: string;
+      status: "completed";
+      durationMs: number;
+      detail?: Record<string, unknown>;
+    }
   | { type: "stage"; stage: string; status: "failed"; durationMs: number; error: string }
   | { type: "progress"; pagesFetched: number; admitted: number; queueSize: number; url: string }
   | { type: "done"; status: "completed" | "failed"; error?: string }

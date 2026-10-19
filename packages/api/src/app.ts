@@ -276,7 +276,9 @@ export function createApp(options: AppOptions): Express {
       const config = makeConfig(run?.config ?? {});
       const sigma: SigmaVariant =
         qs.sigma ?? (a.options["sigma"] as SigmaVariant | undefined) ?? config.sigmaVariant;
-      res.json(await fixesView(db, a, sigma, qs.k ?? config.fixTopK, qs.scope, qs.scoring));
+      // `scoring` is the deprecated alias: learned, or formula meaning the run's default rule.
+      const mode = qs.mode ?? (qs.scoring === "learned" ? "learned" : undefined);
+      res.json(await fixesView(db, a, sigma, qs.k ?? config.fixTopK, qs.scope, mode));
     }),
   );
 

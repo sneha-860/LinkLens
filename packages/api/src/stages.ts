@@ -6,6 +6,7 @@ import {
   discovery,
   fixes,
   graph,
+  importance,
   prominence,
   semantic,
   text,
@@ -21,6 +22,47 @@ export interface AuditOptions {
   readonly workers?: number;
   /** Config overrides for the run (stored in runs.config). */
   readonly config?: Partial<LinkLensConfig>;
+  /** The optional model stages to run (see modelStages for the defaults). */
+  readonly models?: {
+    readonly importance?: boolean;
+    readonly learned?: boolean;
+    readonly graphsage?: boolean;
+  };
+}
+
+/**
+ * Which optional model stages an audit runs: importance and learnedScore unless turned off,
+ * graphsageScore when turned on (default config.graphsageEnabled). A stage that is off completes
+ * at once with `{ skipped: "disabled" }`; one that is on but has no model is skipped with the
+ * reason, so an audit never fails for want of a model.
+ */
+export function modelStages(
+  options: AuditOptions,
+  config: Pick<LinkLensConfig, "graphsageEnabled">,
+): { importance: boolean; learned: boolean; graphsage: boolean } {
+  return {
+    importance: options.models?.importance ?? true,
+    learned: options.models?.learned ?? true,
+    graphsage: options.models?.graphsage ?? config.graphsageEnabled,
+  };
+}
+
+/** The latest stored ranking for the audit's σ (any scoring mode), or null. */
+export async function storedRanking(
+  db: q.Queryable,
+  ctx: StageCtx,
+): Promise<{ id: number; payload: fixes.FixRanking } | null> {
+  const sigma = ctx.options.sigma ?? ctx.config.sigmaVariant;
+  const rows = await q.listArtefacts(db, ctx.runId, {
+    kind: fixes.FIX_RANKING_ARTEFACT,
+    policyVersion: ctx.policyVersion,
+  });
+  const row = rows
+    .filter((r) => (r.payload as unknown as fixes.FixRanking).sigmaVariant === sigma)
+    .at(-1);
+  return row === undefined
+    ? null
+    : { id: row.id, payload: row.payload as unknown as fixes.FixRanking };
 }
 
 /** What a stage runs with (plain data: it is sent to stage workers as is). */
@@ -49,6 +91,7 @@ export const DB_STAGES = [
   "candidates",
   "kappa",
   "scoring",
+  "importance",
   "explanations",
 ] as const;
 export type DbStage = (typeof DB_STAGES)[number];
@@ -162,6 +205,12 @@ export const dbStages: Record<DbStage, (db: q.Queryable, ctx: StageCtx) => Promi
       sigmaVariant: ctx.options.sigma ?? ctx.config.sigmaVariant,
     });
     return { fixes: r.counts.fixes, targets: r.counts.targets, sigma: r.sigmaVariant };
+  },
+
+  importance: async (db, ctx) => {
+    if (!modelStages(ctx.options, ctx.config).importance) return { skipped: "disabled" };
+    const i = await importance.buildImportanceRun(db, ctx.runId, ctx.policy);
+    return { nodes: Object.keys(i.nodes).length, counts: i.counts, version: i.version };
   },
 
   explanations: async (db, ctx) => {

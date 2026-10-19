@@ -22,7 +22,8 @@
     "services:up": "docker compose up -d --wait",
     "services:down": "docker compose down",
     "db:migrate": "pnpm --filter @linklens/db migrate:up",
-    "db:rollback": "pnpm --filter @linklens/db migrate:down"
+    "db:rollback": "pnpm --filter @linklens/db migrate:down",
+    "demo": "pnpm --filter @linklens/api demo"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

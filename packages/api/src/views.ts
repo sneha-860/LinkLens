@@ -10,11 +10,13 @@ import {
   importance,
   makeConfig,
   rating,
+  type FixScoring,
   type SigmaVariant,
 } from "@linklens/core";
 import { toCsv } from "./csv.js";
 import { HttpError, notFound, notReady } from "./errors.js";
-import { STAGES, type PolicyJob } from "./pipeline.js";
+import type { PolicyJob } from "./pipeline.js";
+import type { FixMode } from "./schemas.js";
 import { stats } from "@linklens/core";
 
 type PolicyId = canonicalise.PolicyId;
@@ -68,10 +70,11 @@ export async function auditView(db: q.Queryable, a: q.AuditRow, active: boolean)
       pageCap: run?.config.pageCap ?? null,
       urlsFetched: finals.filter((f) => f.purpose === "crawl").length,
     },
+    // The audit's own stages: one created before a stage was added has fewer.
     progress: {
       completedStages: completed,
-      totalStages: STAGES.length,
-      fraction: completed / STAGES.length,
+      totalStages: stages.length,
+      fraction: stages.length === 0 ? 0 : completed / stages.length,
     },
     stages: stages.map((s) => ({
       stage: s.stage,
@@ -176,13 +179,23 @@ export async function linksView(db: q.Queryable, a: q.AuditRow) {
   return auditCore.loadLinkHealth(db, a.runId, a.policy as PolicyId);
 }
 
+/** The run's default scoring rule (config.fixScoring: S, or S_imp). */
+export async function defaultScoring(db: q.Queryable, a: q.AuditRow): Promise<FixScoring> {
+  return makeConfig((await q.getRun(db, a.runId))?.config ?? {}).fixScoring;
+}
+
 /**
- * The ranking for a σ variant under the run's scoring mode (config.fixScoring: S, or S_imp):
+ * The ranking for a σ variant under a scoring rule (default: the run's config.fixScoring):
  * stored, or computed from the stored counterfactual. Rankings stored before scoring@1.2.0 are S.
  */
-export async function rankingFor(db: q.Queryable, a: q.AuditRow, sigma: SigmaVariant) {
+export async function rankingFor(
+  db: q.Queryable,
+  a: q.AuditRow,
+  sigma: SigmaVariant,
+  rule?: FixScoring,
+) {
   const policy = a.policy as PolicyId;
-  const scoring = makeConfig((await q.getRun(db, a.runId))?.config ?? {}).fixScoring;
+  const scoring = rule ?? (await defaultScoring(db, a));
   const stored = await latest<fixes.FixRanking>(
     db,
     a.runId,
@@ -195,7 +208,7 @@ export async function rankingFor(db: q.Queryable, a: q.AuditRow, sigma: SigmaVar
   if (stages.find((s) => s.stage === "counterfactual")?.status !== "completed") {
     throw notReady("fix scoring");
   }
-  const r = await fixes.buildFixRanking(db, a.runId, policy, { sigmaVariant: sigma });
+  const r = await fixes.buildFixRanking(db, a.runId, policy, { sigmaVariant: sigma, scoring });
   return { id: r.artefact.id, payload: r as fixes.FixRanking };
 }
 
@@ -206,57 +219,83 @@ const cardOf = (e: fixes.FixExplanation) => ({
   anchor: e.anchor ?? null,
 });
 
+/** The model behind a learned or GraphSAGE artefact, as the fixes response shows it. */
+const modelOf = (m: fixes.LearnedPriority["model"] | fixes.GraphSageScores["model"]) => ({
+  site: m.site,
+  trainedOn: [...m.trainedOn],
+  createdAt: m.createdAt,
+  source: m.source ?? "import",
+  sha256: m.sha256 ?? null,
+  seenSite: m.seenSite ?? false,
+  ...("labels" in m ? { labels: m.labels } : {}),
+});
+
+/**
+ * The top k fixes under a mode:
+ * - formula: S = ΔPR × σ / κ;
+ * - importance: S_imp = S × importance(target) (L12);
+ * - learned: the S ranking reordered by the L13 ranker's priority (409 without a
+ *   learned-priority artefact: run the learnedScore stage with a model, or `l13 import`).
+ * The default is the run's config.fixScoring. Whatever the mode, every fix carries `learned`
+ * (priority, raw score and its top SHAP contributions) and `graphsage` (the link predictor's
+ * logit) when the run has them, and null otherwise.
+ */
 export async function fixesView(
   db: q.Queryable,
   a: q.AuditRow,
   sigma: SigmaVariant,
   k: number,
   scope: "global" | "target",
-  scoring: "formula" | "learned" = "formula",
+  requested?: FixMode,
 ) {
-  const ranking = await rankingFor(db, a, sigma);
-  // L13: the model's priority and SHAP contributions ride along on every fix when imported;
-  // "learned" also reorders by them (S stays the default).
-  const learned = await latest<fixes.LearnedPriority>(
-    db,
-    a.runId,
-    fixes.LEARNED_ARTEFACT,
-    a.policy as PolicyId,
-  );
-  if (scoring === "learned" && learned === null) {
+  const policy = a.policy as PolicyId;
+  const mode: FixMode =
+    requested ?? ((await defaultScoring(db, a)) === "S_imp" ? "importance" : "formula");
+  const ranking = await rankingFor(db, a, sigma, mode === "importance" ? "S_imp" : "S");
+  const [learned, graphsage, expl] = await Promise.all([
+    latest<fixes.LearnedPriority>(db, a.runId, fixes.LEARNED_ARTEFACT, policy),
+    latest<fixes.GraphSageScores>(
+      db,
+      a.runId,
+      fixes.GRAPHSAGE_ARTEFACT,
+      policy,
+      (p) => Object.keys(p.fixes).length > 0,
+    ),
+    latest<fixes.ExplanationSet>(db, a.runId, fixes.EXPLANATIONS_ARTEFACT, policy),
+  ]);
+  if (mode === "learned" && learned === null) {
     throw new HttpError(
       409,
       "not_ready",
-      "No learned priority for this audit: train the L13 model and import it (`l13 import`)",
+      "No learned priority for this audit: run the learnedScore stage with a ranker model (python -m ml fit), or import one (`l13 import`)",
     );
   }
-  const expl = await latest<fixes.ExplanationSet>(
-    db,
-    a.runId,
-    fixes.EXPLANATIONS_ARTEFACT,
-    a.policy as PolicyId,
-  );
   const byId = new Map((expl?.payload.fixes ?? []).map((e) => [e.id, e]));
   const withExplanation = (f: fixes.FixRecord | fixes.LearnedFixRecord) => {
     const e = byId.get(f.id);
     return {
       ...f,
       learned: learned?.payload.fixes[f.id] ?? null,
+      graphsage: graphsage?.payload.fixes[f.id] ?? null,
       explanation: e === undefined ? null : cardOf(e),
     };
   };
   const all: readonly (fixes.FixRecord | fixes.LearnedFixRecord)[] =
-    scoring === "learned" && learned !== null
+    mode === "learned" && learned !== null
       ? fixes.applyLearned(ranking.payload.fixes, learned.payload)
       : ranking.payload.fixes;
   return {
     sigma,
     k,
     scope,
-    scoring,
+    mode,
+    /** Deprecated: the mode as the `scoring` parameter named it (importance is formula). */
+    scoring: mode === "learned" ? "learned" : "formula",
     artefactId: ranking.id,
     learnedArtefactId: learned?.id ?? null,
-    learnedModel: learned?.payload.model ?? null,
+    learnedModel: learned === null ? null : modelOf(learned.payload.model),
+    graphsageArtefactId: graphsage?.id ?? null,
+    graphsageModel: graphsage === null ? null : modelOf(graphsage.payload.model),
     total: all.length,
     ...(scope === "global"
       ? { fixes: fixes.topK(all, k).map(withExplanation) }

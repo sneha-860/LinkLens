@@ -6,7 +6,7 @@ import type { FixRecord } from "./scoring.js";
  * priorities of a site come from a model that never saw it) and imported per run as a
  * `learned-priority` artefact. S stays the default; "learned" only reorders the fixes.
  */
-export const LEARNED_VERSION = "learned@1.0.0";
+export const LEARNED_VERSION = "learned@1.1.0";
 export const LEARNED_ARTEFACT = "learned-priority";
 
 /** One feature's SHAP contribution to a fix's raw model score. */
@@ -40,6 +40,14 @@ export interface LearnedPriority {
     /** The analysis run that produced it (dataset hash, created at). */
     readonly dataset: string;
     readonly createdAt: string;
+    /**
+     * learned@1.1.0: "import" (the offline leave-one-site-out prediction, `l13 import`) or
+     * "pipeline" (the learnedScore stage, a deployable fit); the model files' SHA-256; and
+     * whether this site was among the training sites (in-sample scores). Absent before 1.1.0.
+     */
+    readonly source?: "import" | "pipeline";
+    readonly sha256?: string | null;
+    readonly seenSite?: boolean;
   };
   /** By fix id (`${type}:${donor}->${target}`). */
   readonly fixes: Record<string, LearnedFix>;

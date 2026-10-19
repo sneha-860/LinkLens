@@ -55,14 +55,15 @@ export const useFixes = (
   k: 10 | 25 | 50,
   scope: "global" | "target",
   enabled = true,
-  scoring: FixScoringMode = "formula",
+  /** Undefined: the run's default rule (config.fixScoring). */
+  mode?: FixScoringMode,
 ) =>
   useQuery({
-    queryKey: [...keys.audit(id), "fixes", sigma, k, scope, scoring],
+    queryKey: [...keys.audit(id), "fixes", sigma, k, scope, mode ?? "default"],
     queryFn: () =>
       api<FixesResponse>(
         `/audits/${id}/fixes?sigma=${sigma}&k=${k}&scope=${scope}` +
-          (scoring === "learned" ? "&scoring=learned" : ""),
+          (mode === undefined ? "" : `&mode=${mode}`),
       ),
     enabled,
     ...results,

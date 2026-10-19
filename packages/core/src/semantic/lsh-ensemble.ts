@@ -29,6 +29,10 @@ export interface LshParams {
   readonly falsePositiveWeight: number;
   readonly falseNegativeWeight: number;
   readonly seed: number;
+  /** Simpson intervals per integral when tuning (b, r) (`lshTuningSteps`; even). */
+  readonly tuningSteps: number;
+  /** Size ratios q/u are tuned once per log bin of this relative width (`lshRatioBin`). */
+  readonly ratioBin: number;
 }
 
 // ---------- hashing and MinHash ----------
@@ -99,11 +103,6 @@ function bandKey(sig: Uint32Array, start: number, r: number): number {
 
 // ---------- tuning (b, r) ----------
 
-/** Simpson intervals per integral (even); the curves are smooth, so this is plenty. */
-const SIMPSON_STEPS = 32;
-/** Size ratios q/u are cached in log bins of this width (rounded down, i.e. a lower threshold). */
-const RATIO_BIN = Math.log(1.01);
-
 export interface BandParams {
   readonly b: number;
   readonly r: number;
@@ -116,13 +115,16 @@ export interface BandParams {
 export function optimalBands(
   t: number,
   ratio: number,
-  params: Pick<LshParams, "numPerm" | "maxRows" | "falsePositiveWeight" | "falseNegativeWeight">,
+  params: Pick<
+    LshParams,
+    "numPerm" | "maxRows" | "falsePositiveWeight" | "falseNegativeWeight" | "tuningSteps"
+  >,
 ): BandParams {
   // Containment x → the Jaccard lower bound at the partition's largest set size. A query larger
   // than that set (ratio > 1) cannot be contained beyond u/q = 1/ratio, so both areas stop there.
   const jaccard = (x: number) => Math.min(1, (x * ratio) / (1 + ratio - x * ratio));
   const top = Math.min(1, 1 / ratio);
-  const n = SIMPSON_STEPS;
+  const n = params.tuningSteps;
   const xs: number[] = [];
   const ws: number[] = [];
   const side = (lo: number, hi: number, fp: boolean) => {
@@ -266,11 +268,13 @@ export function queryLshEnsemble(
   for (const part of index.partitions) {
     // |Q ∩ X| ≤ |X| ≤ upper, so containment ≥ t needs upper ≥ t·q.
     if (part.upper < threshold * size) continue;
-    const bin = Math.floor(Math.log(size / part.upper) / RATIO_BIN);
+    // Ratios are cached in log bins (rounded down, i.e. a lower threshold).
+    const width = Math.log(1 + index.params.ratioBin);
+    const bin = Math.floor(Math.log(size / part.upper) / width);
     const key = `${bin}:${threshold}`;
     let bands = index.tuned.get(key);
     if (bands === undefined) {
-      bands = optimalBands(threshold, Math.exp(bin * RATIO_BIN), index.params);
+      bands = optimalBands(threshold, Math.exp(bin * width), index.params);
       index.tuned.set(key, bands);
     }
     const tables = part.tables[bands.r - 1] as Map<number, number[]>[];

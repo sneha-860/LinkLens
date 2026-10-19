@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { asQueryable, createPool, resolveDatabaseUrl } from "@linklens/db";
 import { EmbeddingWorker, embeddingOptions } from "@linklens/embeddings";
 import { PipelineRunner } from "@linklens/api/pipeline";
+import { pythonScorerFromEnv } from "@linklens/api/scorer";
 import { runBatch } from "./corpus/batch.js";
 import { parseCorpus, resolveConfig, sitesByClass } from "./corpus/corpus.js";
 import { PipelineDriver } from "./corpus/driver.js";
@@ -15,6 +16,7 @@ import {
   hostInfo,
   modelInfo,
   newManifest,
+  scoringModelsInfo,
   markCrashedSessions,
   readManifest,
   resumeProblems,
@@ -38,9 +40,11 @@ const USAGE = `Usage: pnpm --filter @linklens/eval corpus <command> [options]
                                --now is the manual trigger (ignores the date)
   schedule --batch <name>      print the daily Task Scheduler / cron line for recrawl
                                (--at HH:MM, default 03:00); nothing is installed
-  import-sf --batch <name> --site <id> --from <dir> [--sf-version <v>]
+  import-sf --batch <name> --site <id> --from <dir> [--sf-version <v>] [--no-orphans]
                                E5: check a site's Screaming Frog exports (internal_all.csv,
-                               all_inlinks.csv, orphan_pages.csv) and copy them into the batch
+                               all_inlinks.csv, orphan_pages.csv) and copy them into the batch.
+                               --no-orphans: Screaming Frog did not look for orphans (the free
+                               version crawls no sitemaps), so E5 skips the orphan comparison
   export   --batch <name>      write the tidy CSVs for analysis/ (e4 once re-crawled, e5 once
                                Screaming Frog exports are imported)
 Options:
@@ -84,6 +88,9 @@ function batchDir(opts: Map<string, string>): { id: string; dir: string } {
 
 const cacheDir = () => resolve(REPO, env["LINKLENS_CACHE_DIR"] ?? ".cache/linklens");
 const modelDir = () => join(cacheDir(), "models");
+/** The deployable scoring models (LINKLENS_MODELS_DIR; as the API's scorer resolves it). */
+const scorer = () => pythonScorerFromEnv(env, REPO, cacheDir());
+const scoringModelsDir = () => scorer().modelsDir;
 
 function loadCorpus(opts: Map<string, string>) {
   const file = resolve(opts.get("corpus") ?? DEFAULT_CORPUS);
@@ -131,7 +138,15 @@ function openWave(
   const config = resolveConfig(corpus, env["LINKLENS_USER_AGENT"]);
   const git = gitState(REPO);
   const model = modelInfo(config, modelDir());
-  const check = { corpus, config, git, allowCodeChange: flags.has("allow-code-change"), model };
+  const scoringModels = scoringModelsInfo(scoringModelsDir());
+  const check = {
+    corpus,
+    config,
+    git,
+    allowCodeChange: flags.has("allow-code-change"),
+    model,
+    scoringModels,
+  };
   const problems = wave === undefined ? [] : resumeProblems(wave.of, check);
   let manifest = readManifest(dir);
   if (manifest !== null) problems.push(...resumeProblems(manifest, check));
@@ -148,12 +163,22 @@ function openWave(
       config,
       git,
       model,
+      scoringModels,
       lockfileSha256: fileSha256(join(REPO, "pnpm-lock.yaml")),
       now: new Date().toISOString(),
       ...(wave === undefined ? {} : { wave: { of: wave.of.batchId, afterDays: wave.afterDays } }),
     });
     log(`batch ${id}: created in ${dir}`);
   } else {
+    // A model fit after the batch started is recorded (a changed one was refused above).
+    for (const kind of ["ranker", "graphsage"] as const) {
+      if (manifest.scoringModels?.[kind].sha256 == null && scoringModels[kind].sha256 !== null) {
+        manifest.scoringModels = {
+          ...(manifest.scoringModels ?? scoringModels),
+          [kind]: scoringModels[kind],
+        };
+      }
+    }
     const crashed = markCrashedSessions(manifest);
     log(`batch ${id}: resuming${crashed > 0 ? ` (after ${crashed} crashed session(s))` : ""}`);
   }
@@ -186,6 +211,7 @@ async function execute(w: Wave, flags: Set<string>, only?: readonly string[]): P
     prefix: env["LINKLENS_PREFIX"] ?? "linklens",
     cacheDir: cacheDir(),
     embedder: (options) => EmbeddingWorker.start(options),
+    scorer: scorer(),
     logger: { info: log, error: (msg) => console.error(`${new Date().toISOString()} ${msg}`) },
   });
   const driver = new PipelineDriver(runner);
@@ -228,9 +254,14 @@ async function execute(w: Wave, flags: Set<string>, only?: readonly string[]): P
             m.model = model;
           }
           const g = gitState(REPO);
+          const scoring = scoringModelsInfo(scoringModelsDir());
           return {
             commit: g.commit === null ? null : `${g.commit}${g.dirty ? "-dirty" : ""}`,
             modelSha256: model.sha256,
+            scoringModels: {
+              ranker: scoring.ranker.sha256,
+              graphsage: scoring.graphsage.sha256,
+            },
           };
         },
       },
@@ -370,7 +401,9 @@ function status(opts: Map<string, string>): number {
     const sf = marked.has(s.id)
       ? readImport(dir, s.id) === null
         ? "  Screaming Frog: exports missing"
-        : "  Screaming Frog: imported"
+        : readImport(dir, s.id)?.orphans === "skipped"
+          ? "  Screaming Frog: imported (no orphan report)"
+          : "  Screaming Frog: imported"
       : "";
     console.log(
       `  ${s.status.padEnd(9)} ${s.id.padEnd(24)} ${String(s.runId ?? "-").padStart(5)} ` +
@@ -381,7 +414,7 @@ function status(opts: Map<string, string>): number {
 }
 
 /** E5: check a site's three Screaming Frog exports and copy them into the batch. */
-function importScreamingFrog(opts: Map<string, string>): number {
+function importScreamingFrog(opts: Map<string, string>, flags: Set<string>): number {
   const { corpus } = loadCorpus(opts);
   const { id, dir } = batchDir(opts);
   const site = opts.get("site");
@@ -401,8 +434,16 @@ function importScreamingFrog(opts: Map<string, string>): number {
     resolve(from),
     new Date().toISOString(),
     opts.get("sf-version") ?? null,
+    flags.has("no-orphans") ? "skip" : "import",
   );
   for (const f of r.files) log(`${site}: ${f.name}: ${f.rows} rows, sha256 ${f.sha256}`);
+  if (r.orphans === "skipped") log(`${site}: orphan report not imported (--no-orphans)`);
+  else if (r.files.some((f) => f.name === "orphan_pages.csv" && f.rows === 0)) {
+    log(
+      `warning: ${site}: the orphan report is empty, which E5 reads as "no orphans found"; ` +
+        "if Screaming Frog did not crawl sitemaps, import again with --no-orphans",
+    );
+  }
   return 0;
 }
 
@@ -460,7 +501,7 @@ async function main(): Promise<void> {
         process.exitCode = status(opts);
         return;
       case "import-sf":
-        process.exitCode = importScreamingFrog(opts);
+        process.exitCode = importScreamingFrog(opts, flags);
         return;
       case "export":
         process.exitCode = await exportCmd(opts);

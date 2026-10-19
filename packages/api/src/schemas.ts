@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { audit, db, diagnosis, SIGMA_VARIANTS } from "@linklens/core";
+import { audit, db, defaultConfig, diagnosis, SIGMA_VARIANTS } from "@linklens/core";
 
 export const POLICY_IDS = ["P0", "P1", "P2", "P3", "P4", "P5"] as const;
 export const PolicySchema = z
@@ -10,7 +10,14 @@ export const SigmaSchema = z.enum(SIGMA_VARIANTS).describe("σ variant used to s
 export const CreateAuditSchema = z
   .object({
     url: z.url({ protocol: /^https?$/ }).describe("Site root to crawl (http or https)"),
-    pageCap: z.int().min(1).max(500).optional().describe("Max URLs admitted to the crawl (≤ 500)"),
+    pageCap: z
+      .int()
+      .min(1)
+      .max(defaultConfig.maxPageCap)
+      .optional()
+      .describe(
+        `Max URLs admitted to the crawl (≤ config.maxPageCap, ${defaultConfig.maxPageCap})`,
+      ),
     policy: PolicySchema.default("P3"),
     options: z
       .object({
@@ -25,7 +32,31 @@ export const CreateAuditSchema = z
         config: z
           .record(z.string(), z.unknown())
           .optional()
-          .describe("Overrides of packages/core config.ts for this run (validated by makeConfig)"),
+          .describe(
+            "Overrides of packages/core config.ts for this run (validated by makeConfig). Politeness settings may only be tightened: a lower crawl delay, a larger cap or pageCap above maxPageCap is refused (400)",
+          ),
+        models: z
+          .object({
+            importance: z
+              .boolean()
+              .optional()
+              .describe("Run the importance stage: page types and importance (default true)"),
+            learned: z
+              .boolean()
+              .optional()
+              .describe(
+                "Run the learnedScore stage: the L13 ranker's priority and SHAP (default true; skipped without a model)",
+              ),
+            graphsage: z
+              .boolean()
+              .optional()
+              .describe(
+                "Run the graphsageScore stage: GraphSAGE link scores (default config.graphsageEnabled; skipped without a model)",
+              ),
+          })
+          .strict()
+          .optional()
+          .describe("Optional model stages, toggled per audit"),
       })
       .strict()
       .default({}),
@@ -49,6 +80,10 @@ export const IssuesQuerySchema = z
 
 export const DiagnosisQuerySchema = z.object({ case: z.enum(diagnosis.CASES).optional() }).strict();
 
+/** How /fixes orders the fixes. */
+export const FIX_MODES = ["formula", "importance", "learned"] as const;
+export type FixMode = (typeof FIX_MODES)[number];
+
 export const FixesQuerySchema = z
   .object({
     sigma: SigmaSchema.optional(),
@@ -58,12 +93,16 @@ export const FixesQuerySchema = z
       .optional()
       .describe("Top k: 10, 25 or 50 (default config.fixTopK)"),
     scope: z.enum(["global", "target"]).default("global").describe("Top k overall, or per target"),
+    mode: z
+      .enum(FIX_MODES)
+      .optional()
+      .describe(
+        "formula: S = ΔPR × σ / κ; importance: S_imp = S × importance(target) (L12); learned: the L13 ranker's priority (needs a learned-priority artefact). Default: the run's config.fixScoring (S → formula, S_imp → importance)",
+      ),
     scoring: z
       .enum(["formula", "learned"])
-      .default("formula")
-      .describe(
-        "formula: the run's rule (S, or S_imp); learned: the L13 model's priority (needs an imported learned-priority artefact)",
-      ),
+      .optional()
+      .describe("Deprecated alias of mode (formula: the run's default rule)"),
   })
   .strict();
 

@@ -499,6 +499,19 @@ describe("discovery on the fixture site", () => {
 
     it("rescues the fixture orphans: donors by REF, then by ΔPR, with the revealing channels", async () => {
       const graphBefore = (await gr.deriveGraph(db, runId, "P0")).summary;
+      // An override that would crawl faster is refused before anything is requested.
+      const loose = new RescueFetcher({
+        pool,
+        redisUrl: inject("redisUrl"),
+        config: { rescueMaxFetches: 10_000 },
+      });
+      const sentBefore = env.dispatches.length;
+      try {
+        await expect(loose.run(runId, "P0")).rejects.toThrow(/rescueMaxFetches/);
+      } finally {
+        await loose.close();
+      }
+      expect(env.dispatches.length).toBe(sentBefore);
       const fetcher = env.rescue();
       try {
         expect(await fetcher.run(runId, "P0")).toEqual({
@@ -514,6 +527,15 @@ describe("discovery on the fixture site", () => {
       } finally {
         await fetcher.close();
       }
+      // robots.txt is read before the first orphan is requested, and rescue requests keep to the
+      // per-host rate limit (the fixture's Crawl-delay), like the crawl and discovery.
+      const sent = env.dispatches.slice(sentBefore);
+      expect(new URL(sent[0]?.url ?? "").pathname).toBe("/robots.txt");
+      expect(sent.filter((x) => new URL(x.url).pathname !== "/robots.txt")).toHaveLength(5);
+      const gaps = sent.slice(1).map((x, i) => x.at - (sent[i]?.at ?? 0));
+      expect(Math.min(...gaps)).toBeGreaterThanOrEqual(19);
+      const rescueFetches = (await q.listFetches(db, runId)).filter((f) => f.purpose === "rescue");
+      expect(rescueFetches.every((f) => !/\/(private|tmp)\//.test(f.requestedUrl))).toBe(true);
       // Rescued pages never reach the link graph or the reconciliation.
       expect((await gr.deriveGraph(db, runId, "P0")).summary).toEqual(graphBefore);
       expect((await d.reconcileDiscovery(db, runId, "P0")).orphans).toEqual(rec.orphans);

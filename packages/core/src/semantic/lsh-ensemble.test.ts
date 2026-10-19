@@ -30,6 +30,8 @@ const params: LshParams = {
   falsePositiveWeight: 0.5,
   falseNegativeWeight: 0.5,
   seed: 42,
+  tuningSteps: 32,
+  ratioBin: 0.01,
 };
 
 /** k distinct random 32-bit values. */

@@ -1,5 +1,13 @@
 import type pg from "pg";
-import { canonicalise, db as q, fixes, makeConfig, type LinkLensConfig } from "@linklens/core";
+import {
+  canonicalise,
+  db as q,
+  fixes,
+  makeConfig,
+  politenessProblems,
+  semantic,
+  type LinkLensConfig,
+} from "@linklens/core";
 import { asQueryable } from "@linklens/db";
 import { CrawlOrchestrator, DiscoveryRunner, RescueFetcher } from "@linklens/crawler";
 import { buildCosineRun, type Embedder, type EmbeddingOptions } from "@linklens/embeddings";
@@ -7,8 +15,17 @@ import { buildCounterfactualRun, buildRescueRun } from "@linklens/counterfactual
 import { CapacityError } from "./errors.js";
 import { RedisEventBus, type EventBus, type EventListener } from "./events.js";
 import { RedisLeases, type Leases } from "./leases.js";
+import { ScorerUnavailable, type ModelScorer } from "./scorer.js";
 import { StageWorkerPool } from "./stage-pool.js";
-import { dbStages, isDbStage, type AuditOptions, type DbStage, type StageCtx } from "./stages.js";
+import {
+  dbStages,
+  isDbStage,
+  modelStages,
+  storedRanking,
+  type AuditOptions,
+  type DbStage,
+  type StageCtx,
+} from "./stages.js";
 
 export type { AuditOptions } from "./stages.js";
 export { CapacityError } from "./errors.js";
@@ -31,6 +48,10 @@ export const STAGES = [
   "counterfactual",
   "kappa",
   "scoring",
+  // Optional model stages (toggled per audit; skipped, never failed, without a model).
+  "importance",
+  "learnedScore",
+  "graphsageScore",
   "rescue",
   "explanations",
 ] as const;
@@ -113,6 +134,11 @@ export interface PipelineDeps {
   readonly embedder: (options: EmbeddingOptions) => Embedder & { close?(): Promise<void> };
   /** Cache root for embeddings and model files. */
   readonly cacheDir: string;
+  /**
+   * Scores fixes with the deployable L13 ranker and GraphSAGE model (the Python CLI in
+   * production; a stub in tests). Without it the learnedScore and graphsageScore stages skip.
+   */
+  readonly scorer?: ModelScorer;
   readonly logger?: Logger;
   /**
    * Config applied to every new audit under its own overrides (e.g. the deployment's
@@ -200,11 +226,15 @@ export class PipelineRunner {
   async create(input: CreateAuditInput): Promise<q.AuditRow> {
     this.assertCapacity();
     const options = input.options ?? {};
-    const config = {
-      ...this.deps.defaultConfig,
+    const overrides = {
       ...options.config,
       ...(input.pageCap === undefined ? {} : { pageCap: input.pageCap }),
     };
+    // An audit may be slower or smaller than the deployment's settings, never faster or larger
+    // (crawl delay, caps, robots.txt handling; pageCap ≤ maxPageCap).
+    const problems = politenessProblems(overrides, this.settings);
+    if (problems.length > 0) throw new Error(problems.join("; "));
+    const config = { ...this.deps.defaultConfig, ...overrides };
     const { runId } = await this.orchestrator.createRun(input.url, { config });
     const audit = await q.insertAudit(this.db, {
       runId,
@@ -275,7 +305,10 @@ export class PipelineRunner {
   /** Re-run `stage` and everything after it (e.g. after an analytics upload). */
   async rerunFrom(runId: number, stage: Stage): Promise<void> {
     this.assertCapacity();
-    await q.resetStages(this.db, runId, STAGES.indexOf(stage));
+    // Positions are the audit's own: audits created before a stage was added lack its row.
+    const row = (await q.listAuditStages(this.db, runId)).find((s) => s.stage === stage);
+    if (row === undefined) throw new Error(`audit ${runId} has no ${stage} stage`);
+    await q.resetStages(this.db, runId, row.position);
     await q.setAuditStatus(this.db, runId, { status: "queued", currentStage: stage });
     void this.start(runId);
   }
@@ -515,6 +548,81 @@ export class PipelineRunner {
       };
     },
 
+    learnedScore: async (ctx) => {
+      if (!modelStages(ctx.options, ctx.config).learned) return { skipped: "disabled" };
+      return this.modelStage(ctx, "ranker", async (scorer, ranking) => {
+        const { rows, config } = await fixes.loadFixFeatureRows(
+          this.db,
+          ctx.runId,
+          ctx.policy,
+          ranking.payload.fixes,
+        );
+        const request = fixes.rankerRequest(rows, fixes.FEATURES, config.l13ShapTop);
+        const r = await scorer.score(request, config.scorerTimeoutMs);
+        const site = await this.siteUrl(ctx);
+        const payload = fixes.learnedPayload(ctx.runId, ctx.policyVersion, site, r);
+        const artefact = await q.insertArtefact(this.db, {
+          runId: ctx.runId,
+          policyVersion: ctx.policyVersion,
+          kind: fixes.LEARNED_ARTEFACT,
+          payload: payload as unknown as q.Json,
+        });
+        return {
+          artefactId: artefact.id,
+          fixes: Object.keys(r.fixes).length,
+          modelSha256: r.model.sha256,
+          trainedOn: [...r.model.trainedOn],
+          seenSite: payload.model.seenSite ?? false,
+        };
+      });
+    },
+
+    graphsageScore: async (ctx) => {
+      if (!modelStages(ctx.options, ctx.config).graphsage) return { skipped: "disabled" };
+      return this.modelStage(ctx, "graphsage", async (scorer, ranking) => {
+        const started = performance.now();
+        const inputs = await fixes.loadSiteGraphInputs(this.db, ctx.runId, ctx.policy);
+        const vectors = await this.embed(ctx, inputs.documents);
+        const g = fixes.siteGraph(
+          inputs.documents.map((d) => d.node),
+          inputs.links,
+          inputs.facts,
+          (n) => vectors.get(n),
+          [...vectors.values()][0]?.length ?? 0,
+        );
+        const pairs = ranking.payload.fixes.map((f) => ({
+          id: f.id,
+          donor: f.donor,
+          target: f.target,
+        }));
+        const exportMs = performance.now() - started;
+        const request = fixes.graphsageRequest(g, fixes.STRUCTURAL_FEATURES, pairs);
+        const scoreStarted = performance.now();
+        const r = await scorer.score(request, inputs.config.scorerTimeoutMs);
+        const runtimeMs = {
+          export: Math.round(exportMs),
+          score: Math.round(performance.now() - scoreStarted),
+        };
+        const site = await this.siteUrl(ctx);
+        const payload = fixes.graphsagePayload(ctx.runId, ctx.policyVersion, site, r, runtimeMs);
+        const artefact = await q.insertArtefact(this.db, {
+          runId: ctx.runId,
+          policyVersion: ctx.policyVersion,
+          kind: fixes.GRAPHSAGE_ARTEFACT,
+          payload: payload as unknown as q.Json,
+        });
+        return {
+          artefactId: artefact.id,
+          nodes: g.nodes.length,
+          bodyEdges: g.src.length,
+          fixes: Object.keys(r.scores).length,
+          modelSha256: r.model.sha256,
+          trainedOn: [...r.model.trainedOn],
+          seenSite: payload.model.seenSite ?? false,
+        };
+      });
+    },
+
     rescue: async (ctx) => {
       const fetcher = new RescueFetcher(this.shared());
       try {
@@ -529,6 +637,64 @@ export class PipelineRunner {
       }
     },
   };
+
+  /**
+   * Run a model stage, or skip it with the reason: no scorer, no model, no ranking to score, or
+   * a scorer that cannot run (no interpreter, package or model file; a timeout). Only a scorer
+   * that ran and failed on the request is an error.
+   */
+  private async modelStage(
+    ctx: Ctx,
+    kind: "ranker" | "graphsage",
+    fn: (
+      scorer: ModelScorer,
+      ranking: { id: number; payload: fixes.FixRanking },
+    ) => Promise<{ [key: string]: q.Json }>,
+  ): Promise<q.Json> {
+    const scorer = this.deps.scorer;
+    if (scorer === undefined) return { skipped: "no scorer configured" };
+    const available = await scorer.available(kind);
+    if (!available.ok) {
+      this.logger.info(`[audit ${ctx.runId}] ${kind} skipped: ${available.reason}`);
+      return { skipped: available.reason };
+    }
+    const ranking = await storedRanking(this.db, ctx);
+    if (ranking === null) return { skipped: "no fix ranking to score" };
+    if (ranking.payload.fixes.length === 0) return { skipped: "no fixes to score" };
+    try {
+      return { rankingArtefactId: ranking.id, ...(await fn(scorer, ranking)) };
+    } catch (e) {
+      if (!(e instanceof ScorerUnavailable)) throw e;
+      this.logger.info(`[audit ${ctx.runId}] ${kind} skipped: ${e.message}`);
+      return { skipped: e.message };
+    }
+  }
+
+  private async siteUrl(ctx: Ctx): Promise<string> {
+    return (await q.getAudit(this.db, ctx.runId))?.rootUrl ?? "";
+  }
+
+  /** Page embeddings with the run's model (the embedding cache makes this a lookup). */
+  private async embed(
+    ctx: Ctx,
+    documents: readonly Parameters<typeof semantic.embeddingInput>[0][],
+  ): Promise<Map<string, Float32Array>> {
+    const inputs = documents.map(semantic.embeddingInput);
+    if (inputs.length === 0) return new Map();
+    const embedder = this.deps.embedder({
+      model: ctx.config.embeddingModel,
+      dtype: ctx.config.embeddingDtype,
+      bodyTokens: ctx.config.embeddingBodyTokens,
+      batchSize: ctx.config.embeddingBatchSize,
+      cacheDir: this.deps.cacheDir,
+    });
+    try {
+      const { vectors } = await embedder.embed(inputs.map(({ title, body }) => ({ title, body })));
+      return new Map(inputs.map((d, i) => [d.node, vectors[i] as Float32Array]));
+    } finally {
+      await embedder.close?.();
+    }
+  }
 
   private shared() {
     return {

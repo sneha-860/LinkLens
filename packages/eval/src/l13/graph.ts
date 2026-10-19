@@ -1,16 +1,8 @@
-import {
-  canonicalise,
-  fixes,
-  graph,
-  prominence,
-  semantic,
-  text,
-  type LinkLensConfig,
-} from "@linklens/core";
+import { canonicalise, fixes, semantic, text, type LinkLensConfig } from "@linklens/core";
 import type { Embedder } from "@linklens/embeddings";
 import { editorialSite, maskSite, maskedInputs } from "../e6-masking.js";
 import { prepareRun, type RunInputs } from "../in-memory.js";
-import { nodeFacts, type NodeFacts } from "./features.js";
+import { nodeFacts } from "./features.js";
 
 type PolicyId = canonicalise.PolicyId;
 
@@ -23,29 +15,11 @@ type PolicyId = canonicalise.PolicyId;
  * them (`regionClass` body: main, body or none), self-loops dropped.
  *
  * Node features: the page's embedding (the run's model, as E6 embeds it), then the structural
- * ones in `STRUCTURAL_FEATURES`.
+ * ones in `STRUCTURAL_FEATURES`. The pure graph builders live in core (`fixes/features.ts`), so
+ * the pipeline's graphsageScore stage builds the graph it scores exactly as training did.
  */
-export const STRUCTURAL_FEATURES = [
-  // PageRank × N: 1 is the average page, whatever the site's size.
-  "pagerank_norm",
-  // 1 / (1 + depth) from the home page; 0 when unreachable.
-  "depth_inv",
-  "reachable",
-  // ln(1 + distinct in / out neighbours) in the policy's whole link graph.
-  "log_in",
-  "log_out",
-  "importance",
-] as const;
-
-export interface SiteGraph {
-  readonly nodes: string[];
-  readonly embeddingDim: number;
-  /** N × (embeddingDim + STRUCTURAL_FEATURES.length), row-major. */
-  readonly x: Float32Array;
-  /** Body edges as node indices. */
-  readonly src: number[];
-  readonly dst: number[];
-}
+export const { STRUCTURAL_FEATURES, structuralFeatures, siteGraph } = fixes;
+export type SiteGraph = fixes.SiteGraph;
 
 /** One masked repeat: its graph, E6's queries and every (target, candidate) pair to score. */
 export interface GraphRepeat {
@@ -68,77 +42,7 @@ export interface GraphRepeat {
 }
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
-
-/** Pure: a node's structural features (STRUCTURAL_FEATURES order). */
-export function structuralFeatures(f: NodeFacts, nodeCount: number): number[] {
-  return [
-    f.pagerank * nodeCount,
-    f.depth === null ? 0 : 1 / (1 + f.depth),
-    f.depth === null ? 0 : 1,
-    Math.log1p(f.inNeighbours),
-    Math.log1p(f.outNeighbours),
-    f.importance,
-  ];
-}
-
-/**
- * Pure: the graph of the documents `nodes` (sorted here): body edges from `links` (u, v and the
- * observation's dom_region; parallel links collapse, self-loops and ends without text drop), the
- * embedding (zeros when missing) and the structural features from `facts`.
- */
-export function siteGraph(
-  nodes: readonly string[],
-  links: Iterable<{ source: string; target: string; domRegion: string | null }>,
-  facts: (n: string) => NodeFacts | undefined,
-  vector: (n: string) => Float32Array | undefined,
-  embeddingDim: number,
-): SiteGraph {
-  const sorted = [...nodes].sort(cmp);
-  const index = new Map(sorted.map((n, i) => [n, i]));
-  const seen = new Set<string>();
-  const pairs: [number, number][] = [];
-  for (const l of links) {
-    if (l.source === l.target || prominence.regionClass(l.domRegion) !== "body") continue;
-    const u = index.get(l.source);
-    const v = index.get(l.target);
-    if (u === undefined || v === undefined) continue;
-    const key = `${u},${v}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    pairs.push([u, v]);
-  }
-  pairs.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  const width = embeddingDim + STRUCTURAL_FEATURES.length;
-  const x = new Float32Array(sorted.length * width);
-  sorted.forEach((n, i) => {
-    const v = vector(n);
-    if (v !== undefined) {
-      if (v.length !== embeddingDim) {
-        throw new Error(`${n}: embedding of length ${v.length}, expected ${embeddingDim}`);
-      }
-      x.set(v, i * width);
-    }
-    const f = facts(n);
-    if (f === undefined) throw new Error(`${n} is not a node of the graph`);
-    x.set(structuralFeatures(f, sorted.length), i * width + embeddingDim);
-  });
-  return {
-    nodes: sorted,
-    embeddingDim,
-    x,
-    src: pairs.map((p) => p[0]),
-    dst: pairs.map((p) => p[1]),
-  };
-}
-
-/** The link observations of a derived graph, with their region. */
-function linksOf(g: graph.LinkGraph) {
-  const out: { source: string; target: string; domRegion: string | null }[] = [];
-  g.forEachEdge((_e, a, source, target) => {
-    out.push({ source, target, domRegion: (a.domRegion as string | null | undefined) ?? null });
-  });
-  return out;
-}
+const linksOf = fixes.graphLinks;
 
 async function embed(
   embedder: Embedder,

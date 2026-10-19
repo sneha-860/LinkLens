@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultConfig, makeConfig } from "./config.js";
+import { defaultConfig, makeConfig, politenessProblems } from "./config.js";
 
 describe("defaultConfig", () => {
   it("has the specified defaults", () => {
@@ -138,6 +138,13 @@ describe("defaultConfig", () => {
         negative_ratio: 1,
         supervision_share: 0.3,
       },
+      scorerTimeoutMs: 300_000,
+      lshTuningSteps: 32,
+      lshRatioBin: 0.01,
+      maxPageCap: 500,
+      throttlePollMs: 2,
+      throttleHolderLeaseMs: 10_000,
+      throttleStateTtlMs: 3_600_000,
       auditDeepPageDepth: 3,
       auditDeepPageHighDepth: 6,
       auditWeakAuthorityPercentile: 20,
@@ -250,6 +257,13 @@ describe("makeConfig", () => {
     [{ graphsage: { ...defaultConfig.graphsage, layers: 0 } }],
     [{ graphsage: { ...defaultConfig.graphsage, supervision_share: 1 } }],
     [{ graphsage: { ...defaultConfig.graphsage, dropout: Number.NaN } }],
+    [{ scorerTimeoutMs: 0 }],
+    [{ lshTuningSteps: 31 }],
+    [{ lshRatioBin: 0 }],
+    [{ maxPageCap: 0 }],
+    [{ throttlePollMs: 0 }],
+    [{ throttleHolderLeaseMs: 0 }],
+    [{ throttleStateTtlMs: 0 }],
     [{ rescueMaxFetches: 0 }],
     [{ counterfactualWorkers: -1 }],
     [{ counterfactualValidationSample: 1.5 }],
@@ -263,5 +277,73 @@ describe("makeConfig", () => {
     [{ prominenceRegionWeights: { body: 1 } as never }],
   ])("rejects invalid override %o", (overrides) => {
     expect(() => makeConfig(overrides)).toThrow(RangeError);
+  });
+});
+
+describe("politenessProblems", () => {
+  const base = makeConfig({});
+
+  it("accepts overrides that only slow down or shrink a crawl", () => {
+    expect(
+      politenessProblems(
+        {
+          pageCap: 50,
+          crawlDelayMs: 2_000,
+          maxCrawlDelayMs: 10_000,
+          discoveryMaxFetches: 10,
+          rescueMaxFetches: 5,
+          fetchMaxRetries: 0,
+          robotsTreat429AsUnreachable: true,
+          robotsUnreachableGraceDays: 60,
+          robotsCacheTtlMs: 60_000,
+          epsilon: 0.3, // not a politeness setting: anything valid goes
+        },
+        base,
+      ),
+    ).toEqual([]);
+  });
+
+  it("refuses every loosening, one problem each", () => {
+    const problems = politenessProblems(
+      {
+        crawlDelayMs: 0,
+        maxCrawlDelayMs: 3_600_000,
+        pageCap: 501,
+        discoveryMaxFetches: 1_000,
+        rescueMaxFetches: 1_000,
+        fetchMaxRetries: 9,
+        robotsUnreachableGraceDays: 1,
+        throttleStateTtlMs: 1,
+        throttleHolderLeaseMs: 1,
+      },
+      base,
+    );
+    for (const key of [
+      "crawlDelayMs",
+      "maxCrawlDelayMs",
+      "pageCap",
+      "discoveryMaxFetches",
+      "rescueMaxFetches",
+      "fetchMaxRetries",
+      "robotsUnreachableGraceDays",
+      "throttleStateTtlMs",
+      "throttleHolderLeaseMs",
+    ]) {
+      expect(problems.some((p) => p.startsWith(`config.${key} `))).toBe(true);
+    }
+    expect(problems).toContain("config.pageCap 501 exceeds maxPageCap 500");
+  });
+
+  it("cannot turn off treating robots.txt 429 as unreachable once the base does", () => {
+    const strict = makeConfig({ robotsTreat429AsUnreachable: true });
+    expect(politenessProblems({ robotsTreat429AsUnreachable: false }, strict)).toHaveLength(1);
+  });
+
+  it("holds the page cap to maxPageCap, and maxPageCap cannot be raised", () => {
+    expect(politenessProblems({ maxPageCap: 5_000, pageCap: 5_000 }, base)).toEqual([
+      "config.pageCap 5000 is less polite than 500",
+      "config.maxPageCap 5000 is less polite than 500",
+      "config.pageCap 5000 exceeds maxPageCap 500",
+    ]);
   });
 });

@@ -44,6 +44,9 @@ export const STAGE_NAMES: Record<string, string> = {
   counterfactual: "Counterfactual",
   kappa: "Effort κ",
   scoring: "Scoring",
+  importance: "Importance",
+  learnedScore: "Learned score",
+  graphsageScore: "GraphSAGE score",
   rescue: "Orphan rescue",
   explanations: "Explanations",
 };

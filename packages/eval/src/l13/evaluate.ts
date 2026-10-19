@@ -29,6 +29,9 @@ export function learnedPayload(p: SitePredictions, policyVersion: string): fixes
       params: p.params,
       dataset: p.dataset,
       createdAt: p.createdAt,
+      source: "import",
+      sha256: null,
+      seenSite: false,
     },
     fixes: p.fixes,
   };

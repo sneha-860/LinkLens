@@ -30,7 +30,11 @@ export interface BatchHooks {
   /** Persist the manifest (called after every change of a site's state). */
   save(m: Manifest): void;
   /** The commit and model hash to stamp on a finished site. */
-  stamp(): { commit: string | null; modelSha256: string | null };
+  stamp(): {
+    commit: string | null;
+    modelSha256: string | null;
+    scoringModels?: { ranker: string | null; graphsage: string | null };
+  };
   log(message: string): void;
   now(): string;
   /** True once the batch should stop (SIGINT): the current site is left resumable. */
@@ -146,6 +150,7 @@ async function runSite(
   const stamp = hooks.stamp();
   site.commit = stamp.commit;
   site.modelSha256 = stamp.modelSha256;
+  if (stamp.scoringModels !== undefined) site.scoringModels = stamp.scoringModels;
   touch();
   hooks.log(
     `${label}: ${site.status}${site.error === null ? "" : ` (${site.error})`}` +

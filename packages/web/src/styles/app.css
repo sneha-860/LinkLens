@@ -605,15 +605,78 @@ dl.props dd {
   gap: 8px;
   align-items: center;
 }
-.shap-list {
+.shap-bars {
+  list-style: none;
   margin: 0;
-  padding-left: 18px;
+  padding: 0;
   font-size: 0.9rem;
+}
+.shap-bar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 14rem) minmax(6rem, 1fr) 4.5rem;
+  gap: 8px;
+  align-items: center;
+  padding: 2px 0;
+}
+.shap-label {
+  overflow-wrap: anywhere;
+}
+.shap-value {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+.shap-track {
+  position: relative;
+  height: 10px;
+  border-left: 1px solid transparent;
+  background: linear-gradient(var(--border), var(--border)) 50% 0 / 1px 100% no-repeat;
+}
+.shap-bar {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  border-radius: 2px;
+}
+.shap-bar-up {
+  background: var(--accent);
+}
+.shap-bar-down {
+  background: var(--warning);
+}
+.shap-num {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  text-align: right;
 }
 .shap-up,
 .shap-down {
-  font-family: var(--mono);
-  font-size: 0.85rem;
+  color: var(--muted);
+}
+@media (max-width: 520px) {
+  .shap-bar-row {
+    grid-template-columns: minmax(0, 1fr) 4.5rem;
+  }
+  .shap-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+.model-stages {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+}
+.model-stages legend {
+  padding: 0 4px;
+}
+.model-stages .checkbox {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-weight: normal;
+}
+.stage-skipped {
   color: var(--muted);
 }
 .anchor-none {

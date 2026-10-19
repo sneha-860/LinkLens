@@ -126,11 +126,18 @@ export async function fetchRobots(
   try {
     for (;;) {
       await beforeRequest?.(url);
-      const pending = fetchImpl(url, {
-        headers: requestHeaders(config),
-        redirect: "manual",
-        signal: AbortSignal.timeout(config.robotsFetchTimeoutMs),
-      });
+      let pending: Promise<Response>;
+      try {
+        pending = fetchImpl(url, {
+          headers: requestHeaders(config),
+          redirect: "manual",
+          signal: AbortSignal.timeout(config.robotsFetchTimeoutMs),
+        });
+      } catch (err) {
+        pending = Promise.reject(err instanceof Error ? err : new Error(String(err)));
+      }
+      pending.catch(() => undefined); // handled below
+      // Always after beforeRequest, even if fetch threw: the throttle slot must be given back.
       await afterDispatch?.(url);
       const res = await pending;
       const status = res.status;

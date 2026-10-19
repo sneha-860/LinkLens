@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Summary } from "../api/types.js";
 import { applyEvent, fromAudit } from "../api/useAuditEvents.js";
-import { audit, FakeEventSource, fix, mockApi, renderAt } from "../test/utils.js";
+import { audit, FakeEventSource, fix, mockApi, renderAt, STAGE_NAMES } from "../test/utils.js";
 
 beforeEach(() => {
   vi.stubGlobal("EventSource", FakeEventSource);
@@ -134,8 +134,23 @@ describe("audit page: live progress", () => {
     );
     expect(screen.getByRole("progressbar")).toHaveAttribute(
       "aria-valuenow",
-      String(Math.round(100 / 18)),
+      String(Math.round(100 / STAGE_NAMES.length)),
     );
+
+    // An optional model stage without a model completes as skipped, with the reason.
+    act(() => {
+      es.emit("stage", {
+        type: "stage",
+        stage: "learnedScore",
+        status: "completed",
+        durationMs: 3,
+        detail: { skipped: "no ranker model at /m/ranker/model.json" },
+      });
+    });
+    const learned = within(stages).getByText("Learned score").closest("li");
+    expect(learned).toHaveAttribute("data-status", "skipped");
+    expect(learned).toHaveAttribute("title", "Skipped: no ranker model at /m/ranker/model.json");
+    expect(learned).toHaveTextContent("skipped");
 
     finished = true;
     act(() => es.emit("done", { type: "done", status: "completed" }));

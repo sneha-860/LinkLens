@@ -157,6 +157,31 @@ describe("fetchRobots: redirects (RFC 9309 §2.3.1.2)", () => {
     ]);
   });
 
+  it("gives the throttle slot back even when fetch throws synchronously", async () => {
+    const log: string[] = [];
+    const throwing = (() => {
+      throw new TypeError("fetch failed synchronously");
+    }) as unknown as typeof fetch;
+    const { policy, record } = await fetchRobots(site, {
+      config,
+      fetch: throwing,
+      beforeRequest: async (url) => {
+        log.push(`acquire ${url}`);
+      },
+      afterDispatch: async (url) => {
+        log.push(`dispatched ${url}`);
+      },
+    });
+    expect(log).toEqual([
+      "acquire https://www.example.com/robots.txt",
+      "dispatched https://www.example.com/robots.txt",
+    ]);
+    // Unreachable: complete disallow (RFC 9309 §2.3.1.3).
+    expect(policy.source.kind).toBe("unreachable");
+    expect(policy.isAllowed("https://www.example.com/")).toBe(false);
+    expect(record.error).toMatch(/fetch failed synchronously/);
+  });
+
   it("follows exactly robotsMaxRedirects (5) hops", async () => {
     const routes: Record<string, () => Response> = {};
     for (let i = 0; i < 5; i++) {

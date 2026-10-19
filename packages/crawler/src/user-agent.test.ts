@@ -36,6 +36,15 @@ describe("checkUserAgent", () => {
     ]);
   });
 
+  it("requires an https contact URL", () => {
+    expect(checkUserAgent("LinkLensBot/0.1 (+http://example.org/bot)")).toEqual([
+      "missing contact URL in the form (+https://…)",
+    ]);
+    expect(checkUserAgent("LinkLensBot/0.1 (+https://)")).toEqual([
+      "missing contact URL in the form (+https://…)",
+    ]);
+  });
+
   it("flags a missing version", () => {
     expect(checkUserAgent("LinkLensBot (+https://e.org)")).toEqual(["missing version (Token/x.y)"]);
   });

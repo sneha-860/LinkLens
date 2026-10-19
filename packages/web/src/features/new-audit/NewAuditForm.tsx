@@ -1,7 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { ApiError } from "../../api/client.js";
 import { useCreateAudit } from "../../api/queries.js";
-import { POLICIES, SIGMA_VARIANTS, type Policy, type SigmaVariant } from "../../api/types.js";
+import {
+  POLICIES,
+  SIGMA_VARIANTS,
+  type ModelStages,
+  type Policy,
+  type SigmaVariant,
+} from "../../api/types.js";
 import { SIGMA_NAMES } from "../../ui/format.js";
 import { Button } from "../../ui/ui.js";
 
@@ -13,6 +19,22 @@ const POLICY_HINTS: Record<Policy, string> = {
   P4: "P4 — + follow redirects",
   P5: "P5 — + follow rel=canonical",
 };
+
+const MODEL_STAGES: { key: keyof ModelStages; label: string; hint: string }[] = [
+  { key: "importance", label: "Page importance", hint: "page types and importance per page" },
+  {
+    key: "learned",
+    label: "Learned priority",
+    hint: "the L13 ranker's score and SHAP contributions per fix",
+  },
+  { key: "graphsage", label: "GraphSAGE score", hint: "a graph neural link predictor per fix" },
+];
+
+/**
+ * The largest page cap an audit may ask for: packages/core config.maxPageCap, which the API
+ * enforces (this is only the form's own check).
+ */
+export const MAX_PAGE_CAP = 500;
 
 export interface NewAuditValues {
   url: string;
@@ -36,17 +58,22 @@ export function validate(v: {
     errors.url = "Enter the site's full address, e.g. https://example.com/";
   }
   const cap = Number(v.pageCap);
-  if (!Number.isInteger(cap) || cap < 1 || cap > 500)
-    errors.pageCap = "A whole number from 1 to 500.";
+  if (!Number.isInteger(cap) || cap < 1 || cap > MAX_PAGE_CAP)
+    errors.pageCap = `A whole number from 1 to ${MAX_PAGE_CAP}.`;
   return errors;
 }
 
 export function NewAuditForm({ onCreated }: { onCreated: (id: number) => void }) {
   const [url, setUrl] = useState("");
-  const [pageCap, setPageCap] = useState("500");
+  const [pageCap, setPageCap] = useState(String(MAX_PAGE_CAP));
   const [policy, setPolicy] = useState<Policy>("P3");
   const [sigma, setSigma] = useState<SigmaVariant>("refGateCosine");
   const [csv, setCsv] = useState<File | null>(null);
+  const [models, setModels] = useState<Required<ModelStages>>({
+    importance: true,
+    learned: true,
+    graphsage: false,
+  });
   const [touched, setTouched] = useState(false);
   const create = useCreateAudit();
   const errors = validate({ url, pageCap });
@@ -58,7 +85,12 @@ export function NewAuditForm({ onCreated }: { onCreated: (id: number) => void })
     if (Object.keys(errors).length > 0) return;
     create.mutate(
       {
-        request: { url: url.trim(), pageCap: Number(pageCap), policy, options: { sigma } },
+        request: {
+          url: url.trim(),
+          pageCap: Number(pageCap),
+          policy,
+          options: { sigma, models },
+        },
         csv,
       },
       { onSuccess: (r) => onCreated(r.id) },
@@ -91,7 +123,7 @@ export function NewAuditForm({ onCreated }: { onCreated: (id: number) => void })
           id="pageCap"
           type="number"
           min={1}
-          max={500}
+          max={MAX_PAGE_CAP}
           value={pageCap}
           onChange={(e) => setPageCap(e.target.value)}
           aria-invalid={show("pageCap") !== undefined}
@@ -99,7 +131,7 @@ export function NewAuditForm({ onCreated }: { onCreated: (id: number) => void })
         {show("pageCap") ? (
           <span className="field-error">{show("pageCap")}</span>
         ) : (
-          <span className="field-hint">At most 500 URLs are crawled.</span>
+          <span className="field-hint">At most {MAX_PAGE_CAP} URLs are crawled.</span>
         )}
       </div>
 
@@ -124,6 +156,26 @@ export function NewAuditForm({ onCreated }: { onCreated: (id: number) => void })
           ))}
         </select>
       </div>
+
+      <fieldset className="field model-stages">
+        <legend>Optional model stages</legend>
+        {MODEL_STAGES.map(({ key, label, hint }) => (
+          <label key={key} className="checkbox">
+            <input
+              type="checkbox"
+              checked={models[key]}
+              onChange={(e) => setModels((m) => ({ ...m, [key]: e.target.checked }))}
+            />
+            <span>
+              {label}
+              <span className="field-hint"> {hint}</span>
+            </span>
+          </label>
+        ))}
+        <span className="field-hint">
+          A stage without a trained model is skipped; the audit still completes.
+        </span>
+      </fieldset>
 
       <div className="field">
         <label htmlFor="csv">Analytics CSV (optional)</label>

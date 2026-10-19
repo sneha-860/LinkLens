@@ -12,6 +12,7 @@ import { arch, cpus, hostname, platform, release } from "node:os";
 import { join, relative, sep } from "node:path";
 import {
   canonicalise,
+  defaultConfig,
   diagnosis,
   fixes,
   prominence,
@@ -57,6 +58,31 @@ export interface ModelInfo {
   /** SHA-256 over "path\0sha256\n" of every file; null when the files are not there yet. */
   readonly sha256: string | null;
   readonly hashedAt: string;
+}
+
+/**
+ * A deployable scoring model (`python -m ml fit` → ranker/, `gnn-fit` → graphsage/) as the
+ * pipeline's learnedScore / graphsageScore stages use it. `sha256` is computed exactly as the
+ * scorer reports it (analysis/ml/deploy.py model_sha256), so the manifest, the stage detail and
+ * the artefact name the same model. Null until the model is fit.
+ */
+export interface ScoringModelInfo {
+  readonly kind: "ranker" | "graphsage";
+  readonly dir: string;
+  readonly files: ModelFile[];
+  readonly sha256: string | null;
+  /** From its model.json: the corpus sites it was fit on, the dataset digest, when. */
+  readonly trainedOn: string[];
+  readonly dataset: string | null;
+  readonly createdAt: string | null;
+  /** The artefact version the stage writes with it. */
+  readonly artefactVersion: string;
+  readonly hashedAt: string;
+}
+
+export interface ScoringModels {
+  readonly ranker: ScoringModelInfo;
+  readonly graphsage: ScoringModelInfo;
 }
 
 export interface Versions {
@@ -123,6 +149,8 @@ export interface SiteEntry {
   /** The commit and model hash in force when the site finished. */
   commit: string | null;
   modelSha256: string | null;
+  /** The scoring models' hashes in force when it finished (absent in older manifests). */
+  scoringModels?: { ranker: string | null; graphsage: string | null };
 }
 
 export interface ExportRecord {
@@ -158,6 +186,8 @@ export interface Manifest {
   };
   readonly versions: Versions;
   model: ModelInfo;
+  /** The deployable scoring models (absent in manifests written before they existed). */
+  scoringModels?: ScoringModels;
   readonly lockfileSha256: string | null;
   /** A later wave of an earlier batch (E4's re-crawl): which batch, and how many days after. */
   readonly wave?: { readonly of: string; readonly afterDays: number };
@@ -289,6 +319,51 @@ export function modelInfo(config: Readonly<LinkLensConfig>, modelDir: string): M
   };
 }
 
+/** Hash a deployable scoring model directory (`<modelsDir>/<kind>/`), as the scorer does. */
+export function scoringModelInfo(
+  modelsDir: string,
+  kind: "ranker" | "graphsage",
+): ScoringModelInfo {
+  const dir = join(modelsDir, kind);
+  const files: ModelFile[] =
+    existsSync(dir) && statSync(dir).isDirectory()
+      ? listFiles(dir)
+          .map((p) => {
+            const data = readFileSync(p);
+            return {
+              path: relative(dir, p).split(sep).join("/"),
+              bytes: data.length,
+              sha256: sha256(data),
+            };
+          })
+          .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+      : [];
+  const metaPath = join(dir, "model.json");
+  const meta = existsSync(metaPath)
+    ? (JSON.parse(readFileSync(metaPath, "utf8")) as {
+        trainedOn?: string[];
+        dataset?: string;
+        createdAt?: string;
+      })
+    : null;
+  return {
+    kind,
+    dir,
+    files,
+    sha256: meta === null ? null : sha256(files.map((f) => `${f.path}\0${f.sha256}\n`).join("")),
+    trainedOn: meta?.trainedOn ?? [],
+    dataset: meta?.dataset ?? null,
+    createdAt: meta?.createdAt ?? null,
+    artefactVersion: kind === "ranker" ? fixes.LEARNED_VERSION : fixes.GRAPHSAGE_VERSION,
+    hashedAt: new Date().toISOString(),
+  };
+}
+
+export const scoringModelsInfo = (modelsDir: string): ScoringModels => ({
+  ranker: scoringModelInfo(modelsDir, "ranker"),
+  graphsage: scoringModelInfo(modelsDir, "graphsage"),
+});
+
 export function fileSha256(path: string): string | null {
   return existsSync(path) ? sha256(readFileSync(path)) : null;
 }
@@ -300,6 +375,7 @@ export interface NewManifest {
   readonly config: Readonly<LinkLensConfig>;
   readonly git: GitState;
   readonly model: ModelInfo;
+  readonly scoringModels?: ScoringModels;
   readonly lockfileSha256: string | null;
   readonly now: string;
   readonly wave?: { readonly of: string; readonly afterDays: number };
@@ -336,6 +412,7 @@ export function newManifest(m: NewManifest): Manifest {
     },
     versions: currentVersions(),
     model: m.model,
+    ...(m.scoringModels === undefined ? {} : { scoringModels: m.scoringModels }),
     lockfileSha256: m.lockfileSha256,
     sessions: [],
     sites: corpus.sites.map(pendingSite),
@@ -366,6 +443,11 @@ export interface ResumeCheck {
   readonly allowCodeChange?: boolean;
   /** The embedding model now (when known): its files must hash the same as the batch's. */
   readonly model?: Pick<ModelInfo, "sha256">;
+  /** The scoring models now: each must hash the same as the batch's (once both exist). */
+  readonly scoringModels?: {
+    readonly ranker: Pick<ScoringModelInfo, "sha256">;
+    readonly graphsage: Pick<ScoringModelInfo, "sha256">;
+  };
 }
 
 /**
@@ -379,12 +461,19 @@ export function resumeProblems(m: Manifest, c: ResumeCheck): string[] {
     problems.push(`manifest version ${m.manifestVersion} is not ${MANIFEST_VERSION}`);
   }
   if (configSha256(c.config) !== m.configSha256) {
-    const changed = Object.keys(c.config).filter(
-      (k) =>
-        stableJson((c.config as unknown as Record<string, unknown>)[k]) !==
-        stableJson((m.config as unknown as Record<string, unknown>)[k]),
+    const now = c.config as unknown as Record<string, unknown>;
+    const was = m.config as unknown as Record<string, unknown>;
+    const defaults = defaultConfig as unknown as Record<string, unknown>;
+    // A setting added after the batch was created is no change while it keeps its default:
+    // new settings take the value the code used before they existed.
+    const changed = [...new Set([...Object.keys(now), ...Object.keys(was)])].filter((k) =>
+      k in was
+        ? stableJson(now[k]) !== stableJson(was[k])
+        : stableJson(now[k]) !== stableJson(defaults[k]),
     );
-    problems.push(`the config differs from the batch's (${changed.join(", ") || "keys"})`);
+    if (changed.length > 0) {
+      problems.push(`the config differs from the batch's (${changed.join(", ")})`);
+    }
   }
   const audit = {
     policy: c.corpus.policy,
@@ -428,6 +517,13 @@ export function resumeProblems(m: Manifest, c: ResumeCheck): string[] {
     c.model.sha256 !== m.model.sha256
   ) {
     problems.push(`the embedding model's files differ (${m.model.sha256} → ${c.model.sha256})`);
+  }
+  for (const kind of ["ranker", "graphsage"] as const) {
+    const was = m.scoringModels?.[kind].sha256 ?? null;
+    const now = c.scoringModels?.[kind].sha256 ?? null;
+    if (was !== null && now !== null && was !== now) {
+      problems.push(`the ${kind} scoring model differs (${was} → ${now})`);
+    }
   }
   return problems;
 }

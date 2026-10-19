@@ -185,3 +185,39 @@ def test_fast_e6_metrics_equal_the_table_path(graphs: Path):
             slow.sort_values("query").reset_index(drop=True),
             check_like=True,
         )
+
+
+def test_deployable_model_scores_a_pipeline_request(graphs: Path, tmp_path: Path):
+    """`gnn-fit` on every site, then `score` as the pipeline calls it: the scores equal the same
+    model's, trained in memory, on the same graph."""
+    import base64
+
+    from ml import deploy
+
+    gs = gnn.load(graphs)
+    gs.meta["structural"] = [f"s{i}" for i in range(STRUCT)]
+    d = deploy.fit_gnn(gs, tmp_path / "models")
+    meta = json.loads((d / "model.json").read_text(encoding="utf-8"))
+    assert meta["trainedOn"] == ["a", "b", "c"] and meta["inDim"] == EMB + STRUCT
+    full = gs.sites[0].full
+    pairs = [{"id": f"f{i}", "donor": full.nodes[i], "target": full.nodes[i + 1]} for i in range(5)]
+    pairs.append({"id": "gone", "donor": "https://x.test/", "target": full.nodes[0]})
+    request = {
+        "protocol": deploy.PROTOCOL,
+        "kind": "graphsage",
+        "nodes": full.nodes,
+        "embeddingDim": EMB,
+        "structural": gs.meta["structural"],
+        "x": base64.b64encode(full.x.astype("<f4").tobytes()).decode(),
+        "src": full.edges[0].tolist(),
+        "dst": full.edges[1].tolist(),
+        "pairs": pairs,
+    }
+    r = deploy.score_graphsage(request, tmp_path / "models")
+    assert r["model"]["sha256"] == deploy.model_sha256(deploy.model_files(d))
+    assert sorted(r["scores"]) == [f"f{i}" for i in range(5)]  # an unknown node is left out
+    model, scaler = gnn.train([g for s in gs.sites for g in s.repeats], gs.meta, EMB, 42)
+    want = gnn.score_pairs(model, scaler, full, [p["donor"] for p in pairs[:5]], [p["target"] for p in pairs[:5]])
+    assert [r["scores"][f"f{i}"] for i in range(5)] == pytest.approx(want, rel=1e-5)
+    with pytest.raises(ValueError, match="structural features"):
+        deploy.score_graphsage({**request, "structural": ["other"] * STRUCT}, tmp_path / "models")

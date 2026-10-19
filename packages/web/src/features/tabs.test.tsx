@@ -122,7 +122,7 @@ describe("Fixes tab", () => {
     );
   });
 
-  it("switches to the learned priority and shows the model's view next to the rule-based lines", async () => {
+  it("switches to the learned priority and shows SHAP bars next to the rule-based lines", async () => {
     const learned = (priority: number) => ({
       priority,
       raw: priority * 2,
@@ -136,37 +136,66 @@ describe("Fixes tab", () => {
     const { calls } = mockApi({
       "GET /audits/7": audit(),
       "GET /audits/7/fixes": (_init: unknown, url: URL) =>
-        url.searchParams.get("scoring") === "learned"
+        url.searchParams.get("mode") === "learned"
           ? {
               sigma: "refGateCosine",
               k: 25,
               scope: "global",
-              scoring: "learned",
+              mode: "learned",
               total: 2,
-              learnedModel: { site: "x", trainedOn: ["a", "b"], labels: "e6", createdAt: "" },
+              learnedModel: {
+                site: "x",
+                trainedOn: ["a", "b"],
+                labels: "e6",
+                createdAt: "",
+                source: "import",
+                sha256: null,
+                seenSite: false,
+              },
               fixes: [
                 { ...byS[1], rank: 1, scoring: "learned" },
                 { ...byS[0], rank: 2, scoring: "learned" },
               ],
             }
-          : { sigma: "refGateCosine", k: 25, scope: "global", total: 2, fixes: byS },
+          : {
+              sigma: "refGateCosine",
+              k: 25,
+              scope: "global",
+              mode: "formula",
+              total: 2,
+              fixes: byS,
+            },
     });
     renderAt("/audits/7/fixes");
     await screen.findByText("Add a link from /d1 to /t1.");
-    await userEvent.selectOptions(screen.getByLabelText("Scoring"), "learned");
+    // The run's default mode is shown until one is picked; no mode is sent.
+    expect(screen.getByLabelText("Scoring mode")).toHaveValue("formula");
+    expect(calls.every((c) => !c.search.includes("mode="))).toBe(true);
+    await userEvent.selectOptions(screen.getByLabelText("Scoring mode"), "learned");
     expect(
       await screen.findByText(
         /by the learned priority of a model trained on a, b \(never this site\)/,
       ),
     ).toBeInTheDocument();
-    expect(calls.some((c) => c.search.includes("scoring=learned"))).toBe(true);
+    expect(calls.some((c) => c.search.includes("mode=learned"))).toBe(true);
     await userEvent.click(screen.getByText("Add a link from /d2 to /t2."));
     const card = document.querySelector(".explain-card") as HTMLElement;
     const model = within(card).getByRole("region", { name: "Model view (learned)" });
     expect(model).toHaveTextContent("priority 90%");
-    expect(model).toHaveTextContent("▲ +0.31 REF = 0.42");
-    expect(model).toHaveTextContent("▼ −0.12 target page type = product");
-    expect(model).toHaveTextContent("▲ +0.05 ΔPR of the target = 4.00e-4");
+    const rows = [...model.querySelectorAll(".shap-bar-row")];
+    expect(rows.map((r) => r.textContent)).toEqual([
+      "REF = 0.42+0.31",
+      "target page type = product−0.12",
+      "ΔPR of the target = 4.00e-4+0.05",
+    ]);
+    // Bars diverge from the middle, scaled to the largest |contribution| (0.31 → half the track).
+    const bars = rows.map((r) => r.querySelector(".shap-bar") as HTMLElement);
+    expect(bars[0]?.className).toContain("shap-bar-up");
+    expect(bars[0]?.style.left).toBe("50%");
+    expect(bars[0]?.style.width).toBe("50%");
+    expect(bars[1]?.className).toContain("shap-bar-down");
+    expect(bars[1]?.style.right).toBe("50%");
+    expect(parseFloat(bars[1]?.style.width ?? "")).toBeCloseTo((50 * 0.12) / 0.31, 5);
     // The rule-based explanation stays in the card.
     expect(card).toHaveTextContent("Why the target");
   });

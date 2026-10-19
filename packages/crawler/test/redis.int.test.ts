@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 import { Redis } from "ioredis";
+import { makeConfig } from "@linklens/core";
 import { Frontier } from "../src/frontier.js";
 import { RedisHostThrottle } from "../src/redis-throttle.js";
 
@@ -56,7 +57,7 @@ describe("Frontier", () => {
 });
 
 describe("RedisHostThrottle", () => {
-  const config = { crawlDelayMs: 30, robotsCacheTtlMs: 60_000 };
+  const config = makeConfig({ crawlDelayMs: 30, robotsCacheTtlMs: 60_000 });
 
   /** Acquire, "dispatch" (record the time), then mark, like fetchPage does. */
   async function hit(t: RedisHostThrottle, url: string, log: number[]): Promise<void> {
@@ -104,6 +105,27 @@ describe("RedisHostThrottle", () => {
 
     await setter.setRobotsCrawlDelay("https://slow.test/", null);
     expect(await redis.exists(`${prefix}:throttle:robots-delay:slow.test`)).toBe(0);
+  });
+
+  it("keeps a host's last dispatch until its delay has passed, however long the delay", async () => {
+    // A state TTL far shorter than the robots Crawl-delay: the last-dispatch key must still
+    // outlive the delay, or the next request would go out as soon as it expired.
+    const short = makeConfig({ crawlDelayMs: 0, robotsCacheTtlMs: 60_000, throttleStateTtlMs: 20 });
+    const t = new RedisHostThrottle(redis, prefix, short);
+    await t.setRobotsCrawlDelay("https://patient.test/", 200);
+    const log: number[] = [];
+    await hit(t, "https://patient.test/a", log);
+    const ttl = await redis.pttl(`${prefix}:throttle:last:patient.test`);
+    expect(ttl).toBeGreaterThan(200);
+    expect(ttl).toBeLessThanOrEqual(220);
+    await hit(t, "https://patient.test/b", log);
+    expect((log[1] ?? 0) - (log[0] ?? 0)).toBeGreaterThanOrEqual(199);
+
+    // Hours-long delays too (a robots Crawl-delay of 7200 s), which the old fixed 1 h TTL dropped.
+    await t.setRobotsCrawlDelay("https://slowest.test/", 7_200_000);
+    await t.acquire("https://slowest.test/");
+    await t.dispatched("https://slowest.test/");
+    expect(await redis.pttl(`${prefix}:throttle:last:slowest.test`)).toBeGreaterThan(7_199_000);
   });
 
   it("frees a host held by a crashed process once the lease expires", async () => {

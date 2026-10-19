@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { Redis } from "ioredis";
 import type pg from "pg";
-import { db as q, makeConfig, rfc3986, type LinkLensConfig } from "@linklens/core";
+import { db as q, rfc3986, type LinkLensConfig } from "@linklens/core";
 
 type Json = q.Json;
 import { asQueryable } from "@linklens/db";
@@ -10,6 +10,7 @@ import { fetchPage } from "../fetcher.js";
 import { CHROME_REGIONS } from "../html/region.js";
 import { RedisHostThrottle } from "../redis-throttle.js";
 import { RobotsStore } from "../robots-store.js";
+import { followUpConfig } from "../run-config.js";
 import { makeScope } from "../scope.js";
 import { systemClock, type Clock } from "../throttle.js";
 import {
@@ -100,7 +101,8 @@ export class DiscoveryRunner {
     if (run === null) throw new Error(`run ${runId} not found`);
     const site = await q.getSite(this.db, run.siteId);
     if (site === null) throw new Error(`site ${run.siteId} not found`);
-    const config = makeConfig({ ...run.config, ...this.options.config });
+    // Overrides may only make discovery more polite; the User-Agent is checked again.
+    const config = followUpConfig(run.config, this.options.config);
     return new DiscoverySession(
       this.db,
       this.redis,

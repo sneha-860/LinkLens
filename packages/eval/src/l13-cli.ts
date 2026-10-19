@@ -107,6 +107,7 @@ async function exportDataset(opts: Map<string, string>): Promise<void> {
       );
       records.push({
         site: s.id,
+        url: s.url,
         architectureClass: s.architectureClass,
         runId,
         queries,
@@ -234,6 +235,7 @@ async function exportGraphs(opts: Map<string, string>): Promise<void> {
       );
       records.push({
         site: s.id,
+        url: s.url,
         architectureClass: s.architectureClass,
         runId,
         exportMs,
@@ -287,7 +289,7 @@ async function importGraphSage(opts: Map<string, string>): Promise<void> {
         version: fixes.GRAPHSAGE_VERSION,
         runId: p.runId,
         policyVersion,
-        model: p.model,
+        model: { ...p.model, source: "import", sha256: null, seenSite: false },
         nodes: p.nodes,
         repeats: p.repeats,
         fixes: p.fixes,

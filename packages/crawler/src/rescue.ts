@@ -1,18 +1,13 @@
 import { createHash } from "node:crypto";
 import { Redis } from "ioredis";
 import type pg from "pg";
-import {
-  db as q,
-  discovery,
-  makeConfig,
-  type canonicalise,
-  type LinkLensConfig,
-} from "@linklens/core";
+import { db as q, discovery, type canonicalise, type LinkLensConfig } from "@linklens/core";
 import { asQueryable } from "@linklens/db";
 import { extractPage } from "./extract.js";
 import { fetchPage } from "./fetcher.js";
 import { RedisHostThrottle } from "./redis-throttle.js";
 import { RobotsStore } from "./robots-store.js";
+import { followUpConfig } from "./run-config.js";
 import { makeScope } from "./scope.js";
 import { systemClock, type Clock } from "./throttle.js";
 
@@ -37,6 +32,38 @@ export interface RescueFetchSummary {
   /** Orphans already fetched for this run (by a crawl or an earlier rescue): not requested. */
   readonly alreadyFetched: number;
   readonly capReached: boolean;
+}
+
+export type RescueStep =
+  | { readonly kind: "already-fetched" }
+  | { readonly kind: "no-url" }
+  | { readonly kind: "invalid" | "out-of-scope"; readonly raw: string; readonly error: string }
+  | { readonly kind: "fetch"; readonly raw: string; readonly url: URL };
+
+/**
+ * Pure: what rescue does with one orphan, before any request. An orphan already fetched (by the
+ * crawl or an earlier rescue) is skipped; otherwise its first raw URL is fetched, unless it does
+ * not parse or is outside the crawl scope (recorded, never requested). Reconciled orphans are
+ * internal, but scope is checked again here because fetchPage checks it on redirect hops only.
+ */
+export function rescueStep(
+  urls: readonly string[],
+  done: ReadonlySet<string>,
+  inScope: (url: URL) => boolean,
+): RescueStep {
+  if (urls.some((u) => done.has(u))) return { kind: "already-fetched" };
+  const raw = urls[0];
+  if (raw === undefined) return { kind: "no-url" };
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return { kind: "invalid", raw, error: "rescue: not a valid URL, not fetched" };
+  }
+  if (!inScope(url)) {
+    return { kind: "out-of-scope", raw, error: "rescue: outside the crawl scope, not fetched" };
+  }
+  return { kind: "fetch", raw, url };
 }
 
 const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
@@ -67,7 +94,8 @@ export class RescueFetcher {
     if (run === null) throw new Error(`run ${runId} not found`);
     const site = await q.getSite(this.db, run.siteId);
     if (site === null) throw new Error(`site ${run.siteId} not found`);
-    const config = makeConfig({ ...run.config, ...this.options.config });
+    // Overrides may only make rescue more polite; the User-Agent is checked again.
+    const config = followUpConfig(run.config, this.options.config);
     const clock = this.options.clock ?? systemClock;
     const fetchImpl = this.options.fetch ?? fetch;
     const throttle = new RedisHostThrottle(
@@ -92,28 +120,26 @@ export class RescueFetcher {
     let alreadyFetched = 0;
     let capReached = false;
     for (const orphan of orphans) {
-      if (orphan.urls.some((u) => done.has(u))) {
+      const step = rescueStep(orphan.urls, done, inScope);
+      if (step.kind === "already-fetched") {
         alreadyFetched += 1;
         continue;
       }
-      const raw = orphan.urls[0];
-      if (raw === undefined) continue;
+      if (step.kind === "no-url") continue;
       if (fetches >= config.rescueMaxFetches) {
         capReached = true;
         break;
       }
-      let url: URL;
-      try {
-        url = new URL(raw);
-      } catch {
+      if (step.kind !== "fetch") {
         await q.insertFetch(this.db, {
           runId,
-          requestedUrl: raw,
+          requestedUrl: step.raw,
           purpose: "rescue",
-          error: "rescue: not a valid URL, not fetched",
+          error: step.error,
         });
         continue;
       }
+      const { raw, url } = step;
       fetches += 1;
       const o = await fetchPage(
         url,

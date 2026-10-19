@@ -201,6 +201,8 @@ type RefConfig = Pick<LinkLensConfig, "epsilon" | "refExplainTerms"> &
       | "lshThreshold"
       | "lshFalsePositiveWeight"
       | "lshFalseNegativeWeight"
+      | "lshTuningSteps"
+      | "lshRatioBin"
       | "randomSeed"
     >
   >;
@@ -240,6 +242,8 @@ export function lshParams(config: RefConfig): LshParams {
     falsePositiveWeight: config.lshFalsePositiveWeight ?? defaultConfig.lshFalsePositiveWeight,
     falseNegativeWeight: config.lshFalseNegativeWeight ?? defaultConfig.lshFalseNegativeWeight,
     seed: config.randomSeed ?? defaultConfig.randomSeed,
+    tuningSteps: config.lshTuningSteps ?? defaultConfig.lshTuningSteps,
+    ratioBin: config.lshRatioBin ?? defaultConfig.lshRatioBin,
   };
 }
 

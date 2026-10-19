@@ -81,8 +81,26 @@ export interface LinkLensConfig {
    * whatever its outcome (HTML, non-HTML, 404, robots-blocked), so the cap bounds requests.
    */
   readonly pageCap: number;
+  /**
+   * The largest pageCap an audit may ask for (the API and PipelineRunner.create refuse more).
+   * Research crawls that call the orchestrator directly (the LSH experiment's lshEvalCaps) are
+   * not audits and are not bound by it.
+   */
+  readonly maxPageCap: number;
   /** Minimum delay between requests to the same host, in ms (robots.txt Crawl-delay may raise it). */
   readonly crawlDelayMs: number;
+  /**
+   * RedisHostThrottle: how long a waiter sleeps while another process holds a host's slot, and
+   * how long a holder may keep it (a crashed holder blocks the host at most this long).
+   */
+  readonly throttlePollMs: number;
+  readonly throttleHolderLeaseMs: number;
+  /**
+   * RedisHostThrottle: a host's last-dispatch time is kept for this long *plus* its effective
+   * delay (max(crawlDelayMs, robots Crawl-delay)), so it never expires before the next request
+   * is due, however long the delay.
+   */
+  readonly throttleStateTtlMs: number;
   /** User-Agent sent with every request and matched against robots.txt groups (RFC 9309). */
   readonly userAgent: string;
   /**
@@ -112,6 +130,12 @@ export interface LinkLensConfig {
   /** LSH Ensemble: weights of the false-positive and false-negative areas when (b, r) is tuned. */
   readonly lshFalsePositiveWeight: number;
   readonly lshFalseNegativeWeight: number;
+  /**
+   * LSH tuning resolution: Simpson intervals per FP/FN integral (even; the curves are smooth),
+   * and the relative width of the size-ratio bins in which a tuned (b, r) is reused.
+   */
+  readonly lshTuningSteps: number;
+  readonly lshRatioBin: number;
   /** LSH experiment: page caps compared (the first N admitted URLs of one crawl at the largest). */
   readonly lshEvalCaps: readonly number[];
   /** LSH experiment: containment thresholds compared (the index is built once per cap). */
@@ -390,6 +414,12 @@ export interface LinkLensConfig {
    */
   readonly graphsage: Readonly<Record<string, number>>;
   /**
+   * The pipeline's optional model stages (learnedScore, graphsageScore) run the Python scorer
+   * (`python -m ml score`) once each; a run longer than this is killed and the stage is skipped.
+   * GraphSAGE's first call imports torch, which takes seconds.
+   */
+  readonly scorerTimeoutMs: number;
+  /**
    * Link health: a link target reached through at least this many redirect hops is reported as
    * a redirect chain (2 = longer than one hop).
    */
@@ -419,7 +449,11 @@ export interface LinkLensConfig {
 
 export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   pageCap: 500,
+  maxPageCap: 500,
   crawlDelayMs: 500,
+  throttlePollMs: 2,
+  throttleHolderLeaseMs: 10_000,
+  throttleStateTtlMs: 3_600_000,
   userAgent: "LinkLensBot/0.1 (+https://github.com/sneha-860/LinkLens)",
   epsilon: 0.2,
   refExplainTerms: 10,
@@ -430,6 +464,8 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   lshThreshold: 0.1,
   lshFalsePositiveWeight: 0.5,
   lshFalseNegativeWeight: 0.5,
+  lshTuningSteps: 32,
+  lshRatioBin: 0.01,
   lshEvalCaps: Object.freeze([500, 1000, 2000]),
   lshEvalThresholds: Object.freeze([0.05, 0.1, 0.2]),
   lshEvalRepeats: 3,
@@ -632,6 +668,7 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
     negative_ratio: 1,
     supervision_share: 0.3,
   }),
+  scorerTimeoutMs: 300_000,
   auditDeepPageDepth: 3,
   auditDeepPageHighDepth: 6,
   auditWeakAuthorityPercentile: 20,
@@ -684,12 +721,70 @@ function assertNonNegativeInt(name: keyof LinkLensConfig, value: number): void {
   }
 }
 
+/**
+ * Settings an override may only tighten, never loosen: politeness (how fast and how often we
+ * request) and the request caps. For each, whether `value` is at least as polite as `base`.
+ */
+const POLITENESS: {
+  readonly [K in keyof LinkLensConfig]?: (
+    value: LinkLensConfig[K],
+    base: LinkLensConfig[K],
+  ) => boolean;
+} = {
+  crawlDelayMs: (v, b) => v >= b,
+  maxCrawlDelayMs: (v, b) => v <= b,
+  throttleHolderLeaseMs: (v, b) => v >= b,
+  throttleStateTtlMs: (v, b) => v >= b,
+  robotsCacheTtlMs: (v, b) => v <= b,
+  robotsUnreachableGraceDays: (v, b) => v >= b,
+  robotsTreat429AsUnreachable: (v, b) => v || !b,
+  pageCap: (v, b) => v <= b,
+  maxPageCap: (v, b) => v <= b,
+  discoveryMaxFetches: (v, b) => v <= b,
+  rescueMaxFetches: (v, b) => v <= b,
+  fetchMaxRetries: (v, b) => v <= b,
+};
+
+/**
+ * Pure: why `overrides` would make requests less polite than `base` (empty: they would not).
+ * A per-run override may slow a crawl down or shrink it, never speed it up or enlarge it: a
+ * lower crawl delay, a larger cap, more retries or a shorter robots.txt grace is refused. The
+ * page cap is also held to `base.maxPageCap`.
+ */
+export function politenessProblems(
+  overrides: Partial<LinkLensConfig>,
+  base: Readonly<LinkLensConfig>,
+): string[] {
+  const problems: string[] = [];
+  for (const [key, ok] of Object.entries(POLITENESS) as [
+    keyof LinkLensConfig,
+    (v: unknown, b: unknown) => boolean,
+  ][]) {
+    const value = overrides[key];
+    if (value !== undefined && !ok(value, base[key])) {
+      problems.push(
+        `config.${key} ${JSON.stringify(value)} is less polite than ${JSON.stringify(base[key])}`,
+      );
+    }
+  }
+  // Only a cap the overrides ask for: a stored run's own cap (a research crawl's, say) is not
+  // re-judged by a follow-up fetcher that leaves it alone.
+  if (overrides.pageCap !== undefined && overrides.pageCap > base.maxPageCap) {
+    problems.push(`config.pageCap ${overrides.pageCap} exceeds maxPageCap ${base.maxPageCap}`);
+  }
+  return problems;
+}
+
 /** Merge overrides onto the defaults, validate, and freeze. */
 export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<LinkLensConfig> {
   const cfg: LinkLensConfig = { ...defaultConfig, ...overrides };
 
   assertPositiveInt("pageCap", cfg.pageCap);
+  assertPositiveInt("maxPageCap", cfg.maxPageCap);
   assertNonNegativeInt("crawlDelayMs", cfg.crawlDelayMs);
+  assertPositiveInt("throttlePollMs", cfg.throttlePollMs);
+  assertPositiveInt("throttleHolderLeaseMs", cfg.throttleHolderLeaseMs);
+  assertPositiveInt("throttleStateTtlMs", cfg.throttleStateTtlMs);
   assertNonNegativeInt("randomSeed", cfg.randomSeed);
   assertPositiveInt("robotsFetchTimeoutMs", cfg.robotsFetchTimeoutMs);
   assertPositiveInt("fetchTimeoutMs", cfg.fetchTimeoutMs);
@@ -856,6 +951,7 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
       );
     }
   }
+  assertPositiveInt("scorerTimeoutMs", cfg.scorerTimeoutMs);
   if (!FIX_SCORINGS.includes(cfg.fixScoring)) {
     throw new RangeError(`config.fixScoring must be one of ${FIX_SCORINGS.join(", ")}`);
   }
@@ -907,6 +1003,11 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   }
   assertUnitInterval("lshFalsePositiveWeight", cfg.lshFalsePositiveWeight);
   assertUnitInterval("lshFalseNegativeWeight", cfg.lshFalseNegativeWeight);
+  assertPositiveInt("lshTuningSteps", cfg.lshTuningSteps);
+  if (cfg.lshTuningSteps % 2 !== 0) throw new RangeError("config.lshTuningSteps must be even");
+  if (!(cfg.lshRatioBin > 0 && cfg.lshRatioBin < 1)) {
+    throw new RangeError("config.lshRatioBin must be in (0, 1)");
+  }
   if (cfg.lshFalsePositiveWeight + cfg.lshFalseNegativeWeight <= 0) {
     throw new RangeError("config.lshFalsePositiveWeight + lshFalseNegativeWeight must be > 0");
   }

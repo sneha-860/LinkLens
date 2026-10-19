@@ -36,10 +36,10 @@ describe("corpus.yaml", () => {
     expect(c.seed).toBe(defaultConfig.randomSeed);
   });
 
-  it("marks 10 sites for the Screaming Frog calibration (E5), from every class", () => {
+  it("marks 9 sites for the Screaming Frog calibration (E5), from every class", () => {
     const c = parseCorpus(REAL);
     const marked = c.sites.filter((s) => s.screamingFrog);
-    expect(marked).toHaveLength(10);
+    expect(marked).toHaveLength(9);
     expect(new Set(marked.map((s) => s.architectureClass)).size).toBe(3);
   });
 });

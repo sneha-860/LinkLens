@@ -24,7 +24,8 @@ export function checkUserAgent(userAgent: string): string[] {
   const problems: string[] = [];
   if (!PRODUCT_TOKEN.test(userAgent.trim())) problems.push("missing product token");
   if (!/^[A-Za-z_-]+\/\S+/.test(userAgent.trim())) problems.push("missing version (Token/x.y)");
-  if (!/\(\+https?:\/\/\S+\)/.test(userAgent)) {
+  // The contact must be an https URL (the spec's "(+https://…)"): plain http is refused.
+  if (!/\(\+https:\/\/[^\s)]+\)/.test(userAgent)) {
     problems.push("missing contact URL in the form (+https://…)");
   }
   return problems;

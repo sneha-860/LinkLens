@@ -10,11 +10,12 @@ import { Redis } from "ioredis";
 import { createPool } from "@linklens/db";
 import type { Embedder, EmbedRequest, EmbeddingOptions } from "@linklens/embeddings";
 import { startFixtureServer } from "@linklens/crawler/testing";
-import { db as q } from "@linklens/core";
+import { db as q, fixes as fixesCore } from "@linklens/core";
 import { asQueryable } from "@linklens/db";
 import { createApp } from "../src/app.js";
 import { RedisEventBus, type EventBus } from "../src/events.js";
 import { PipelineRunner, STAGES, type Stage } from "../src/pipeline.js";
+import type { ModelKind, ModelScorer } from "../src/scorer.js";
 
 const CONFIG = {
   userAgent: "LinkLensBot/0.1 (+https://linklens.test/bot)",
@@ -46,6 +47,68 @@ function stubEmbedder(options: EmbeddingOptions): Embedder {
     },
   };
 }
+
+/**
+ * A scorer without Python: "no model" until `ready`, then a ranker that reverses the rows' order
+ * and a GraphSAGE model that scores by REF-free structure (row index). It keeps the requests,
+ * so the tests can check what the pipeline sent.
+ */
+class StubScorer implements ModelScorer {
+  ready = false;
+  readonly requests: fixesCore.ScorerRequest[] = [];
+  private readonly model = (kind: ModelKind): fixesCore.ScoringModelInfo => ({
+    kind,
+    sha256: `${kind}-sha`,
+    files: [{ name: "model.json", bytes: 2, sha256: "x" }],
+    trainedOn: ["corpus-a", "corpus-b"],
+    trainedOnHosts: ["corpus-a.test", "corpus-b.test"],
+    labels: kind === "ranker" ? "e6" : "body-links",
+    dataset: "d",
+    createdAt: "2026-09-01T00:00:00Z",
+    features: kind === "ranker" ? [...fixesCore.FEATURES] : [...fixesCore.STRUCTURAL_FEATURES],
+    params: {},
+  });
+  async available(kind: ModelKind) {
+    return this.ready
+      ? ({ ok: true } as const)
+      : ({ ok: false, reason: `no ${kind} model (stub)` } as const);
+  }
+  score(r: fixesCore.RankerRequest): Promise<fixesCore.RankerResponse>;
+  score(r: fixesCore.GraphSageRequest): Promise<fixesCore.GraphSageResponse>;
+  async score(
+    r: fixesCore.ScorerRequest,
+  ): Promise<fixesCore.RankerResponse | fixesCore.GraphSageResponse> {
+    this.requests.push(r);
+    if (r.kind === "ranker") {
+      const n = r.rows.length;
+      return {
+        protocol: fixesCore.SCORER_PROTOCOL,
+        kind: "ranker",
+        model: this.model("ranker"),
+        fixes: Object.fromEntries(
+          r.rows.map((row, i) => [
+            row.fix_id,
+            {
+              priority: (i + 0.5) / n,
+              raw: i,
+              shap: [
+                { feature: "ref", value: row.ref, contribution: 0.2 },
+                { feature: "target_type", value: row.target_type, contribution: -0.1 },
+              ],
+            },
+          ]),
+        ),
+      };
+    }
+    return {
+      protocol: fixesCore.SCORER_PROTOCOL,
+      kind: "graphsage",
+      model: this.model("graphsage"),
+      scores: Object.fromEntries(r.pairs.map((p, i) => [p.id, -i])),
+    };
+  }
+}
+const scorer = new StubScorer();
 
 /** The Redis bus, counting subscribers (so a test can wait for an SSE stream to listen). */
 class CountingBus implements EventBus {
@@ -117,6 +180,10 @@ beforeAll(async () => {
     prefix,
     cacheDir,
     embedder: stubEmbedder,
+    scorer,
+    // The deployment allows fast crawls of the local fixture (the robots.txt Crawl-delay still
+    // applies); an audit may not go below the deployment's delay.
+    defaultConfig: { crawlDelayMs: 0 },
     logger: { info: (m) => log.push(m), error: (m) => log.push(`ERROR ${m}`) },
     beforeStage: async (runId, stage) => {
       if (stage === "crawl" && crawlGate !== null) await crawlGate.promise;
@@ -182,7 +249,11 @@ describe("an audit through the whole pipeline", () => {
     crawlGate = gate();
     const res = await request(app)
       .post("/audits")
-      .send({ url: `${o}/`, policy: "P0", options: { workers: 1, config: CONFIG } });
+      .send({
+        url: `${o}/`,
+        policy: "P0",
+        options: { workers: 1, config: CONFIG, models: { graphsage: true } },
+      });
     expect(res.status).toBe(202);
     id = res.body.id;
     const stream = readEvents(`/audits/${id}/events`);
@@ -442,6 +513,106 @@ describe("an audit through the whole pipeline", () => {
     const again = await request(app).get(`/audits/${id}/fixes?k=50`);
     expect((again.body.fixes as F[]).map((f) => f.id)).toEqual(ids);
     expect(again.body.fixes[0].learned).toMatchObject({ raw: 0, shap: [{ feature: "ref" }] });
+  });
+
+  it("skips the model stages without a model, never failing the audit", async () => {
+    const res = await request(app).get(`/audits/${id}`);
+    type S = { stage: string; status: string; detail: Record<string, unknown> };
+    const stage = (name: string) => (res.body.stages as S[]).find((s) => s.stage === name);
+    expect(stage("importance")).toMatchObject({
+      status: "completed",
+      detail: { nodes: expect.any(Number) },
+    });
+    expect(stage("learnedScore")).toMatchObject({
+      status: "completed",
+      detail: { skipped: "no ranker model (stub)" },
+    });
+    expect(stage("graphsageScore")).toMatchObject({
+      status: "completed",
+      detail: { skipped: "no graphsage model (stub)" },
+    });
+    expect(scorer.requests).toHaveLength(0);
+  });
+
+  it("orders fixes by importance (S × importance of the target) with mode=importance", async () => {
+    const res = await request(app).get(`/audits/${id}/fixes?mode=importance&k=50`);
+    expect(res.status).toBe(200);
+    expect(res.body.mode).toBe("importance");
+    type F = { score: number; scoreS: number; scoring: string; importance: number };
+    const got = res.body.fixes as F[];
+    expect(got.length).toBeGreaterThan(0);
+    for (const f of got) {
+      expect(f.scoring).toBe("S_imp");
+      expect(f.score).toBeCloseTo(f.scoreS * f.importance, 15);
+    }
+    for (let i = 1; i < got.length; i++) {
+      expect((got[i - 1] as F).score).toBeGreaterThanOrEqual((got[i] as F).score);
+    }
+    const formula = await request(app).get(`/audits/${id}/fixes?mode=formula&k=50`);
+    expect(formula.body.mode).toBe("formula");
+    expect((formula.body.fixes as F[]).every((f) => f.scoring === "S")).toBe(true);
+  });
+
+  it("scores fixes with the learned ranker and GraphSAGE once models exist, with SHAP", async () => {
+    scorer.ready = true;
+    await runner.rerunFrom(id, "learnedScore");
+    const after = (await waitFor(id, ["completed", "failed"])) as {
+      status: string;
+      stages: { stage: string; detail: Record<string, unknown> }[];
+    };
+    expect(after.status).toBe("completed");
+    const detail = (name: string) => after.stages.find((s) => s.stage === name)?.detail;
+    expect(detail("learnedScore")).toMatchObject({
+      modelSha256: "ranker-sha",
+      trainedOn: ["corpus-a", "corpus-b"],
+      seenSite: false,
+    });
+    expect(detail("graphsageScore")).toMatchObject({ modelSha256: "graphsage-sha" });
+
+    // What the pipeline sent: every fix of the ranking, with the L13 features.
+    const ranker = scorer.requests.find((r) => r.kind === "ranker") as fixesCore.RankerRequest;
+    const all = await request(app).get(`/audits/${id}/fixes?mode=formula&k=50`);
+    expect(ranker.features).toEqual([...fixesCore.FEATURES]);
+    expect(ranker.rows.length).toBe(all.body.total);
+    for (const row of ranker.rows) {
+      for (const f of fixesCore.FEATURES) expect(row).toHaveProperty(f);
+      expect(["homepage", "hub", "product", "article", "utility", "other"]).toContain(
+        row.target_type,
+      );
+    }
+    const gs = scorer.requests.find((r) => r.kind === "graphsage") as fixesCore.GraphSageRequest;
+    expect(gs.embeddingDim).toBe(16);
+    expect(Buffer.from(gs.x, "base64").length).toBe(
+      gs.nodes.length * (16 + fixesCore.STRUCTURAL_FEATURES.length) * 4,
+    );
+    expect(gs.pairs.length).toBe(ranker.rows.length);
+
+    // The stub reverses S: mode=learned serves the last S fix first, with SHAP on every fix.
+    const learned = await request(app).get(`/audits/${id}/fixes?mode=learned&k=50`);
+    expect(learned.status).toBe(200);
+    expect(learned.body).toMatchObject({
+      mode: "learned",
+      learnedModel: { source: "pipeline", sha256: "ranker-sha", seenSite: false },
+      graphsageModel: { source: "pipeline", sha256: "graphsage-sha" },
+    });
+    type F = {
+      id: string;
+      learned: { priority: number; shap: { feature: string; contribution: number }[] };
+      graphsage: number | null;
+    };
+    const ids = ranker.rows.map((r) => r.fix_id);
+    const got = learned.body.fixes as F[];
+    expect(got.map((f) => f.id)).toEqual([...ids].reverse().slice(0, got.length));
+    for (const f of got) {
+      expect(f.learned.shap.map((c) => c.feature)).toEqual(["ref", "target_type"]);
+      expect(typeof f.graphsage).toBe("number");
+    }
+    // E6 never reads pipeline GraphSAGE scores: they have no masked repeats.
+    const { rows } = await pool.query<{ payload: fixesCore.GraphSageScores }>(
+      "SELECT payload FROM artefacts WHERE run_id = $1 AND kind = 'graphsage-scores'",
+      [id],
+    );
+    expect(rows.map((r) => r.payload.repeats.length)).toEqual([0]);
   });
 
   it("lists the orphans with rescue donors and the channels that revealed them", async () => {
@@ -872,7 +1043,7 @@ describe("several instances", () => {
       prefix,
       cacheDir,
       embedder: stubEmbedder,
-      defaultConfig: { apiMaxConcurrentAudits: 1 },
+      defaultConfig: { apiMaxConcurrentAudits: 1, crawlDelayMs: 0 },
       beforeStage: async (_runId, stage) => {
         if (stage === "crawl") await hold.promise;
       },
@@ -952,5 +1123,28 @@ describe("errors against a real database", () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("invalid_audit");
     expect(res.body.error.message).toMatch(/userAgent/);
+  });
+
+  it("refuses config overrides that would crawl faster or more than allowed, creating nothing", async () => {
+    const audits = (await request(app).get("/audits")).body.audits.length;
+    for (const config of [
+      { pageCap: 5_000 }, // past the top-level pageCap check (≤ 500) through options.config
+      { maxCrawlDelayMs: 3_600_000 }, // would crawl hosts that ask for hours between requests
+      { maxPageCap: 10_000, pageCap: 10_000 },
+      { discoveryMaxFetches: 100_000 },
+      { userAgent: "LinkLensBot/0.1 (+http://insecure.example/bot)" },
+    ]) {
+      const res = await request(app)
+        .post("/audits")
+        .send({ url: `${server.origin}/`, options: { config } });
+      expect(res.status, JSON.stringify(config)).toBe(400);
+      expect(res.body.error.code).toBe("invalid_audit");
+      expect(res.body.error.message).toMatch(/config\./);
+    }
+    const top = await request(app)
+      .post("/audits")
+      .send({ url: `${server.origin}/`, pageCap: 501 });
+    expect(top.status).toBe(400);
+    expect((await request(app).get("/audits")).body.audits.length).toBe(audits);
   });
 });

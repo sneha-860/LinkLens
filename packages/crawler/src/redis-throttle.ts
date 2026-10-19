@@ -24,18 +24,21 @@ return 0
 /**
  * Phase 2: the holder has dispatched. Record the dispatch time (taken *after* the request left)
  * and release the slot. The +1 ms in TAKE_SLOT covers TIME's millisecond truncation.
+ * The dispatch time is kept for config.throttleStateTtlMs plus the host's effective delay
+ * (max(crawlDelayMs, robots Crawl-delay)), so it outlives the delay however long that is: an
+ * expired key would let the next request go at once.
+ * ARGV: 1 = config.crawlDelayMs, 2 = config.throttleStateTtlMs.
  */
 const MARK = `
 local t = redis.call('TIME')
 local now = tonumber(t[1]) * 1000 + math.ceil(tonumber(t[2]) / 1000)
-redis.call('SET', KEYS[1], now, 'PX', 3600000)
+local delay = tonumber(ARGV[1])
+local robots = tonumber(redis.call('GET', KEYS[2]) or '0')
+if robots > delay then delay = robots end
+redis.call('SET', KEYS[1], now, 'PX', tonumber(ARGV[2]) + delay)
 redis.call('DEL', KEYS[3])
 return now
 `;
-
-/** How long a waiter sleeps while another process holds the slot (it is released within ms). */
-const HELD_POLL_MS = 2;
-const HOLDER_LEASE_MS = 10_000;
 
 /** Per-host politeness. HostThrottle (in-process) and RedisHostThrottle both satisfy it. */
 export interface Throttle {
@@ -62,7 +65,16 @@ export class RedisHostThrottle implements Throttle {
   constructor(
     private readonly redis: Redis,
     private readonly prefix: string,
-    private readonly config: Readonly<Pick<LinkLensConfig, "crawlDelayMs" | "robotsCacheTtlMs">>,
+    private readonly config: Readonly<
+      Pick<
+        LinkLensConfig,
+        | "crawlDelayMs"
+        | "robotsCacheTtlMs"
+        | "throttlePollMs"
+        | "throttleHolderLeaseMs"
+        | "throttleStateTtlMs"
+      >
+    >,
     private readonly clock: Clock = systemClock,
   ) {}
 
@@ -88,11 +100,11 @@ export class RedisHostThrottle implements Throttle {
           3,
           ...keys,
           String(this.config.crawlDelayMs),
-          String(HOLDER_LEASE_MS),
+          String(this.config.throttleHolderLeaseMs),
         ),
       );
       if (r === 0) return waited;
-      const wait = r < 0 ? HELD_POLL_MS : r;
+      const wait = r < 0 ? this.config.throttlePollMs : r;
       await this.clock.sleep(wait);
       waited += wait;
     }
@@ -105,6 +117,8 @@ export class RedisHostThrottle implements Throttle {
       this.key("last", url),
       this.key("robots-delay", url),
       this.key("holder", url),
+      String(this.config.crawlDelayMs),
+      String(this.config.throttleStateTtlMs),
     );
   }
 }

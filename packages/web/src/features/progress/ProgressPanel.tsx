@@ -6,7 +6,14 @@ import { Badge, Button, Card, ProgressBar, StatusBadge } from "../../ui/ui.js";
 
 const ICONS = { pending: "○", running: "◐", completed: "✓", failed: "✗" } as const;
 
-/** Live progress: a bar over the 18 stages, the crawl counter, and each stage with its duration. */
+/** Why a completed stage did nothing (an optional model stage that is off or has no model). */
+const skippedReason = (detail: Record<string, unknown> | null | undefined): string | null =>
+  typeof detail?.["skipped"] === "string" ? detail["skipped"] : null;
+
+/**
+ * Live progress: a bar over the audit's stages, the crawl counter, and each stage with its
+ * duration. A skipped optional stage shows a dash, with the reason as its tooltip.
+ */
 export function ProgressPanel({ audit, live }: { audit: Audit; live: LiveState | null }) {
   const resume = useResumeAudit(audit.id);
   const stages = live?.stages ?? audit.stages;
@@ -50,13 +57,25 @@ export function ProgressPanel({ audit, live }: { audit: Audit; live: LiveState |
         </div>
       )}
       <ol className="stages" aria-label="Stages">
-        {stages.map((s) => (
-          <li key={s.stage} className={`stage stage-${s.status}`} data-status={s.status}>
-            <span aria-hidden="true">{ICONS[s.status]}</span>
-            {STAGE_NAMES[s.stage] ?? s.stage}
-            <span className="stage-time">{fmtMs(s.durationMs)}</span>
-          </li>
-        ))}
+        {stages.map((s) => {
+          const skipped = s.status === "completed" ? skippedReason(s.detail) : null;
+          return (
+            <li
+              key={s.stage}
+              className={`stage stage-${skipped === null ? s.status : "skipped"}`}
+              data-status={skipped === null ? s.status : "skipped"}
+              title={skipped === null ? undefined : `Skipped: ${skipped}`}
+            >
+              <span aria-hidden="true">{skipped === null ? ICONS[s.status] : "–"}</span>
+              {STAGE_NAMES[s.stage] ?? s.stage}
+              {skipped === null ? (
+                <span className="stage-time">{fmtMs(s.durationMs)}</span>
+              ) : (
+                <span className="stage-time">skipped</span>
+              )}
+            </li>
+          );
+        })}
       </ol>
     </Card>
   );

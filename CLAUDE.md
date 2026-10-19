@@ -77,6 +77,10 @@ For each pair with REF > ε or a link, with threshold α (`config.alpha`):
 - **All thresholds live in one config file**: `packages/core/src/config.ts`. No magic numbers elsewhere.
 - **Determinism**: fixed seeds (`randomSeed` in config).
 - **Every module has unit tests.**
+- Documentation for readers lives in `docs/`: `ARCHITECTURE.md` (pipeline diagram, modules, data
+  flow), `METHODS.md` (formal definitions; adaptations of Belezko & McGoey 2023 marked),
+  `EVALUATION.md` (E1–E8 protocols) and `LIMITATIONS.md`. Keep them in step with this spec when
+  a definition, default or protocol changes. `pnpm demo` audits the fixture site end to end.
 
 ## Repo conventions
 
@@ -114,11 +118,24 @@ For each pair with REF > ε or a link, with threshold α (`config.alpha`):
 - Politeness: consecutive dispatches to a host are at least `max(config.crawlDelayMs, robots Crawl-delay)`
   apart, in real time, across every process and run. `RedisHostThrottle` has two phases:
   `acquire()` takes the host's single slot, and `dispatched()` records the time after the request
-  is sent. The robots.txt Crawl-delay is stored per host (not per run). The in-process
-  `HostThrottle` is kept for single-process/offline use.
+  is sent. The robots.txt Crawl-delay is stored per host (not per run). The last dispatch is kept
+  for `throttleStateTtlMs` plus the host's effective delay, so it never expires before the next
+  request is due (a Crawl-delay of hours included); `throttlePollMs` and
+  `throttleHolderLeaseMs` are in config too. `dispatched()` is called after every `acquire()`,
+  even when the request could not be sent (`fetchPage` and `fetchRobots` both guarantee it). The
+  in-process `HostThrottle` is kept for single-process/offline use.
 - A host whose Crawl-delay exceeds `maxCrawlDelayMs` is not crawled at all. Its fetches are recorded
   as blocked. We never go faster than a site asks.
-- `createRun` refuses a User-Agent without a product token, a version and a `(+https://…)` contact.
+- `createRun` refuses a User-Agent without a product token, a version and a `(+https://…)` contact
+  (an `http://` contact is refused).
+- Overrides may only tighten politeness (`politenessProblems` in core config): a lower
+  `crawlDelayMs`, a higher `maxCrawlDelayMs`, larger caps (`pageCap`, `discoveryMaxFetches`,
+  `rescueMaxFetches`), more retries or a shorter robots.txt grace are refused, and `pageCap` is
+  held to `maxPageCap` (500). `PipelineRunner.create` checks an audit's overrides against the
+  deployment's settings (the API answers 400); `DiscoveryRunner` and `RescueFetcher`
+  (`followUpConfig`) check theirs against the run's stored config and check the User-Agent again.
+  Research crawls that call the orchestrator directly (the LSH experiment's `lshEvalCaps`) are
+  not audits and are not held to `maxPageCap`.
 
 ### Crawl orchestrator (packages/crawler/src/orchestrator.ts)
 
@@ -401,8 +418,9 @@ whenever the output can change.**
   - Donors are split into `lshPartitions` (16) equi-depth partitions by |S_A|. Each partition
     has a banded index per row count r = 1…`lshMaxRows` (16). A query picks, per partition, the
     (b, r) minimising `lshFalsePositiveWeight`·FP + `lshFalseNegativeWeight`·FN areas over
-    containment (Simpson's rule, up to min(1, u/q)). J = x·q/(u + q − x·q) uses the partition's
-    largest size u, and results are cached per log-size-ratio bin. A partition with u < t*·q is
+    containment (Simpson's rule with `lshTuningSteps` (32) intervals, up to min(1, u/q)).
+    J = x·q/(u + q − x·q) uses the partition's largest size u, and results are cached per
+    log-size-ratio bin of relative width `lshRatioBin` (1%). A partition with u < t*·q is
     skipped (exact pruning).
   - Weighted REF can exceed ε with a lower unweighted containment, which is why t* < ε. The
     experiment below measures what is missed.
@@ -605,7 +623,7 @@ reorders the fixes, and the rule-based explanation stays the explanation of reco
   `<batch>/l13/dataset/<site>/{e6,fixes,pool,ratings}.csv` and `dataset.json` (features, the
   `l13Lightgbm` parameters, `l13ShapTop`, seed, SHA-256 per file).
 - `python -m ml train <dataset> --out <model>` (analysis/ml, LightGBM ≥ 4.3, `pip install -e
-  ".[ml]"`): lambdarank grouped by query, **leave-one-site-out**: each site's predictions come
+".[ml]"`): lambdarank grouped by query, **leave-one-site-out**: each site's predictions come
   from a model trained on the other sites only. Deterministic (seed, one thread). Priority =
   the raw score's mid-rank percentile among the site's fixes (in (0, 1)). TreeSHAP
   (`pred_contrib`, exact) gives each fix its top `l13ShapTop` (3) contributions. Writes
@@ -615,16 +633,26 @@ reorders the fixes, and the rule-based explanation stays the explanation of reco
   (`LEARNED_VERSION`) and writes `e3.csv` (E3 total ΔPR of the top k by S, learned and random).
   `python -m ml report <model>` writes `REPORT.md` (per-site E6, paired Wilcoxon learned vs S,
   E3, mean |SHAP|, verdict) and `figures/shap_summary` (beeswarm).
-- API: `GET /audits/:id/fixes?scoring=learned` reorders by priority (`applyLearned`: score =
+- API: `GET /audits/:id/fixes?mode=learned` reorders by priority (`applyLearned`: score =
   priority, fixes without one last in S order; 409 without an artefact). Every fix carries
-  `learned` {priority, raw, shap} (null without a model). The Fixes tab has a Scoring selector,
-  and the explanation card shows "Model view (learned)" under the rule-based lines.
+  `learned` {priority, raw, shap} (null without a model). The Fixes tab has a scoring-mode
+  selector (formula / importance / learned), and the explanation card shows "Model view
+  (learned)" under the rule-based lines: the top SHAP contributions as diverging bars.
+- Deployable model (for audits; `analysis/ml/deploy.py`): `python -m ml fit <dataset> --out
+<models>` trains one ranker on every labelled site (no held-out fold; refuses the
+  `graphsage` feature) and writes `ranker/{model.txt, model.json}`; its version of record is
+  `model_sha256` over its files ("name\0sha256\n", sorted by name; the corpus manifest hashes
+  it the same way). `l13 export` records each site's URL, so `model.json` lists
+  `trainedOnHosts` and an audit of a training site is flagged `seenSite`. The pipeline's
+  `learnedScore` stage scores with it (`learned@1.1.0`: `source`, `sha256`, `seenSite`).
 - **Limitations.** E6 labels are a proxy (a link the site already had), not editorial judgement;
   the learned mode is not validated by humans unless E8 ratings exist.
 
 ### GraphSAGE link predictor (optional; eval/src/l13/graph*.ts, analysis/ml/gnn.py)
 
-Off by default (`config.graphsageEnabled: false`); the audit pipeline never runs it.
+Off by default (`config.graphsageEnabled: false`). An audit runs it only through the optional
+`graphsageScore` stage (`options.models.graphsage`, default `graphsageEnabled`), and only with a
+deployable model (`gnn-fit`); otherwise the stage is skipped.
 
 - `l13 graph-export --batch <b>` writes `<batch>/l13/graphs/<site>/` per completed site: the
   unmasked graph (`full`) and each of E6's `e6Repeats` masked repeats (`r<k>`, E6's own
@@ -646,10 +674,16 @@ Off by default (`config.graphsageEnabled: false`); the audit pipeline never runs
   - Structural features are standardised per fold. Seeds: torch, NumPy and Python (PyG's
     negative sampler), one thread, deterministic algorithms (tested).
   - Writes `predictions/<site>.json` (the `graphsage-scores` payload), `scores/<site>/{e6,
-    fixes,pool}.csv` (for the ranker), `e6_metrics.csv` (graphsage, hybrid, cosine, REF per
+fixes,pool}.csv` (for the ranker), `e6_metrics.csv` (graphsage, hybrid, cosine, REF per
     repeat) and `runtime.csv` (export, train and score ms per site).
 - `l13 graph-import --batch <b>` stores each site's `graphsage-scores` artefact
   (`GRAPHSAGE_VERSION`: nodes, per repeat each target's candidates and scores, fix scores).
+- `python -m ml gnn-fit <graphs> --out <models>` trains one GraphSAGE model on every site's
+  masked repeats (`graphsage/{model.pt, model.json}` with the scaler); the pipeline's
+  `graphsageScore` stage uses it (`graphsage@1.1.0`: `source`, `sha256`, `seenSite`). E6's
+  `latestGraphSage` skips artefacts without repeats (the pipeline's).
+- The feature and graph builders are pure and live in core (`fixes/features.ts`); the eval
+  modules `l13/features.ts` and `l13/graph.ts` re-export them.
 - E6: with `graphsageEnabled`, `runExperiment("E6")` and the corpus export add the `graphsage`
   method from the run's latest artefact (`EXTERNAL_METHODS`; an unscored pair ranks last; a
   missing repeat or seed is refused). Without it the method is absent.
@@ -665,7 +699,8 @@ Off by default (`config.graphsageEnabled: false`); the audit pipeline never runs
 
 - `new RescueFetcher({ pool, redisUrl, prefix }).run(runId, policyId)` runs after discovery,
   with the crawl's prefix. It fetches each reconciled orphan's first raw URL once, going through
-  scope, robots.txt per hop and the shared throttle.
+  scope (checked before the first request too; an out-of-scope URL is recorded, not fetched),
+  robots.txt per hop and the shared throttle.
   - Fetches: `purpose = 'rescue'`, one attempt, capped by `rescueMaxFetches` (never `pageCap`).
   - Stored: 2xx HTML is extracted into `pages` (and `fetch_bodies`). Links are **not** stored.
   - Isolation: `listPages(db, runId, "crawl")` feeds the graph, audit, text and discovery, so
@@ -769,9 +804,12 @@ for every fix and rescue donor (explain@1.2.0); the pure core is `suggestAnchor`
 
 ### HTTP API and pipeline runner (packages/api)
 
-- `PipelineRunner` runs an audit through 18 stages in order: crawl → extract → discovery →
+- `PipelineRunner` runs an audit through 21 stages in order: crawl → extract → discovery →
   canonicalise → graph → reconcile → issues → text → REF → embeddings → prominence → diagnosis →
-  candidates → counterfactual → κ → scoring → rescue → explanations.
+  candidates → counterfactual → κ → scoring → importance → learnedScore → graphsageScore →
+  rescue → explanations.
+  - The three model stages are optional (see "Model stages" below); an audit created before
+    they existed keeps its own 18 stage rows (progress and `rerunFrom` use the audit's rows).
   - State: `audits` (policy, options, status, current stage) and `audit_stages` (per stage:
     status, start, finish, `duration_ms`, detail, error). These tables are mutable.
   - Resumable: `run` starts at the first stage that is not completed, and the crawl resumes
@@ -796,7 +834,9 @@ for every fix and rescue donor (explain@1.2.0); the pure core is `suggestAnchor`
     (`extraction-summary`, `canonicalisation`, `donor-effort`); extraction itself happens during
     the crawl.
   - Events (`stage`, `progress`, `done`) go to the event bus and stream as SSE.
-  - The embedder is injected: the MiniLM worker in `server.ts`, a stub in tests.
+  - The embedder is injected: the MiniLM worker in `server.ts`, a stub in tests. So is the
+    `scorer` (`ModelScorer`): `PythonScorer` in `server.ts` and the corpus runner, a stub in
+    tests.
 - `createApp({ service, apiKey?, webRoot? })` takes an `AuditService`, so tests can stub it. Every
   input is checked with zod (`schemas.ts`), queries before any database access. Errors are
   `{ error: { code, message, details? } }`: 400 validation / invalid_json / invalid_config /
@@ -822,15 +862,20 @@ for every fix and rescue donor (explain@1.2.0); the pure core is `suggestAnchor`
     loads `openapi.json` relatively.
   - `pnpm start` builds the web app and starts the API.
 - Routes (OpenAPI 3.1 at `/openapi.json`, built from the zod schemas; Swagger UI at `/docs`):
-  - `POST /audits` `{ url, pageCap?, policy (default P3), options { sigma, refVariant, workers,
-config } }` returns 202 with a Location header.
+  - `POST /audits` `{ url, pageCap? (≤ maxPageCap), policy (default P3), options { sigma,
+refVariant, workers, config, models { importance, learned, graphsage } } }` returns 202
+    with a Location header. `config` overrides may only tighten politeness (400 otherwise).
   - `GET /audits`, `GET /audits/:id` (status, crawl progress, each stage and its duration),
     `POST /audits/:id/resume`, `GET /audits/:id/events` (SSE: snapshot, stage, progress, done;
     closes when done).
   - `GET /audits/:id/summary`, `/graph?policy=` (another policy is derived on demand; with
     `importance`, each node's page type and importance once the run is complete),
-    `/issues?policy=&type=&severity=`, `/diagnosis?case=`, `/fixes?sigma=&k=10|25|50&scope=` (a
-    ranking for another σ is computed from the stored counterfactual and stored), `/orphans`, and
+    `/issues?policy=&type=&severity=`, `/diagnosis?case=`,
+    `/fixes?sigma=&k=10|25|50&scope=&mode=formula|importance|learned` (a ranking for another σ
+    or rule is computed from the stored counterfactual and stored; `mode` defaults to the run's
+    `fixScoring`; `scoring=learned` is a deprecated alias; every fix carries `learned`
+    {priority, raw, shap} and `graphsage` (null without them), and the response
+    `learnedModel` / `graphsageModel` {source, sha256, trainedOn, seenSite}), `/orphans`, and
     `/sensitivity` (all six policies: size, reachability, orphans, issues, top-10 PageRank Jaccard
     in P3 form).
   - `GET /audits/:id/reconciliation`: the discovery inventory, each URL's channels (orphans
@@ -863,8 +908,28 @@ config } }` returns 202 with a Location header.
       (an invalid rating gives 400 `invalid_rating`).
     - `GET /audits/:id/rating/summary` returns precision@k and agreement.
   - A fix's (or rescue donor's) `explanation` is `{ sentence, lines, anchor }`.
+- Model stages (docs/METHODS.md §10; `stages.ts` `modelStages`, `scorer.ts`):
+  - Toggled per audit by `options.models { importance, learned, graphsage }` (defaults: on, on,
+    `config.graphsageEnabled`). A stage that is off completes with `{ skipped: "disabled" }`.
+  - `importance` (DB stage): `buildImportanceRun`, a `page-importance` artefact.
+  - `learnedScore`: the latest ranking for the audit's σ → `loadFixFeatureRows` (core; the same
+    `fixFeatureRows` that builds the L13 training rows) → the deployable ranker → a
+    `learned-priority` artefact (`source: "pipeline"`, the model's SHA-256, `seenSite`).
+  - `graphsageScore`: `loadSiteGraphInputs` + the run's embeddings (the cache) → `siteGraph`
+    (core; as `l13 graph-export` builds "full") → a `graphsage-scores` artefact with fix scores
+    only (no repeats, so E6 never reads it).
+  - Graceful skip: no scorer, no model file, no interpreter or Python package, no ranking, or
+    a timeout (`scorerTimeoutMs`) completes the stage with `{ skipped: reason }`; only a
+    scorer that ran and failed is a stage error.
+  - `PythonScorer` runs `python -m ml score <request.json> --models <dir> --out
+<response.json>` (protocol `linklens-scorer@1`, `core/src/fixes/scorers.ts`) in a temporary
+    directory, cwd and PYTHONPATH `analysis/`. A CLI rather than a service: once per stage, no
+    port or supervisor, deterministic. Env: `LINKLENS_PYTHON` (default `analysis/.venv`'s
+    interpreter, else `python`), `LINKLENS_MODELS_DIR` (default
+    `<LINKLENS_CACHE_DIR>/scoring-models`, with `ranker/` and `graphsage/`).
 - Threads: the database-only stages (`stages.ts` `DB_STAGES`: extract, canonicalise, graph,
-  reconcile, issues, text, REF, prominence, diagnosis, candidates, κ, scoring, explanations) run in
+  reconcile, issues, text, REF, prominence, diagnosis, candidates, κ, scoring, importance,
+  explanations) run in
   a `StageWorkerPool` of `apiStageWorkers` (2) long-lived worker threads, each with its own pg
   pool. This needs `databaseUrl` in the deps; with 0 workers they run on the main thread.
   - A stage waits for a free worker. A worker that dies fails its stage and is replaced.
@@ -875,8 +940,12 @@ config } }` returns 202 with a Location header.
   `policyJob` (async) reads the same state on every instance, and an interrupted job resumes.
 - Run it: `pnpm --filter @linklens/api start`, or `pnpm start` with the dashboard. It reads the
   repository's `.env`, and real variables win. Env: DATABASE_URL or PG*, REDIS_URL, PORT,
-  LINKLENS_CACHE_DIR, LINKLENS_PREFIX, LINKLENS_USER_AGENT, LINKLENS_API_KEY and
-  LINKLENS_WEB_ROOT (`none` turns the dashboard off).
+  LINKLENS_CACHE_DIR, LINKLENS_PREFIX, LINKLENS_USER_AGENT, LINKLENS_API_KEY,
+  LINKLENS_PYTHON, LINKLENS_MODELS_DIR and LINKLENS_WEB_ROOT (`none` turns the dashboard off).
+- Demo (`src/demo.ts`, `pnpm demo [--port 4010] [--keep]`): serves the crawler's fixture site
+  on 127.0.0.1 (`startFixtureServer({ port })`), runs one P3 audit through `PipelineRunner` with
+  the real embedder and scorer, prints each stage and a summary (pages, graph, orphans, issues,
+  diagnosis, top fixes with their explanation). `--keep` keeps the site up afterwards.
 
 ### Web dashboard (packages/web)
 
@@ -888,9 +957,11 @@ config } }` returns 202 with a Location header.
   `useCreateAudit`, which creates the audit and then uploads the CSV, before the pipeline reaches
   prominence. `useAuditEvents.ts` is the SSE live state (`applyEvent` is pure) with a polling
   fallback.
-- Routes: `/` (audits list), `/audits/new` (form: URL, page cap, policy, σ, optional CSV), and
+- Routes: `/` (audits list), `/audits/new` (form: URL, page cap, policy, σ, the optional model
+  stages, optional CSV), and
   `/audits/:id/:tab` with the tabs summary, graph, fixes, diagnosis, orphans, links,
-  canonicalisation, rating and export. The live progress panel (bar + 18 stages with durations + crawl counter + resume) shows
+  canonicalisation, rating and export. The live progress panel (bar + the audit's stages with durations, a skipped model
+  stage as "skipped" with its reason + crawl counter + resume) shows
   while an audit runs or after it fails.
 - Graph tab (`features/graph`): Cytoscape.js with the fcose layout, loaded lazily (its own chunk).
   - `model.ts` (pure, tested) builds the elements:
@@ -1133,12 +1204,16 @@ orphans`.
 
 ### Corpus runner (packages/eval/corpus.yaml, src/corpus/, src/corpus-cli.ts)
 
-- E5 Screaming Frog sites: 10 sites have `screaming_frog: true` (4 blogs, 3 catalogues, 3
-  documentation sites). Crawl each with Screaming Frog from the same URL, export Internal: All,
-  Bulk Export → Links → All Inlinks and Reports → Orphan Pages, and run `corpus import-sf
---batch <name> --site <id> --from <folder> [--sf-version <v>]`: the three files are parsed
-  (a foreign file is refused), copied to `<batch>/screaming-frog/<site>/` and recorded with row
-  counts and SHA-256 in `import.json`. `status` shows which marked sites still lack exports.
+- E5 Screaming Frog sites: 9 sites have `screaming_frog: true` (4 blogs, 3 catalogues, 2
+  documentation sites; pytest blocks crawlers). Crawl each with Screaming Frog from the same URL,
+  export Internal: All, Bulk Export → Links → All Inlinks and Reports → Orphan Pages, and run
+  `corpus import-sf --batch <name> --site <id> --from <folder> [--sf-version <v>]
+[--no-orphans]`: the files are parsed (a foreign file is refused), copied to
+  `<batch>/screaming-frog/<site>/` and recorded with row counts and SHA-256 in `import.json`.
+  `status` shows which marked sites still lack exports.
+  - `--no-orphans` (recorded as `orphans: "skipped"`): Screaming Frog did not look for orphans
+    (the free version crawls no sitemaps), so the report is not imported and E5 has no orphan
+    comparison. An empty report imported without it reads as "no orphans found" (warned).
 - `corpus.yaml`: 28 sites in three `architecture_class`es (`cms-blog`, `ecommerce-catalogue`,
   `documentation`), each with notes, plus one `seed`, the audit's `policy`/`sigma`/`refVariant`
   and `config` overrides (keys of `config.ts` only; `randomSeed` comes from `seed`).
@@ -1161,7 +1236,7 @@ import-sf | export --batch <name>` (`--corpus`, `--out` default `results/corpus`
   re-crawl and when it is due. It reads the repository's `.env`; DATABASE_URL, REDIS_URL,
   LINKLENS_PREFIX, LINKLENS_CACHE_DIR (default `.cache/linklens`), LINKLENS_USER_AGENT.
 - `run` audits the sites **sequentially** through the API's `PipelineRunner`
-  (`@linklens/api/pipeline`; `PipelineDriver`), so an audit is the same 18 stages, leases and
+  (`@linklens/api/pipeline`; `PipelineDriver`), so an audit is the same 21 stages, leases and
   events as one from the dashboard. The resolved config (defaults + overrides + seed +
   User-Agent) is stored as each run's config.
 - Resumable: `<out>/<batch>/manifest.json` is the batch state, written atomically after every
@@ -1175,9 +1250,12 @@ import-sf | export --batch <name>` (`--corpus`, `--out` default `results/corpus`
 - The manifest is the reproducibility record: git commit, branch, dirty files and a hash of
   `git diff HEAD`; the full config and its hash; seed; User-Agent; the six policy versions and
   every stage version (`currentVersions`); the embedding model's name, dtype, body tokens and a
-  SHA-256 over its files (null until the first cache miss downloads it); the pnpm lockfile hash;
+  SHA-256 over its files (null until the first cache miss downloads it); the deployable scoring
+  models (`scoringModels`: ranker and graphsage, their files, SHA-256, training sites and dataset;
+  null until fit; a changed model refuses a resume, one fit later is recorded); the pnpm lockfile hash;
   one `session` per invocation (timestamps, git, host, outcome); per site status, run id,
-  attempts, timestamps, error, and the commit and model hash it finished with; each export.
+  attempts, timestamps, error, and the commit, model hash and scoring models' hashes it
+  finished with; each export.
 - `export` writes tidy CSVs (columns in `csv.ts`, the contract with analysis/):
   - `metrics.csv`: one row per site × policy × metric (completed sites; `runMetrics` derives all
     six policies in memory from the raw observations, writing nothing). Groups: `graph.*`,

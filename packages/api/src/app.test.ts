@@ -356,7 +356,7 @@ describe("OpenAPI", () => {
     const fixesParams = doc.paths["/audits/{id}/fixes"].get.parameters.map(
       (p: { name: string }) => p.name,
     );
-    expect(fixesParams).toEqual(["id", "sigma", "k", "scope", "scoring"]);
+    expect(fixesParams).toEqual(["id", "sigma", "k", "scope", "mode", "scoring"]);
     expect(doc.info.description).toContain(STAGES.join(" → "));
   });
 

@@ -60,7 +60,7 @@ describe("new audit form", () => {
       url: "https://example.com/",
       pageCap: 120,
       policy: "P5",
-      options: { sigma: "blended" },
+      options: { sigma: "blended", models: { importance: true, learned: true, graphsage: false } },
     });
     expect(posts[1]?.search).toBe("?name=ga.csv");
     expect(posts[1]?.body).toBe("source_url,target_url,clicks\n/a,/b,3\n");

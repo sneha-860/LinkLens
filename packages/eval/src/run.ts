@@ -10,7 +10,11 @@ import { loadRunInputs } from "./in-memory.js";
 import { parseRatings, ratingSheet, summariseRatings } from "./e8-ratings.js";
 import { experiments } from "./experiments.js";
 
-/** The run's latest GraphSAGE scores under the policy (config.graphsageEnabled needs them). */
+/**
+ * The run's latest GraphSAGE scores with E6 repeats under the policy (config.graphsageEnabled
+ * needs them). Scores the pipeline's graphsageScore stage stored (fixes only, no repeats) are
+ * skipped: E6 must use the leave-one-site-out scores of `l13 graph-import`.
+ */
 export async function latestGraphSage(
   db: q.Queryable,
   runId: number,
@@ -20,7 +24,9 @@ export async function latestGraphSage(
     kind: fixes.GRAPHSAGE_ARTEFACT,
     policyVersion: canonicalise.POLICIES[policy].version,
   });
-  const last = rows[rows.length - 1];
+  const last = rows
+    .filter((r) => (r.payload as unknown as fixes.GraphSageScores).repeats.length > 0)
+    .at(-1);
   if (last === undefined) {
     throw new Error(
       `config.graphsageEnabled is on but run ${runId} has no ${fixes.GRAPHSAGE_ARTEFACT} artefact under ${policy}: run \`l13 graph-export\`, \`python -m ml gnn\` and \`l13 graph-import\` first`,

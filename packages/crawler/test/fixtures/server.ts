@@ -63,7 +63,8 @@ const REDIRECTS: Record<string, [number, string]> = {
  * /image.png. Paths are matched exactly and case-sensitively; unknown paths are 404.
  */
 export async function startFixtureServer(
-  opts: { slowMs?: number; robotsStatus?: number } = {},
+  /** `port` 0 (the default) picks a free port; the demo (`pnpm demo`) uses a fixed one. */
+  opts: { slowMs?: number; robotsStatus?: number; port?: number } = {},
 ): Promise<FixtureServer> {
   const files = indexFiles(SITE_DIR);
   const requests: LoggedRequest[] = [];
@@ -135,7 +136,10 @@ export async function startFixtureServer(
   };
 
   const server = createServer(handler);
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(opts.port ?? 0, "127.0.0.1", resolve);
+  });
   const { port } = server.address() as AddressInfo;
   return {
     origin: `http://127.0.0.1:${port}`,

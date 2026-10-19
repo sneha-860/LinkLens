@@ -127,27 +127,46 @@ const featureValue = (v: number | string | null) =>
         ? fmtSci(v)
         : fmt2(v);
 
-/** The L13 model's view of a fix: its priority and the features that moved it most (TreeSHAP). */
+/**
+ * The L13 model's view of a fix: its priority and the features that moved it most (TreeSHAP),
+ * as bars diverging from zero, scaled to the largest |contribution| shown. Each bar is labelled
+ * with its signed value, so the chart never depends on colour alone.
+ */
 export function ModelView({ learned }: { learned: LearnedFix }) {
+  const max = Math.max(...learned.shap.map((c) => Math.abs(c.contribution)), Number.EPSILON);
   return (
     <section className="model-view" aria-label="Model view (learned)">
       <h4>
         Model view (learned) <Badge>priority {(100 * learned.priority).toFixed(0)}%</Badge>
       </h4>
-      <ul className="shap-list">
-        {learned.shap.map((c) => (
-          <li key={c.feature}>
-            <span className={c.contribution >= 0 ? "shap-up" : "shap-down"}>
-              {c.contribution >= 0 ? "▲ +" : "▼ −"}
-              {fmt2(Math.abs(c.contribution))}
-            </span>{" "}
-            {FEATURE_NAMES[c.feature] ?? c.feature} = {featureValue(c.value)}
-          </li>
-        ))}
+      <ul className="shap-bars">
+        {learned.shap.map((c) => {
+          const up = c.contribution >= 0;
+          const width = `${(50 * Math.abs(c.contribution)) / max}%`;
+          return (
+            <li key={c.feature} className="shap-bar-row">
+              <span className="shap-label">
+                {FEATURE_NAMES[c.feature] ?? c.feature}
+                <span className="shap-value"> = {featureValue(c.value)}</span>
+              </span>
+              <span className="shap-track" aria-hidden="true">
+                <span
+                  className={`shap-bar ${up ? "shap-bar-up" : "shap-bar-down"}`}
+                  style={up ? { left: "50%", width } : { right: "50%", width }}
+                />
+              </span>
+              <span className={`shap-num ${up ? "shap-up" : "shap-down"}`}>
+                {up ? "+" : "−"}
+                {fmt2(Math.abs(c.contribution))}
+              </span>
+            </li>
+          );
+        })}
       </ul>
       <p className="field-hint">
-        SHAP contributions to the model&apos;s score. The rule-based lines above are the explanation
-        of record.
+        SHAP contributions to the model&apos;s score (right raises the priority, left lowers it).
+        The model learned from links hidden from other sites, not from editors&apos; judgement; the
+        rule-based lines above are the explanation of record.
       </p>
     </section>
   );
@@ -193,6 +212,12 @@ export function ExplanationCard({ fix }: { fix: Fix }) {
         <dd>
           {fix.templateReach} page{fix.templateReach === 1 ? "" : "s"}
         </dd>
+        {fix.graphsage !== undefined && fix.graphsage !== null && (
+          <>
+            <dt>GraphSAGE score</dt>
+            <dd>{fmt2(fix.graphsage)}</dd>
+          </>
+        )}
         <dt>σ variants</dt>
         <dd>
           {Object.entries(fix.sigmas)

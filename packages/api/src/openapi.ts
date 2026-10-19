@@ -198,7 +198,9 @@ export function openApiDocument(): JsonSchema {
       "/audits/{id}/fixes": {
         get: {
           summary:
-            "Ranked fixes S(u→v) = ΔPR × σ / κ (or the L13 learned priority), top k, with explanations",
+            "Ranked fixes (mode formula: S = ΔPR × σ / κ; importance: S × importance; learned: the L13 priority), top k, with explanations",
+          description:
+            "Every fix carries `learned` ({ priority in [0, 1], raw, shap: [{ feature, value, contribution }] }: the ranker's top TreeSHAP contributions, largest |contribution| first) and `graphsage` (the link predictor's logit), each null when the run has no such artefact. `learnedModel` / `graphsageModel` name the model (source import or pipeline, SHA-256, training sites, and `seenSite` when this site was one of them). The learned labels are masked links (E6), not editorial judgement.",
           parameters: [idParam, ...queryParams(FixesQuerySchema)],
           responses: { "200": json("Fixes"), ...errors, ...notYet },
         },

@@ -51,14 +51,7 @@ export interface E6Row extends PairFeatures {
   readonly sigma_hybrid: number;
 }
 
-export interface FixRow extends PairFeatures {
-  readonly fix_id: string;
-  readonly donor: string;
-  readonly target: string;
-  readonly type: string;
-  readonly rank_s: number;
-  readonly s_score: number;
-}
+export type FixRow = fixes.FixFeatureRow;
 
 export interface PoolRow extends PairFeatures {
   readonly entry_id: string;
@@ -228,32 +221,11 @@ export function siteFeatures(inputs: RunInputs, policyId: PolicyId): SiteFeature
 
 /** Fix rows: every fix of the default ranking with its features (what "learned" scores). */
 export function fixRows(sf: SiteFeatures, config: Readonly<LinkLensConfig>): FixRow[] {
-  return sf.ranked.map((f) => ({
-    fix_id: f.id,
-    donor: f.donor,
-    target: f.target,
-    type: f.type,
-    rank_s: f.rank,
-    s_score: sScore(f.deltaPr, f.ref, f.cosine, f.kappa, config),
-    ...pairFeatures({
-      donor: f.donor,
-      target: f.target,
-      deltaPr: f.deltaPr,
-      depthBefore: f.depthBefore,
-      depthAfter: f.depthAfter,
-      ref: f.ref,
-      cosine: f.cosine,
-      jaccard: jaccardOf(
-        sf.donorSet.get(f.donor) ?? new Set(),
-        sf.targetTerms.get(f.target) ?? new Set(),
-      ),
-      omega: f.prominence.omega ?? 0,
-      kappa: f.kappa,
-      templateReach: f.templateReach,
-      donorFacts: factsOf(sf.facts, f.donor),
-      targetFacts: factsOf(sf.facts, f.target),
-    }),
-  }));
+  return fixes.fixFeatureRows(
+    sf.ranked,
+    { facts: sf.facts, donorTerms: sf.donorSet, targetTerms: sf.targetTerms },
+    config,
+  );
 }
 
 /** Pool rows: E3's pool at the run's ε, α and σ, with features (orphan targets detached). */

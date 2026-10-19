@@ -9,6 +9,8 @@ export interface LiveStage {
   status: StageStatus;
   durationMs: number | null;
   error: string | null;
+  /** What the stage reported (e.g. `{ skipped: reason }` for an optional model stage). */
+  detail?: Record<string, unknown> | null;
 }
 
 export interface LiveState {
@@ -28,6 +30,7 @@ export const fromAudit = (a: Audit): LiveState => ({
     status: s.status,
     durationMs: s.durationMs,
     error: s.error,
+    detail: s.detail,
   })),
   crawl: null,
   connected: false,
@@ -48,6 +51,7 @@ export function applyEvent(state: LiveState, e: AuditEvent): LiveState {
                 status: e.status,
                 durationMs: e.status === "running" ? null : e.durationMs,
                 error: e.status === "failed" ? e.error : null,
+                detail: e.status === "completed" ? (e.detail ?? null) : null,
               },
         ),
       };

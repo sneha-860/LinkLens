@@ -9,9 +9,10 @@
 # Scope is the seed's host (config.includeSubdomains is off), so a seed path is only where the
 # breadth-first crawl starts: the other pages of the host are in scope too (see the notes).
 #
-# E5: the 10 sites with `screaming_frog: true` are also crawled with Screaming Frog (start at the
+# E5: the 9 sites with `screaming_frog: true` are also crawled with Screaming Frog (start at the
 # same URL; export Internal: All, Bulk Export → Links → All Inlinks, and Reports → Orphan Pages)
-# and imported with `corpus import-sf`.
+# and imported with `corpus import-sf`. pytest was planned as a tenth but is not marked: it blocks
+# crawlers.
 
 version: 1
 
@@ -160,7 +161,6 @@ sites:
     url: https://docs.pytest.org/en/stable/
     architecture_class: documentation
     notes: Sphinx on Read the Docs; version paths (/en/stable, /en/latest) share the host.
-    screaming_frog: true
   - id: flask
     url: https://flask.palletsprojects.com/en/stable/
     architecture_class: documentation

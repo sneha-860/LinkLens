@@ -5,7 +5,7 @@
  * a `graphsage-scores` artefact. E6 reads the masked repeats' scores as its "graphsage" method;
  * the L13 ranker reads them as a feature.
  */
-export const GRAPHSAGE_VERSION = "graphsage@1.0.0";
+export const GRAPHSAGE_VERSION = "graphsage@1.1.0";
 export const GRAPHSAGE_ARTEFACT = "graphsage-scores";
 
 /** One masked E6 repeat: for each target, its candidate donors and their scores. */
@@ -33,6 +33,14 @@ export interface GraphSageScores {
     readonly createdAt: string;
     /** Training and scoring wall time for this site's fold, in ms. */
     readonly runtimeMs: Readonly<Record<string, number>>;
+    /**
+     * graphsage@1.1.0: "import" (`l13 graph-import`: E6 repeats and fixes, leave-one-site-out)
+     * or "pipeline" (the graphsageScore stage: fixes only, a deployable fit), the model files'
+     * SHA-256, and whether this site was a training site. Absent before 1.1.0.
+     */
+    readonly source?: "import" | "pipeline";
+    readonly sha256?: string | null;
+    readonly seenSite?: boolean;
   };
   /** Sorted node URLs; every index above points here. */
   readonly nodes: readonly string[];
