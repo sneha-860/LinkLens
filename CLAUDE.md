@@ -783,6 +783,9 @@ for every fix and rescue donor (explain@1.2.0); the pure core is `suggestAnchor`
   with the ranking's `unweighted` variant), S_p = the paragraph's n-grams under the site's
   tokeniser. The best paragraph (ties: the earlier) is used only when its REF is above
   `config.epsilon`.
+- S_p does not depend on the target, so `buildExplanations` computes each donor's
+  (`prepareParagraphs`) once and reuses it for every target. Recomputing it per fix took 80
+  minutes on a docs site with two 10,000-paragraph pages and 10,504 fixes.
 - Anchor: the matched n-gram with the largest Title weight (ties: more words, the earlier
   occurrence, then the term), quoted **verbatim** from the paragraph: `text/tokenise.ts`
   `spannedPhrases` gives wordPhrases' words with their offsets in the original text (tested to
@@ -1256,6 +1259,14 @@ import-sf | export --batch <name>` (`--corpus`, `--out` default `results/corpus`
   one `session` per invocation (timestamps, git, host, outcome); per site status, run id,
   attempts, timestamps, error, and the commit, model hash and scoring models' hashes it
   finished with; each export.
+- Git state (`gitState`) ignores the repository's `results/` folder (`RESULTS_DIR`): a batch
+  writing its own output there does not make the tree dirty.
+- `export` keeps each completed site's rows (metrics, E1 pairs, E2 channels, E3, E6, E7) in
+  `<batch>/export-cache/<site>.json`, keyed by the run, the commit and diff of the code, the
+  embedding model and whether an embedder ran. A rerun after a crash reuses them; E4, E5,
+  sites and stages are always recomputed (they are quick). Run it with a larger heap on dense
+  sites (`NODE_OPTIONS=--max-old-space-size=4096`): E7's per-(ε, α) caches exceeded Node's
+  default on kottke.
 - `export` writes tidy CSVs (columns in `csv.ts`, the contract with analysis/):
   - `metrics.csv`: one row per site × policy × metric (completed sites; `runMetrics` derives all
     six policies in memory from the raw observations, writing nothing). Groups: `graph.*`,

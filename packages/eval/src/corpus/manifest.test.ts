@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -9,6 +10,7 @@ import {
   MANIFEST_FILE,
   configSha256,
   currentVersions,
+  gitState,
   markCrashedSessions,
   modelInfo,
   newManifest,
@@ -262,5 +264,33 @@ describe("markCrashedSessions", () => {
 describe("currentVersions", () => {
   it("names every canonicalisation policy", () => {
     expect(Object.keys(currentVersions().policies)).toEqual(["P0", "P1", "P2", "P3", "P4", "P5"]);
+  });
+});
+
+describe("gitState", () => {
+  it("ignores the results folder, but not other changes", () => {
+    const repo = mkdtempSync(join(tmpdir(), "linklens-git-"));
+    try {
+      const run = (...args: string[]) =>
+        execFileSync("git", args, { cwd: repo, stdio: ["ignore", "pipe", "ignore"] });
+      run("init", "-q");
+      run("config", "user.email", "t@example.org");
+      run("config", "user.name", "t");
+      run("config", "core.autocrlf", "false");
+      writeFileSync(join(repo, "a.ts"), "1\n");
+      run("add", "a.ts");
+      run("commit", "-q", "-m", "a");
+      // A batch's own output does not make the tree dirty.
+      mkdirSync(join(repo, "results", "corpus", "b"), { recursive: true });
+      writeFileSync(join(repo, "results", "corpus", "b", "manifest.json"), "{}");
+      expect(gitState(repo)).toMatchObject({ dirty: false, changes: [], diffSha256: null });
+      // A code change does, and only it is listed.
+      writeFileSync(join(repo, "a.ts"), "2\n");
+      const g = gitState(repo);
+      expect(g).toMatchObject({ dirty: true, changes: [" M a.ts"] });
+      expect(g.diffSha256).toMatch(/^[0-9a-f]{64}$/);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 });

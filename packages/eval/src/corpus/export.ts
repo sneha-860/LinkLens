@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalise, db as q, type SigmaVariant } from "@linklens/core";
 import type { Corpus } from "./corpus.js";
@@ -31,7 +31,7 @@ import {
   toCsv,
   type Cell,
 } from "./csv.js";
-import type { ExportRecord, GitState, Manifest } from "./manifest.js";
+import { writeJsonAtomic, type ExportRecord, type GitState, type Manifest } from "./manifest.js";
 import {
   channelMetrics,
   e3Metrics,
@@ -44,6 +44,42 @@ import {
 } from "./metrics.js";
 
 type Row<C extends readonly string[]> = Record<C[number], Cell>;
+
+/** Each site's computed rows are kept in `<batch>/export-cache/<site>.json`. */
+export const EXPORT_CACHE_DIR = "export-cache";
+/** Bump when the cached rows' shape changes. */
+const EXPORT_CACHE_VERSION = 1;
+
+/** The rows a completed site's audit run gives (everything but E4, E5, sites and stages). */
+interface RunRows {
+  metrics: Row<typeof METRICS_COLUMNS>[];
+  channels: Row<typeof CHANNELS_COLUMNS>[];
+  pairs: Row<typeof POLICY_PAIRS_COLUMNS>[];
+  e3: Row<typeof E3_COLUMNS>[];
+  e6: Row<typeof E6_COLUMNS>[];
+  e7: Row<typeof E7_COLUMNS>[];
+  e7Pairs: Row<typeof E7_SIGMA_PAIRS_COLUMNS>[];
+}
+
+/**
+ * What a site's cached rows were computed from: the run, the code (commit and the diff of
+ * tracked files), the embedding model, and whether an embedder ran. Any change recomputes them.
+ */
+export function exportCacheKey(
+  runId: number,
+  git: GitState,
+  manifest: Pick<Manifest, "model">,
+  withEmbedder: boolean,
+): string {
+  return JSON.stringify({
+    v: EXPORT_CACHE_VERSION,
+    runId,
+    commit: git.commit,
+    diff: git.diffSha256,
+    model: manifest.model.sha256,
+    embedder: withEmbedder,
+  });
+}
 
 export interface ExportResult {
   readonly record: ExportRecord;
@@ -124,130 +160,25 @@ export async function exportBatch(
         });
       }
       if (s.status === "completed") {
-        log(`${s.id}: metrics of run ${s.runId}`);
-        const run = await runMetrics(
-          db,
-          s.runId,
-          policy,
-          manifest.audit.sigma as SigmaVariant,
-          manifest.audit.refVariant === "unweighted" ? "unweighted" : "weighted",
-        );
-        for (const p of run.policies) {
-          for (const m of p.metrics) {
-            metrics.push({
-              ...base,
-              run_id: s.runId,
-              policy: p.policy,
-              policy_version: p.policyVersion,
-              is_audit_policy: p.policy === policy,
-              metric: m.metric,
-              value: m.value,
-            });
-          }
+        const runId = s.runId;
+        const key = exportCacheKey(runId, git, manifest, embedder !== undefined);
+        const cacheFile = join(dir, EXPORT_CACHE_DIR, `${s.id}.json`);
+        let rows = readCachedRows(cacheFile, key);
+        if (rows === null) {
+          log(`${s.id}: metrics of run ${runId}`);
+          rows = await runRows(db, manifest, base, runId, embedder);
+          mkdirSync(join(dir, EXPORT_CACHE_DIR), { recursive: true });
+          writeJsonAtomic(cacheFile, { key, rows });
+        } else {
+          log(`${s.id}: metrics of run ${runId} (cached)`);
         }
-        if (embedder !== undefined) {
-          // E3, E6 and E7 share what they load: E3's data (embeddings included) and one E6 run
-          // whose hybrid is also gated at every ε E7 sweeps.
-          const inputs = await loadRunInputs(db, s.runId, policy);
-          const { config } = inputs;
-          const e3Data = await loadE3Data(
-            db,
-            s.runId,
-            policy,
-            embedder,
-            manifest.audit.refVariant === "unweighted" ? "unweighted" : "weighted",
-          );
-          const result = compareE3(
-            buildE3Inputs(e3Data, {
-              epsilon: config.epsilon,
-              alpha: config.alpha,
-              sigma: manifest.audit.sigma as SigmaVariant,
-            }),
-            config.e3TopKs,
-            config.e3RandomDraws,
-            config.randomSeed,
-          );
-          const recovery = await maskingRecovery(inputs, policy, embedder, config.randomSeed, {
-            gateEpsilons: [...new Set(e7Settings(config).map((x) => x.epsilon))],
-            ...(config.graphsageEnabled
-              ? { graphsage: await latestGraphSage(db, s.runId as number, policy) }
-              : {}),
-          });
-          const ablation = ablate(inputs, policy, e3Data, recovery);
-          for (const m of e7Metrics(ablation)) {
-            e7.push({
-              ...base,
-              run_id: s.runId,
-              policy,
-              sigma: m.sigma,
-              epsilon: m.epsilon,
-              alpha: m.alpha,
-              scoring: m.scoring,
-              is_default: m.isDefault,
-              sweeps: m.sweeps,
-              metric: m.metric,
-              value: m.value,
-            });
-          }
-          for (const p of ablation.sigmaPairs) {
-            e7Pairs.push({
-              ...base,
-              run_id: s.runId,
-              sigma_a: p.a,
-              sigma_b: p.b,
-              k: ablation.k,
-              jaccard: p.jaccard,
-            });
-          }
-          for (const m of e6Metrics(recovery)) {
-            e6.push({
-              ...base,
-              run_id: s.runId,
-              policy,
-              repeat: m.repeat,
-              seed: m.seed,
-              method: m.method,
-              metric: m.metric,
-              value: m.value,
-            });
-          }
-          for (const m of e3Metrics(result)) {
-            e3.push({
-              ...base,
-              run_id: s.runId,
-              policy,
-              policy_version: run.channels.policyVersion,
-              k: m.k,
-              method: m.method,
-              metric: m.metric,
-              value: m.value,
-            });
-          }
-        }
-        for (const c of channelMetrics(run.channels)) {
-          channels.push({
-            ...base,
-            run_id: s.runId,
-            policy,
-            policy_version: run.channels.policyVersion,
-            channel: c.channel,
-            metric: c.metric,
-            value: c.value,
-          });
-        }
-        for (const p of run.pairs) {
-          for (const m of pairMetrics(p)) {
-            pairs.push({
-              ...base,
-              run_id: s.runId,
-              policy_a: p.a,
-              policy_b: p.b,
-              top_k: run.k,
-              metric: m.metric,
-              value: m.value,
-            });
-          }
-        }
+        metrics.push(...rows.metrics);
+        channels.push(...rows.channels);
+        pairs.push(...rows.pairs);
+        e3.push(...rows.e3);
+        e6.push(...rows.e6);
+        e7.push(...rows.e7);
+        e7Pairs.push(...rows.e7Pairs);
       }
     }
     if (s.status === "completed" && s.runId !== null && readImport(dir, s.id) !== null) {
@@ -376,4 +307,159 @@ export async function exportBatch(
     },
     metrics: metrics.length,
   };
+}
+
+function readCachedRows(file: string, key: string): RunRows | null {
+  if (!existsSync(file)) return null;
+  try {
+    const cached = JSON.parse(readFileSync(file, "utf8")) as { key?: string; rows?: RunRows };
+    return cached.key === key && cached.rows !== undefined ? cached.rows : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A completed site's rows: metrics, E1 pairs, E2 channels and, with an embedder, E3, E6, E7. */
+async function runRows(
+  db: q.Queryable,
+  manifest: Manifest,
+  base: { batch_id: string; site_id: string; architecture_class: string },
+  runId: number,
+  embedder: Embedder | undefined,
+): Promise<RunRows> {
+  const policy = manifest.audit.policy;
+  const out: RunRows = {
+    metrics: [],
+    channels: [],
+    pairs: [],
+    e3: [],
+    e6: [],
+    e7: [],
+    e7Pairs: [],
+  };
+  const { metrics, channels, pairs, e3, e6, e7, e7Pairs } = out;
+  const run = await runMetrics(
+    db,
+    runId,
+    policy,
+    manifest.audit.sigma as SigmaVariant,
+    manifest.audit.refVariant === "unweighted" ? "unweighted" : "weighted",
+  );
+  for (const p of run.policies) {
+    for (const m of p.metrics) {
+      metrics.push({
+        ...base,
+        run_id: runId,
+        policy: p.policy,
+        policy_version: p.policyVersion,
+        is_audit_policy: p.policy === policy,
+        metric: m.metric,
+        value: m.value,
+      });
+    }
+  }
+  if (embedder !== undefined) {
+    // E3, E6 and E7 share what they load: E3's data (embeddings included) and one E6 run
+    // whose hybrid is also gated at every ε E7 sweeps.
+    const inputs = await loadRunInputs(db, runId, policy);
+    const { config } = inputs;
+    const e3Data = await loadE3Data(
+      db,
+      runId,
+      policy,
+      embedder,
+      manifest.audit.refVariant === "unweighted" ? "unweighted" : "weighted",
+    );
+    const result = compareE3(
+      buildE3Inputs(e3Data, {
+        epsilon: config.epsilon,
+        alpha: config.alpha,
+        sigma: manifest.audit.sigma as SigmaVariant,
+      }),
+      config.e3TopKs,
+      config.e3RandomDraws,
+      config.randomSeed,
+    );
+    const recovery = await maskingRecovery(inputs, policy, embedder, config.randomSeed, {
+      gateEpsilons: [...new Set(e7Settings(config).map((x) => x.epsilon))],
+      ...(config.graphsageEnabled
+        ? { graphsage: await latestGraphSage(db, runId as number, policy) }
+        : {}),
+    });
+    const ablation = ablate(inputs, policy, e3Data, recovery);
+    for (const m of e7Metrics(ablation)) {
+      e7.push({
+        ...base,
+        run_id: runId,
+        policy,
+        sigma: m.sigma,
+        epsilon: m.epsilon,
+        alpha: m.alpha,
+        scoring: m.scoring,
+        is_default: m.isDefault,
+        sweeps: m.sweeps,
+        metric: m.metric,
+        value: m.value,
+      });
+    }
+    for (const p of ablation.sigmaPairs) {
+      e7Pairs.push({
+        ...base,
+        run_id: runId,
+        sigma_a: p.a,
+        sigma_b: p.b,
+        k: ablation.k,
+        jaccard: p.jaccard,
+      });
+    }
+    for (const m of e6Metrics(recovery)) {
+      e6.push({
+        ...base,
+        run_id: runId,
+        policy,
+        repeat: m.repeat,
+        seed: m.seed,
+        method: m.method,
+        metric: m.metric,
+        value: m.value,
+      });
+    }
+    for (const m of e3Metrics(result)) {
+      e3.push({
+        ...base,
+        run_id: runId,
+        policy,
+        policy_version: run.channels.policyVersion,
+        k: m.k,
+        method: m.method,
+        metric: m.metric,
+        value: m.value,
+      });
+    }
+  }
+  for (const c of channelMetrics(run.channels)) {
+    channels.push({
+      ...base,
+      run_id: runId,
+      policy,
+      policy_version: run.channels.policyVersion,
+      channel: c.channel,
+      metric: c.metric,
+      value: c.value,
+    });
+  }
+  for (const p of run.pairs) {
+    for (const m of pairMetrics(p)) {
+      pairs.push({
+        ...base,
+        run_id: runId,
+        policy_a: p.a,
+        policy_b: p.b,
+        top_k: run.k,
+        metric: m.metric,
+        value: m.value,
+      });
+    }
+  }
+  return out;
 }

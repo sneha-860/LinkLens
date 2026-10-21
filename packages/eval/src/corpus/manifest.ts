@@ -244,13 +244,20 @@ function git(repo: string, args: string[]): string | null {
   }
 }
 
+/**
+ * The repository's top-level folder of experiment output (corpus batches, LSH and L13 runs).
+ * It is not code: a batch writing its own results there does not make the tree dirty.
+ */
+export const RESULTS_DIR = "results";
+
 export function gitState(repo: string): GitState {
   const commit = git(repo, ["rev-parse", "HEAD"])?.trim() ?? null;
   const branch = git(repo, ["rev-parse", "--abbrev-ref", "HEAD"])?.trim() ?? null;
-  const changes = (git(repo, ["status", "--porcelain"]) ?? "")
+  const code = ["--", ".", `:(exclude)${RESULTS_DIR}`];
+  const changes = (git(repo, ["status", "--porcelain", ...code]) ?? "")
     .split("\n")
     .filter((l) => l.trim() !== "");
-  const diff = changes.length === 0 ? null : git(repo, ["diff", "HEAD", "--binary"]);
+  const diff = changes.length === 0 ? null : git(repo, ["diff", "HEAD", "--binary", ...code]);
   return {
     commit,
     branch,

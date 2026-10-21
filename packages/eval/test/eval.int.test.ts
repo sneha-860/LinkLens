@@ -897,9 +897,39 @@ sites:
         .split(String.fromCharCode(13, 10));
       expect(pairs).toHaveLength(1 + 6);
       expect(rows.filter((r) => r[6] === "1").every((r) => r[4] === "P3")).toBe(true);
-      // The same rows every time (determinism).
-      const again = await exportBatch(db, m, corpus, dir, git, noLog, embedder, wave);
+      // The same rows every time (determinism), the second time from each site's cache.
+      const logged: string[] = [];
+      const again = await exportBatch(
+        db,
+        m,
+        corpus,
+        dir,
+        git,
+        (l) => logged.push(l),
+        embedder,
+        wave,
+      );
       expect(again.record.files.map((f) => f.sha256)).toEqual(record.files.map((f) => f.sha256));
+      expect(logged.filter((l) => l.includes("metrics of run"))).toEqual(
+        m.sites
+          .filter((x) => x.status === "completed")
+          .map((x) => `${x.id}: metrics of run ${x.runId} (cached)`),
+      );
+      // Other code: the rows are computed again (and still the same).
+      logged.length = 0;
+      const changed = { ...git, diffSha256: "other" };
+      const fresh = await exportBatch(
+        db,
+        m,
+        corpus,
+        dir,
+        changed,
+        (l) => logged.push(l),
+        embedder,
+        wave,
+      );
+      expect(fresh.record.files.map((f) => f.sha256)).toEqual(record.files.map((f) => f.sha256));
+      expect(logged.some((l) => l.includes("(cached)"))).toBe(false);
       const sites = readFileSync(join(dir, "sites.csv"), "utf8");
       expect(sites).toContain('"fixture, with a comma",completed');
       expect(sites).toContain(",90,");
