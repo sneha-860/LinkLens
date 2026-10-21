@@ -1095,7 +1095,11 @@ refVariant, workers, config, models { importance, learned, graphsage } } }` retu
       (linked, not fetched, cap reached), `not-fetched`, `sf-non-link` (no SF inlink),
       `link-not-extracted` (SF link types quoted: JavaScript, canonical…), `sources-not-crawled-
 linklens`. URL only in LinkLens: `normalisation`, `status-screaming-frog`, `nofollow`,
-      `link-not-in-screaming-frog`, `sources-not-crawled-screaming-frog`, `not-in-screaming-frog`.
+      `screaming-frog-limit`, `link-not-in-screaming-frog`, `sources-not-crawled-screaming-frog`,
+      `not-in-screaming-frog`. `screaming-frog-limit`: linked from a page both crawled, no
+      Screaming Frog row, and Screaming Frog checked `e5ScreamingFrogUrlLimit` (500, the free
+      version's) URLs (its rows plus All Inlinks destinations): it never queued the page. All 9
+      corpus crawls (free 24.3) stopped at exactly 500.
       Depth: `seed-differs`, `redirect-hop`, `link-not-extracted`, `parent-not-crawled-*`,
       `nofollow-path`, `link-not-in-screaming-frog`, `cascade`, `other`. Inlinks (a gap of at
       least `e5InlinkMinAbsDiff` and `e5InlinkMinRelDiff` of the larger count): the dominant cause
@@ -1262,9 +1266,12 @@ import-sf | export --batch <name>` (`--corpus`, `--out` default `results/corpus`
 - Git state (`gitState`) ignores the repository's `results/` folder (`RESULTS_DIR`): a batch
   writing its own output there does not make the tree dirty.
 - `export` keeps each completed site's rows (metrics, E1 pairs, E2 channels, E3, E6, E7) in
-  `<batch>/export-cache/<site>.json`, keyed by the run, the commit and diff of the code, the
-  embedding model and whether an embedder ran. A rerun after a crash reuses them; E4, E5,
-  sites and stages are always recomputed (they are quick). Run it with a larger heap on dense
+  `<batch>/export-cache/<site>.json`, keyed by the run, every stage version, the batch's config
+  hash, the embedding model, whether an embedder ran and `EXPORT_CACHE_VERSION`. **Bump
+  `EXPORT_CACHE_VERSION` whenever the code behind those rows changes** (runMetrics, E3, E6,
+  E7) without a stage version doing so; `--fresh` ignores the cache. A rerun after a crash, or
+  after a change elsewhere (E5), reuses them; E4, E5, sites and stages are always recomputed
+  (they are quick). Run it with a larger heap on dense
   sites (`NODE_OPTIONS=--max-old-space-size=4096`): E7's per-(ε, α) caches exceeded Node's
   default on kottke.
 - `export` writes tidy CSVs (columns in `csv.ts`, the contract with analysis/):

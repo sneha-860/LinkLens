@@ -46,7 +46,8 @@ const USAGE = `Usage: pnpm --filter @linklens/eval corpus <command> [options]
                                --no-orphans: Screaming Frog did not look for orphans (the free
                                version crawls no sitemaps), so E5 skips the orphan comparison
   export   --batch <name>      write the tidy CSVs for analysis/ (e4 once re-crawled, e5 once
-                               Screaming Frog exports are imported)
+                               Screaming Frog exports are imported). Each site's heavy rows are
+                               kept in <batch>/export-cache/ and reused; --fresh recomputes them
 Options:
   --corpus <file>              default packages/eval/corpus.yaml
   --out <dir>                  batches live in <dir>/<name> (default results/corpus)
@@ -447,7 +448,7 @@ function importScreamingFrog(opts: Map<string, string>, flags: Set<string>): num
   return 0;
 }
 
-async function exportCmd(opts: Map<string, string>): Promise<number> {
+async function exportCmd(opts: Map<string, string>, flags: Set<string>): Promise<number> {
   const { corpus } = loadCorpus(opts);
   const { id, dir } = batchDir(opts);
   const m = readManifest(dir);
@@ -468,6 +469,7 @@ async function exportCmd(opts: Map<string, string>): Promise<number> {
       log,
       embedder,
       readManifest(join(dir, RECRAWL_DIR)),
+      { fresh: flags.has("fresh") },
     );
     m.exports.push(record);
     writeJsonAtomic(join(dir, MANIFEST_FILE), m);
@@ -504,7 +506,7 @@ async function main(): Promise<void> {
         process.exitCode = importScreamingFrog(opts, flags);
         return;
       case "export":
-        process.exitCode = await exportCmd(opts);
+        process.exitCode = await exportCmd(opts, flags);
         return;
       default:
         console.error(USAGE);

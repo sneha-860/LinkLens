@@ -334,6 +334,34 @@ describe("calibrateRun", () => {
     );
   });
 
+  it("puts a page Screaming Frog never queued, at its URL limit, in its own category", () => {
+    // Without /b/, Screaming Frog has no row for /b, which LinkLens links from the home page.
+    const inlinks = (sf.inlinks ?? []).filter(
+      (l) => !l.source.endsWith("/b/") && !l.destination.endsWith("/b/"),
+    );
+    const noB = { ...sf, internal: sf.internal.filter((r) => !r.address.endsWith("/b/")), inlinks };
+    const below = calibrateRun(ours, noB, ["P3"], config).policies[0];
+    expect(cat(below as (typeof result.policies)[number], "url-only-linklens", "/b")).toBe(
+      "link-not-in-screaming-frog",
+    );
+    // Every URL Screaming Frog checked: its rows and its link destinations.
+    const checked = new Set([
+      ...noB.internal.map((r) => r.address),
+      ...inlinks.map((l) => l.destination),
+    ]).size;
+    const at = calibrateRun(ours, noB, ["P3"], { ...config, e5ScreamingFrogUrlLimit: checked })
+      .policies[0] as (typeof result.policies)[number];
+    expect(cat(at, "url-only-linklens", "/b")).toBe("screaming-frog-limit");
+    const c = at.categories.find((x) => x.category === "screaming-frog-limit");
+    expect(c?.explanation).toContain(`its URL limit (${checked} URLs`);
+    // Without All Inlinks the limit cannot be judged.
+    const blind = calibrateRun(ours, { ...noB, inlinks: null }, ["P3"], {
+      ...config,
+      e5ScreamingFrogUrlLimit: 1,
+    }).policies[0] as (typeof result.policies)[number];
+    expect(blind.disagreements.some((d) => d.category === "screaming-frog-limit")).toBe(false);
+  });
+
   it("works with Internal: All alone (no inlink recount, no orphans)", () => {
     const r = calibrateRun(
       ours,

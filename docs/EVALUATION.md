@@ -183,7 +183,11 @@ disagreement be explained?
    - normalisation (the URLs meet under a coarser policy);
    - robots.txt;
    - status code;
-   - page cap;
+   - page cap (LinkLens's);
+   - Screaming Frog's URL limit: the free version stops after 500 URLs, counting images, CSS,
+     JavaScript and external links, and never queues the pages after them. A page only LinkLens
+     crawled, linked from a page both crawled, falls here once Screaming Frog checked that many
+     URLs (its Internal: All rows plus All Inlinks destinations);
    - a link type LinkLens does not extract (JavaScript, canonical…);
    - nofollow;
    - a redirect hop;

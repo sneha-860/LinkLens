@@ -320,6 +320,12 @@ export interface LinkLensConfig {
   /** E5: example URLs listed per disagreement category. */
   readonly e5Examples: number;
   /**
+   * E5: Screaming Frog's URL limit (the free version's 500). It counts every URL it checks,
+   * images, CSS, JavaScript and external links included; a crawl that reached it never queued
+   * further pages, so it records no link to them.
+   */
+  readonly e5ScreamingFrogUrlLimit: number;
+  /**
    * E6: each repeat masks a share of the site's editorial body links drawn uniformly (seeded)
    * between e6MaskShareMin and e6MaskShareMax.
    */
@@ -545,6 +551,7 @@ export const defaultConfig: Readonly<LinkLensConfig> = Object.freeze({
   e5InlinkMinAbsDiff: 2,
   e5InlinkMinRelDiff: 0.5,
   e5Examples: 3,
+  e5ScreamingFrogUrlLimit: 500,
   e6MaskShareMin: 0.1,
   e6MaskShareMax: 0.2,
   e6Repeats: 5,
@@ -854,6 +861,7 @@ export function makeConfig(overrides: Partial<LinkLensConfig> = {}): Readonly<Li
   assertPositiveInt("e5InlinkMinAbsDiff", cfg.e5InlinkMinAbsDiff);
   assertUnitInterval("e5InlinkMinRelDiff", cfg.e5InlinkMinRelDiff);
   assertNonNegativeInt("e5Examples", cfg.e5Examples);
+  assertPositiveInt("e5ScreamingFrogUrlLimit", cfg.e5ScreamingFrogUrlLimit);
   assertUnitInterval("e6MaskShareMin", cfg.e6MaskShareMin);
   assertUnitInterval("e6MaskShareMax", cfg.e6MaskShareMax);
   if (cfg.e6MaskShareMin > cfg.e6MaskShareMax) {

@@ -204,6 +204,8 @@ export const EXPLANATIONS: Readonly<Record<DisagreementKind, Readonly<Record<str
       "Screaming Frog recorded another status or content type for it (not 200 HTML): the site answered differently, or at another time.",
     nofollow:
       "Every link LinkLens has to it is rel=nofollow: LinkLens follows nofollow links (followNofollow), Screaming Frog does not by default.",
+    "screaming-frog-limit":
+      "Screaming Frog stopped at its URL limit ({limit} URLs, counting images, CSS, JavaScript and external links) before it reached this page, so it recorded no link to it; LinkLens's links to it come from pages both crawled.",
     "link-not-in-screaming-frog":
       "LinkLens extracted links to it from pages Screaming Frog crawled, but Screaming Frog recorded none (links it does not store, or a different answer for those pages).",
     "sources-not-crawled-screaming-frog":
@@ -451,6 +453,7 @@ export function calibrateRun(
     | "e5InlinkMinAbsDiff"
     | "e5InlinkMinRelDiff"
     | "e5Examples"
+    | "e5ScreamingFrogUrlLimit"
     | "pageCap"
   >,
 ): Calibration {
@@ -469,6 +472,12 @@ export function calibrateRun(
   const coarse = { key: keyFor(coarsest), ours: ourView(inputs, coarsest) };
   const coarseSf = sfView(sf, coarse.key);
   const capReached = new Set(inputs.fetches.map((f) => f.requestedUrl)).size >= config.pageCap;
+  // Screaming Frog's limit: every URL it checked is an Internal: All row or a link destination
+  // (external links and resources are checked too). Unknown without the All Inlinks export.
+  const sfLimitReached =
+    sf.inlinks !== null &&
+    new Set([...sf.internal.map((r) => r.address), ...sf.inlinks.map((l) => l.destination)]).size >=
+      config.e5ScreamingFrogUrlLimit;
 
   // Reconciled orphans and their channels, per policy.
   const orphansOf = (policyId: PolicyId, ours: ReturnType<typeof ourView>) => {
@@ -557,7 +566,13 @@ export function calibrateRun(
         });
       else if (ours.nofollowOnly.has(v)) add("url-only-linklens", v, "nofollow");
       else if (sf.inlinks !== null && [...ourSources].some((s) => theirs.crawled.has(s)))
-        add("url-only-linklens", v, "link-not-in-screaming-frog");
+        // Screaming Frog has no row for it at all (r above): at its limit it was never queued.
+        add(
+          "url-only-linklens",
+          v,
+          sfLimitReached ? "screaming-frog-limit" : "link-not-in-screaming-frog",
+          sfLimitReached ? { limit: config.e5ScreamingFrogUrlLimit } : {},
+        );
       else if (ourSources.size > 0 && ![...ourSources].some((s) => theirs.crawled.has(s)))
         add("url-only-linklens", v, "sources-not-crawled-screaming-frog");
       else add("url-only-linklens", v, "not-in-screaming-frog");

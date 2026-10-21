@@ -95,6 +95,7 @@ describe("defaultConfig", () => {
       e5InlinkMinAbsDiff: 2,
       e5InlinkMinRelDiff: 0.5,
       e5Examples: 3,
+      e5ScreamingFrogUrlLimit: 500,
       e6MaskShareMin: 0.1,
       e6MaskShareMax: 0.2,
       e6Repeats: 5,

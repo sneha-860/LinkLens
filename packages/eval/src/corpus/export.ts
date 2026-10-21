@@ -31,7 +31,14 @@ import {
   toCsv,
   type Cell,
 } from "./csv.js";
-import { writeJsonAtomic, type ExportRecord, type GitState, type Manifest } from "./manifest.js";
+import {
+  configSha256,
+  currentVersions,
+  writeJsonAtomic,
+  type ExportRecord,
+  type GitState,
+  type Manifest,
+} from "./manifest.js";
 import {
   channelMetrics,
   e3Metrics,
@@ -47,8 +54,11 @@ type Row<C extends readonly string[]> = Record<C[number], Cell>;
 
 /** Each site's computed rows are kept in `<batch>/export-cache/<site>.json`. */
 export const EXPORT_CACHE_DIR = "export-cache";
-/** Bump when the cached rows' shape changes. */
-const EXPORT_CACHE_VERSION = 1;
+/**
+ * Bump whenever the cached rows can change: their shape, or the code that computes them
+ * (`runMetrics` and the metric rows, E3, E6, E7) beyond what a stage version records.
+ */
+export const EXPORT_CACHE_VERSION = 2;
 
 /** The rows a completed site's audit run gives (everything but E4, E5, sites and stages). */
 interface RunRows {
@@ -62,20 +72,20 @@ interface RunRows {
 }
 
 /**
- * What a site's cached rows were computed from: the run, the code (commit and the diff of
- * tracked files), the embedding model, and whether an embedder ran. Any change recomputes them.
+ * What a site's cached rows were computed from: the run, every stage version, the batch's
+ * config, the embedding model, whether an embedder ran, and EXPORT_CACHE_VERSION. Any change
+ * recomputes them. Not the commit: a change elsewhere (E5, the CLI) keeps hours of E3/E6/E7 work.
  */
 export function exportCacheKey(
   runId: number,
-  git: GitState,
-  manifest: Pick<Manifest, "model">,
+  manifest: Pick<Manifest, "model" | "config">,
   withEmbedder: boolean,
 ): string {
   return JSON.stringify({
     v: EXPORT_CACHE_VERSION,
     runId,
-    commit: git.commit,
-    diff: git.diffSha256,
+    versions: currentVersions(),
+    config: configSha256(manifest.config),
     model: manifest.model.sha256,
     embedder: withEmbedder,
   });
@@ -116,6 +126,7 @@ export async function exportBatch(
   log: (m: string) => void = () => undefined,
   embedder?: Embedder,
   recrawl?: Manifest | null,
+  options: { readonly fresh?: boolean } = {},
 ): Promise<ExportResult> {
   const notes = new Map(corpus.sites.map((s) => [s.id, s.notes]));
   const batch = manifest.batchId;
@@ -161,9 +172,9 @@ export async function exportBatch(
       }
       if (s.status === "completed") {
         const runId = s.runId;
-        const key = exportCacheKey(runId, git, manifest, embedder !== undefined);
+        const key = exportCacheKey(runId, manifest, embedder !== undefined);
         const cacheFile = join(dir, EXPORT_CACHE_DIR, `${s.id}.json`);
-        let rows = readCachedRows(cacheFile, key);
+        let rows = options.fresh === true ? null : readCachedRows(cacheFile, key);
         if (rows === null) {
           log(`${s.id}: metrics of run ${runId}`);
           rows = await runRows(db, manifest, base, runId, embedder);

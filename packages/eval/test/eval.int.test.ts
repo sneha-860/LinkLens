@@ -915,18 +915,18 @@ sites:
           .filter((x) => x.status === "completed")
           .map((x) => `${x.id}: metrics of run ${x.runId} (cached)`),
       );
-      // Other code: the rows are computed again (and still the same).
+      // --fresh ignores the cache: the rows are computed again (and still the same).
       logged.length = 0;
-      const changed = { ...git, diffSha256: "other" };
       const fresh = await exportBatch(
         db,
         m,
         corpus,
         dir,
-        changed,
+        git,
         (l) => logged.push(l),
         embedder,
         wave,
+        { fresh: true },
       );
       expect(fresh.record.files.map((f) => f.sha256)).toEqual(record.files.map((f) => f.sha256));
       expect(logged.some((l) => l.includes("(cached)"))).toBe(false);
