@@ -1,0 +1,28 @@
+{
+ "dataset": "7f70ba4feffa7aad4ca0fb5be6ffa0c69cfc00f707a681997345e2c4589d2ba3",
+ "graphsDir": "D:\\Minor_Project\\results\\l13\\l13\\l13\\graphs",
+ "createdAt": "2026-09-28T20:03:07.072594+00:00",
+ "cv": "leave-one-site-out",
+ "params": {
+  "layers": 2,
+  "hidden": 64,
+  "epochs": 200,
+  "learning_rate": 0.01,
+  "weight_decay": 0.0005,
+  "dropout": 0.2,
+  "negative_ratio": 1,
+  "supervision_share": 0.3
+ },
+ "seed": 42,
+ "ks": [
+  5,
+  10,
+  20
+ ],
+ "methods": [
+  "graphsage",
+  "hybrid",
+  "cosine",
+  "ref"
+ ]
+}

@@ -1,0 +1,2489 @@
+{
+ "site": "vite",
+ "runId": 10,
+ "trainedOn": [
+  "css-tricks",
+  "simon-willison",
+  "julia-evans",
+  "books-toscrape",
+  "scrapeme-live",
+  "webscraper-test",
+  "flask"
+ ],
+ "labels": "e6",
+ "features": [
+  "delta_pr",
+  "depth_gain",
+  "newly_reachable",
+  "ref",
+  "cosine",
+  "jaccard",
+  "omega_existing",
+  "kappa",
+  "template_reach",
+  "donor_pagerank",
+  "target_pagerank",
+  "donor_depth",
+  "target_depth",
+  "donor_in",
+  "donor_out",
+  "target_in",
+  "target_out",
+  "donor_in_scc",
+  "target_in_scc",
+  "donor_importance",
+  "target_importance",
+  "same_section",
+  "donor_type",
+  "target_type"
+ ],
+ "params": {
+  "verbose": -1,
+  "seed": 42,
+  "num_threads": 1,
+  "learning_rate": 0.05,
+  "num_leaves": 15,
+  "min_data_in_leaf": 20,
+  "feature_fraction": 0.8,
+  "bagging_fraction": 0.8,
+  "bagging_freq": 1,
+  "lambda_l2": 1,
+  "num_boost_round": 300
+ },
+ "dataset": "2b5e5875de1a50c2eea7ef46591c5cc812c2a6017bcf3afdfdd26a2ff4287df5",
+ "createdAt": "2026-09-28T12:18:39.839122+00:00",
+ "fixes": {
+  "add-link:https://vite.dev/releases->https://vite.dev/blog": {
+   "priority": 0.30454545454545456,
+   "raw": 0.21303134826768882,
+   "shap": [
+    {
+     "feature": "cosine",
+     "value": 0.6926963813245682,
+     "contribution": 1.3406371894168325
+    },
+    {
+     "feature": "ref",
+     "value": 0.2232875058068293,
+     "contribution": 1.2224447153872826
+    },
+    {
+     "feature": "donor_out",
+     "value": 8.0,
+     "contribution": -0.5044597747945014
+    }
+   ]
+  },
+  "add-link:https://vite.dev/changes/this-environment-in-hooks->https://vite.dev/changes/per-environment-apis": {
+   "priority": 0.013636363636363636,
+   "raw": -1.3120960758694278,
+   "shap": [
+    {
+     "feature": "donor_out",
+     "value": 14.0,
+     "contribution": -1.0811776214219668
+    },
+    {
+     "feature": "ref",
+     "value": 0.2730470612128726,
+     "contribution": 0.9746244793695393
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7199947221945995,
+     "contribution": 0.9348132937117687
+    }
+   ]
+  },
+  "add-link:https://vite.dev/changes/this-environment-in-hooks->https://vite.dev/changes/ssr-using-modulerunner": {
+   "priority": 0.022727272727272728,
+   "raw": -1.1843777241548858,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2505702480002157,
+     "contribution": 1.0986791755185397
+    },
+    {
+     "feature": "donor_out",
+     "value": 14.0,
+     "contribution": -1.019436876543898
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7098917768759864,
+     "contribution": 0.8222567590246979
+    }
+   ]
+  },
+  "add-link:https://vite.dev/changes/per-environment-apis->https://vite.dev/changes/ssr-using-modulerunner": {
+   "priority": 0.004545454545454545,
+   "raw": -1.3179511060508917,
+   "shap": [
+    {
+     "feature": "donor_out",
+     "value": 14.0,
+     "contribution": -1.0773103477950767
+    },
+    {
+     "feature": "ref",
+     "value": 0.2732601537730478,
+     "contribution": 0.9722319915413848
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7256114493453879,
+     "contribution": 0.9305270636966166
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/cloudflare-supports-vite->https://vite.dev/blog": {
+   "priority": 0.1590909090909091,
+   "raw": -0.15429123966889735,
+   "shap": [
+    {
+     "feature": "cosine",
+     "value": 0.7243146414887504,
+     "contribution": 1.320294910013071
+    },
+    {
+     "feature": "ref",
+     "value": 0.3513752924816915,
+     "contribution": 1.2304499206801671
+    },
+    {
+     "feature": "donor_out",
+     "value": 9.0,
+     "contribution": -0.41301273144400513
+    }
+   ]
+  },
+  "add-link:https://vite.dev/changes/hotupdate-hook->https://vite.dev/changes/per-environment-apis": {
+   "priority": 0.05909090909090909,
+   "raw": -0.6423560280706527,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2872636131741929,
+     "contribution": 1.481054174709641
+    },
+    {
+     "feature": "donor_out",
+     "value": 16.0,
+     "contribution": -0.8594521141223426
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6112558127686245,
+     "contribution": 0.5001393038481654
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-environment-instances->https://vite.dev/guide/api-environment-frameworks": {
+   "priority": 0.95,
+   "raw": 2.6976256919609596,
+   "shap": [
+    {
+     "feature": "jaccard",
+     "value": 0.1166201117318435,
+     "contribution": 1.6105989109687542
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7666803265925445,
+     "contribution": 1.1730869240606476
+    },
+    {
+     "feature": "ref",
+     "value": 0.2025602200126679,
+     "contribution": 1.1406927542698746
+    }
+   ]
+  },
+  "add-link:https://vite.dev/changes/hotupdate-hook->https://vite.dev/changes/this-environment-in-hooks": {
+   "priority": 0.06818181818181818,
+   "raw": -0.6312488011939549,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2167325158677395,
+     "contribution": 1.5194170033631256
+    },
+    {
+     "feature": "donor_out",
+     "value": 16.0,
+     "contribution": -0.7644157255034125
+    },
+    {
+     "feature": "jaccard",
+     "value": 0.1217391304347826,
+     "contribution": 0.39674020970361146
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-environment->https://vite.dev/guide/api-environment-instances": {
+   "priority": 0.9818181818181818,
+   "raw": 3.0085415372859425,
+   "shap": [
+    {
+     "feature": "jaccard",
+     "value": 0.1177924217462932,
+     "contribution": 1.514499898063524
+    },
+    {
+     "feature": "ref",
+     "value": 0.2229184414785217,
+     "contribution": 1.1336974725812572
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6853782341860489,
+     "contribution": 0.9236233246068271
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-environment-plugins->https://vite.dev/guide/api-environment": {
+   "priority": 0.9318181818181818,
+   "raw": 2.56531370590634,
+   "shap": [
+    {
+     "feature": "jaccard",
+     "value": 0.1118143459915611,
+     "contribution": 1.6604962615563696
+    },
+    {
+     "feature": "ref",
+     "value": 0.2366392738794717,
+     "contribution": 1.1290718693554493
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7806894597193692,
+     "contribution": 1.097798657225073
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-environment-runtimes->https://vite.dev/guide/api-environment-instances": {
+   "priority": 0.9227272727272727,
+   "raw": 2.516171542716484,
+   "shap": [
+    {
+     "feature": "jaccard",
+     "value": 0.1351145038167938,
+     "contribution": 1.4896029915516562
+    },
+    {
+     "feature": "ref",
+     "value": 0.2870427072265532,
+     "contribution": 1.3392369489136242
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7089035298115056,
+     "contribution": 0.735399886371683
+    }
+   ]
+  },
+  "add-link:https://vite.dev/changes/hotupdate-hook->https://vite.dev/changes/ssr-using-modulerunner": {
+   "priority": 0.031818181818181815,
+   "raw": -0.8619212701907158,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.242192525039845,
+     "contribution": 1.4787128504574685
+    },
+    {
+     "feature": "donor_out",
+     "value": 16.0,
+     "contribution": -0.819400634702818
+    },
+    {
+     "feature": "jaccard",
+     "value": 0.1156716417910447,
+     "contribution": 0.3820250086767772
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-environment-runtimes->https://vite.dev/guide/api-environment": {
+   "priority": 0.8772727272727273,
+   "raw": 2.4111804349317874,
+   "shap": [
+    {
+     "feature": "jaccard",
+     "value": 0.1163825055596738,
+     "contribution": 1.5524574895172834
+    },
+    {
+     "feature": "ref",
+     "value": 0.2387466344695699,
+     "contribution": 1.1987673486511181
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7036162414722604,
+     "contribution": 0.7793127029938529
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-environment-runtimes->https://vite.dev/guide/api-environment-plugins": {
+   "priority": 0.9045454545454545,
+   "raw": 2.4862032940682717,
+   "shap": [
+    {
+     "feature": "jaccard",
+     "value": 0.1139322916666666,
+     "contribution": 1.5000092449345348
+    },
+    {
+     "feature": "ref",
+     "value": 0.213765146423438,
+     "contribution": 1.204320276217223
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6952629510206106,
+     "contribution": 0.8823903355426717
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-environment-plugins->https://vite.dev/guide/api-environment-frameworks": {
+   "priority": 0.8863636363636364,
+   "raw": 2.4466788825550596,
+   "shap": [
+    {
+     "feature": "jaccard",
+     "value": 0.1149847094801223,
+     "contribution": 1.5723700801530003
+    },
+    {
+     "feature": "ref",
+     "value": 0.2111002975820231,
+     "contribution": 1.1512241894758948
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7609738010817941,
+     "contribution": 1.1233376526006649
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite4-3->https://vite.dev/blog": {
+   "priority": 0.19545454545454546,
+   "raw": -0.07192889712003715,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2344749122687292,
+     "contribution": 1.5238798766906698
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6312727035064758,
+     "contribution": 0.9565830640642426
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0452337760200371,
+     "contribution": 0.365870836678551
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-environment-plugins->https://vite.dev/guide/api-environment-runtimes": {
+   "priority": 0.8681818181818182,
+   "raw": 2.015337964940421,
+   "shap": [
+    {
+     "feature": "jaccard",
+     "value": 0.1139322916666666,
+     "contribution": 1.4497949836848725
+    },
+    {
+     "feature": "ref",
+     "value": 0.2434110737735674,
+     "contribution": 1.218171240294641
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6952629510206106,
+     "contribution": 0.7892321114146542
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-environment-instances->https://vite.dev/guide/api-environment": {
+   "priority": 0.9136363636363637,
+   "raw": 2.491585795849823,
+   "shap": [
+    {
+     "feature": "jaccard",
+     "value": 0.1177924217462932,
+     "contribution": 1.5221984181438322
+    },
+    {
+     "feature": "ref",
+     "value": 0.2066739124177807,
+     "contribution": 1.1988146103080721
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6853782341860489,
+     "contribution": 0.8437368660807677
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-environment-plugins->https://vite.dev/guide/api-environment-instances": {
+   "priority": 0.8954545454545455,
+   "raw": 2.4503440551008957,
+   "shap": [
+    {
+     "feature": "jaccard",
+     "value": 0.1351744186046511,
+     "contribution": 1.4635144333194492
+    },
+    {
+     "feature": "ref",
+     "value": 0.320012081766732,
+     "contribution": 1.4440884112316286
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6947440005114305,
+     "contribution": 0.7347089054311216
+    }
+   ]
+  },
+  "add-link:https://vite.dev/config/server-options->https://vite.dev/config/preview-options": {
+   "priority": 0.18636363636363637,
+   "raw": -0.09930494000192547,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.8734700140617399,
+     "contribution": 2.3027254691400407
+    },
+    {
+     "feature": "donor_out",
+     "value": 20.0,
+     "contribution": -0.8416971507094296
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6635888486291406,
+     "contribution": 0.539333116717599
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-environment-frameworks->https://vite.dev/guide/api-environment": {
+   "priority": 0.9590909090909091,
+   "raw": 2.8277764549642517,
+   "shap": [
+    {
+     "feature": "jaccard",
+     "value": 0.1127922971114167,
+     "contribution": 1.7057249950062952
+    },
+    {
+     "feature": "cosine",
+     "value": 0.8027833272492355,
+     "contribution": 1.3160331520782766
+    },
+    {
+     "feature": "ref",
+     "value": 0.2294796374753208,
+     "contribution": 1.0671280462870587
+    }
+   ]
+  },
+  "make-visible:https://vite.dev/guide/api-environment->https://vite.dev/guide/api-environment-plugins": {
+   "priority": 0.9954545454545455,
+   "raw": 3.6583475328838273,
+   "shap": [
+    {
+     "feature": "jaccard",
+     "value": 0.1118143459915611,
+     "contribution": 1.7435647005386972
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7806894597193692,
+     "contribution": 1.2595367159175224
+    },
+    {
+     "feature": "ref",
+     "value": 0.2109867762151818,
+     "contribution": 1.0679961161139508
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-environment-frameworks->https://vite.dev/guide/api-environment-instances": {
+   "priority": 0.9409090909090909,
+   "raw": 2.5924412866195437,
+   "shap": [
+    {
+     "feature": "jaccard",
+     "value": 0.1166201117318435,
+     "contribution": 1.6488079999023542
+    },
+    {
+     "feature": "ref",
+     "value": 0.2850497393562451,
+     "contribution": 1.217291436700049
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7666803265925445,
+     "contribution": 0.9743731346781092
+    }
+   ]
+  },
+  "make-visible:https://vite.dev/guide/api-environment->https://vite.dev/guide/api-environment-runtimes": {
+   "priority": 0.9818181818181818,
+   "raw": 3.0085415372859425,
+   "shap": [
+    {
+     "feature": "jaccard",
+     "value": 0.1163825055596738,
+     "contribution": 1.514505823193135
+    },
+    {
+     "feature": "ref",
+     "value": 0.2253556317909234,
+     "contribution": 1.1336898991835833
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7036162414722604,
+     "contribution": 0.9236437831146834
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-environment-frameworks->https://vite.dev/guide/api-environment-runtimes": {
+   "priority": 0.9681818181818181,
+   "raw": 2.8740991124918773,
+   "shap": [
+    {
+     "feature": "jaccard",
+     "value": 0.1432308698495749,
+     "contribution": 1.7049860629724718
+    },
+    {
+     "feature": "ref",
+     "value": 0.3214879787661889,
+     "contribution": 1.2129040567953557
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7924209372854965,
+     "contribution": 1.1479022014059124
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8-beta->https://vite.dev/blog/announcing-vite8": {
+   "priority": 0.6954545454545454,
+   "raw": 1.0832017492395363,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.3033356886585157,
+     "contribution": 1.43240134258598
+    },
+    {
+     "feature": "cosine",
+     "value": 0.8716774796702241,
+     "contribution": 1.3546696714710902
+    },
+    {
+     "feature": "donor_out",
+     "value": 11.0,
+     "contribution": -1.09363240296243
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite7->https://vite.dev/blog/announcing-vite5": {
+   "priority": 0.5045454545454545,
+   "raw": 0.720908303510607,
+   "shap": [
+    {
+     "feature": "cosine",
+     "value": 0.8182298088175726,
+     "contribution": 1.3293762091755663
+    },
+    {
+     "feature": "ref",
+     "value": 0.2473270614296624,
+     "contribution": 1.2660210636151734
+    },
+    {
+     "feature": "donor_out",
+     "value": 12.0,
+     "contribution": -1.069051581236719
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/build->https://vite.dev/guide/cli": {
+   "priority": 0.759090909090909,
+   "raw": 1.2506677221906397,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2065957564186341,
+     "contribution": 1.2355871266701288
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6005719916753115,
+     "contribution": 0.6357466613589607
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0179159379489463,
+     "contribution": 0.4371482742136497
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite7->https://vite.dev/blog/announcing-vite8-1": {
+   "priority": 0.35909090909090907,
+   "raw": 0.3726843821183996,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2058736153772867,
+     "contribution": 1.2821727239194889
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7935388741027923,
+     "contribution": 1.2472604631768067
+    },
+    {
+     "feature": "donor_out",
+     "value": 12.0,
+     "contribution": -0.9909924196442221
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite5->https://vite.dev/blog/announcing-vite6": {
+   "priority": 0.75,
+   "raw": 1.2011854358882124,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.3485904089506902,
+     "contribution": 1.4639249784413229
+    },
+    {
+     "feature": "cosine",
+     "value": 0.8564193131559804,
+     "contribution": 1.3266931411616987
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -1.1122496121939274
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/build->https://vite.dev/guide/backend-integration": {
+   "priority": 0.7681818181818182,
+   "raw": 1.2596803296197905,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2174183766389919,
+     "contribution": 1.29981513888868
+    },
+    {
+     "feature": "cosine",
+     "value": 0.5235018780237535,
+     "contribution": 0.5142208808288048
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0133538176713541,
+     "contribution": 0.4730161259966675
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite6->https://vite.dev/blog/announcing-vite4": {
+   "priority": 0.5409090909090909,
+   "raw": 0.7451868330220766,
+   "shap": [
+    {
+     "feature": "cosine",
+     "value": 0.8742577123716412,
+     "contribution": 1.5139817609464983
+    },
+    {
+     "feature": "ref",
+     "value": 0.2514344444032445,
+     "contribution": 1.278329236763485
+    },
+    {
+     "feature": "donor_out",
+     "value": 11.0,
+     "contribution": -1.172710443675431
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite7->https://vite.dev/blog/cloudflare-supports-vite": {
+   "priority": 0.40454545454545454,
+   "raw": 0.4580876237283637,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2460915328602775,
+     "contribution": 1.4372996746836615
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6994389318595902,
+     "contribution": 1.1948566079600182
+    },
+    {
+     "feature": "donor_out",
+     "value": 12.0,
+     "contribution": -0.6785058798008909
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite5->https://vite.dev/blog/announcing-vite7": {
+   "priority": 0.45,
+   "raw": 0.6477781285617611,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.260102962874992,
+     "contribution": 1.2765849925248756
+    },
+    {
+     "feature": "cosine",
+     "value": 0.8182298088175726,
+     "contribution": 1.246877522351356
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -1.0727638299740896
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite7->https://vite.dev/blog": {
+   "priority": 0.12272727272727273,
+   "raw": -0.2862509912882274,
+   "shap": [
+    {
+     "feature": "cosine",
+     "value": 0.778058149261901,
+     "contribution": 1.356090578967917
+    },
+    {
+     "feature": "ref",
+     "value": 0.309927716544389,
+     "contribution": 1.1109481216952326
+    },
+    {
+     "feature": "donor_out",
+     "value": 12.0,
+     "contribution": -0.35084552256516466
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite5->https://vite.dev/blog/announcing-vite5-1": {
+   "priority": 0.31363636363636366,
+   "raw": 0.2875331426765446,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2060540270412464,
+     "contribution": 1.2888999668683427
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7857672718694946,
+     "contribution": 1.1377740646745624
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -0.9794775799291895
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite6->https://vite.dev/blog/announcing-vite5": {
+   "priority": 0.7772727272727272,
+   "raw": 1.263296993223206,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.3856191596797439,
+     "contribution": 1.53432367624589
+    },
+    {
+     "feature": "cosine",
+     "value": 0.8564193131559804,
+     "contribution": 1.3521683446278676
+    },
+    {
+     "feature": "jaccard",
+     "value": 0.2168763878608438,
+     "contribution": 1.1061101917020706
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-plugin->https://vite.dev/plugins": {
+   "priority": 0.2863636363636364,
+   "raw": 0.18773204408979732,
+   "shap": [
+    {
+     "feature": "cosine",
+     "value": 0.740909540432188,
+     "contribution": 1.1800073220098075
+    },
+    {
+     "feature": "ref",
+     "value": 0.2292308716425047,
+     "contribution": 0.8497215218688687
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0451743738982422,
+     "contribution": 0.43621720742714304
+    }
+   ]
+  },
+  "make-visible:https://vite.dev/blog/announcing-vite7->https://vite.dev/blog/announcing-vite6": {
+   "priority": 0.5954545454545455,
+   "raw": 0.823513348034785,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2901708920153354,
+     "contribution": 1.4159912315553382
+    },
+    {
+     "feature": "cosine",
+     "value": 0.8106844612938795,
+     "contribution": 1.2786642593776043
+    },
+    {
+     "feature": "donor_out",
+     "value": 12.0,
+     "contribution": -1.0848361856682753
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/ssr->https://vite.dev/guide/api-environment-frameworks": {
+   "priority": 0.8590909090909091,
+   "raw": 1.9366243179703153,
+   "shap": [
+    {
+     "feature": "jaccard",
+     "value": 0.0991831971995332,
+     "contribution": 1.2938496391397964
+    },
+    {
+     "feature": "ref",
+     "value": 0.2153247635123818,
+     "contribution": 1.280905866459188
+    },
+    {
+     "feature": "template_reach",
+     "value": 55.0,
+     "contribution": 0.4188958485227502
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite6->https://vite.dev/blog/announcing-vite7": {
+   "priority": 0.7045454545454546,
+   "raw": 1.0927679155071284,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.3587902394865102,
+     "contribution": 1.5158603530096515
+    },
+    {
+     "feature": "cosine",
+     "value": 0.8106844612938795,
+     "contribution": 1.255396245725847
+    },
+    {
+     "feature": "donor_out",
+     "value": 11.0,
+     "contribution": -1.0814761401862145
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-environment-runtimes->https://vite.dev/guide/cli": {
+   "priority": 0.2590909090909091,
+   "raw": 0.13104163460170637,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2017826821222789,
+     "contribution": 1.3375802820986473
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0179159379489463,
+     "contribution": 0.46017307870403007
+    },
+    {
+     "feature": "cosine",
+     "value": 0.3718053129180879,
+     "contribution": 0.27243594362690626
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-environment-runtimes->https://vite.dev/guide/api-hmr": {
+   "priority": 0.5681818181818182,
+   "raw": 0.8085020993697162,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2166686959019715,
+     "contribution": 1.3992488385888768
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0157159902663618,
+     "contribution": 0.470392336944134
+    },
+    {
+     "feature": "jaccard",
+     "value": 0.0624048706240487,
+     "contribution": 0.46315843791380973
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite6->https://vite.dev/blog/announcing-vite8-1": {
+   "priority": 0.33181818181818185,
+   "raw": 0.30052127469619694,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2122327441425605,
+     "contribution": 1.3216602200200158
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7519055841857931,
+     "contribution": 1.1292147927976979
+    },
+    {
+     "feature": "donor_out",
+     "value": 11.0,
+     "contribution": -0.9786186481753967
+    }
+   ]
+  },
+  "make-visible:https://vite.dev/guide/build->https://vite.dev/guide/env-and-mode": {
+   "priority": 0.7863636363636364,
+   "raw": 1.271139678060506,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2239750710905659,
+     "contribution": 1.2575283883034483
+    },
+    {
+     "feature": "cosine",
+     "value": 0.5573423028337602,
+     "contribution": 0.5462088602920953
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0186740975807297,
+     "contribution": 0.46640663783980313
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8-1->https://vite.dev/blog/announcing-vite7": {
+   "priority": 0.4954545454545455,
+   "raw": 0.7194394793268198,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2674147304168046,
+     "contribution": 1.4336021848087586
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7935388741027923,
+     "contribution": 1.1622934300095327
+    },
+    {
+     "feature": "donor_out",
+     "value": 12.0,
+     "contribution": -1.0612264678785805
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite5->https://vite.dev/blog/cloudflare-supports-vite": {
+   "priority": 0.4318181818181818,
+   "raw": 0.6171142654378414,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2033094820373029,
+     "contribution": 1.6067412715186944
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6562541670021886,
+     "contribution": 1.0386648709626511
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -0.5325335887264697
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8->https://vite.dev/blog/announcing-vite8-1": {
+   "priority": 0.4681818181818182,
+   "raw": 0.658258884370943,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.3297497666005684,
+     "contribution": 1.4362135168272945
+    },
+    {
+     "feature": "cosine",
+     "value": 0.8107750148636151,
+     "contribution": 1.2199525358605656
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -1.0838911802100237
+    }
+   ]
+  },
+  "add-link:https://vite.dev/config/server-options->https://vite.dev/config": {
+   "priority": 0.7136363636363636,
+   "raw": 1.1407528199368098,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2169048985056889,
+     "contribution": 1.621069164484317
+    },
+    {
+     "feature": "donor_type",
+     "value": "hub",
+     "contribution": 0.5731531471210941
+    },
+    {
+     "feature": "jaccard",
+     "value": 0.0593272171253822,
+     "contribution": 0.4514385427354006
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite4->https://vite.dev/blog/announcing-vite6": {
+   "priority": 0.5590909090909091,
+   "raw": 0.7581381043415029,
+   "shap": [
+    {
+     "feature": "cosine",
+     "value": 0.8742577123716412,
+     "contribution": 1.4170558351341522
+    },
+    {
+     "feature": "ref",
+     "value": 0.2673151705631209,
+     "contribution": 1.2826148149675114
+    },
+    {
+     "feature": "donor_out",
+     "value": 12.0,
+     "contribution": -1.1589747486847344
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite6->https://vite.dev/blog/cloudflare-supports-vite": {
+   "priority": 0.5136363636363637,
+   "raw": 0.7242246362272204,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2193016522305382,
+     "contribution": 1.553452326868094
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6694554191142443,
+     "contribution": 1.2997839583128892
+    },
+    {
+     "feature": "donor_out",
+     "value": 11.0,
+     "contribution": -0.5597879247050996
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-javascript->https://vite.dev/guide/api-environment-instances": {
+   "priority": 0.8227272727272728,
+   "raw": 1.408010895815405,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2005098029802883,
+     "contribution": 1.2217656677020072
+    },
+    {
+     "feature": "jaccard",
+     "value": 0.0727406318883174,
+     "contribution": 0.67278283400464
+    },
+    {
+     "feature": "cosine",
+     "value": 0.5648750999075909,
+     "contribution": 0.5727258986364541
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-javascript->https://vite.dev/config": {
+   "priority": 0.740909090909091,
+   "raw": 1.1949357086770787,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2350516126001277,
+     "contribution": 0.9532427052725128
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6971823915163401,
+     "contribution": 0.94396611589102
+    },
+    {
+     "feature": "jaccard",
+     "value": 0.0759493670886076,
+     "contribution": 0.8182635629176479
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8-beta->https://vite.dev/blog": {
+   "priority": 0.15,
+   "raw": -0.17284461021325376,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2195945104191146,
+     "contribution": 1.523149492886143
+    },
+    {
+     "feature": "cosine",
+     "value": 0.5736589214475674,
+     "contribution": 0.9411072811631974
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0452337760200371,
+     "contribution": 0.40281765285158466
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8->https://vite.dev/blog/announcing-vite5": {
+   "priority": 0.42272727272727273,
+   "raw": 0.5650143181069684,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2647985380543874,
+     "contribution": 1.4223220503370042
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7431765137994317,
+     "contribution": 1.0299098071495247
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -1.0046557666000353
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-javascript->https://vite.dev/guide/cli": {
+   "priority": 0.8409090909090909,
+   "raw": 1.6439719589948,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2670560380644557,
+     "contribution": 1.5282360625259581
+    },
+    {
+     "feature": "cosine",
+     "value": 0.5579531902561281,
+     "contribution": 0.5510127422505111
+    },
+    {
+     "feature": "jaccard",
+     "value": 0.0561685055165496,
+     "contribution": 0.4647801310777407
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8->https://vite.dev/blog/announcing-vite4": {
+   "priority": 0.2772727272727273,
+   "raw": 0.16658018461888763,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2467550436249726,
+     "contribution": 1.2604899180791305
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7198692973873436,
+     "contribution": 1.0634854203245598
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -1.0177641611067945
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8->https://vite.dev/blog/announcing-vite7": {
+   "priority": 0.55,
+   "raw": 0.7461016080446018,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.3861380067919511,
+     "contribution": 1.6050028980600741
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -1.0687999244025397
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7297582072766243,
+     "contribution": 0.9920538442992637
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8->https://vite.dev/blog/announcing-vite6": {
+   "priority": 0.41363636363636364,
+   "raw": 0.48405626665701607,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2718150465268523,
+     "contribution": 1.418772258043979
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -1.050238054345547
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7299336510162913,
+     "contribution": 1.0287066055210659
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-plugin->https://vite.dev/config": {
+   "priority": 0.39545454545454545,
+   "raw": 0.44682068500269695,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2522602812319696,
+     "contribution": 1.1507047209313586
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6228503848666168,
+     "contribution": 0.7012874346204782
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0611328251341015,
+     "contribution": 0.537635497947529
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite2->https://vite.dev/blog": {
+   "priority": 0.1409090909090909,
+   "raw": -0.19090068879707878,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.4242655975235117,
+     "contribution": 1.7863634549528316
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6828514956038844,
+     "contribution": 1.2130762833214583
+    },
+    {
+     "feature": "donor_out",
+     "value": 12.0,
+     "contribution": -0.3582681264286879
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite6->https://vite.dev/blog": {
+   "priority": 0.11363636363636363,
+   "raw": -0.38188215543261284,
+   "shap": [
+    {
+     "feature": "cosine",
+     "value": 0.694238430216871,
+     "contribution": 1.2666741211179982
+    },
+    {
+     "feature": "ref",
+     "value": 0.2617538163670199,
+     "contribution": 1.1656580128839187
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0452337760200371,
+     "contribution": 0.32246102594977094
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-plugin->https://vite.dev/guide/backend-integration": {
+   "priority": 0.7954545454545454,
+   "raw": 1.277345469675281,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2890959371835956,
+     "contribution": 1.4961042601216532
+    },
+    {
+     "feature": "cosine",
+     "value": 0.5394274867192522,
+     "contribution": 0.6923104494397347
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0133538176713541,
+     "contribution": 0.48311252557433315
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8-1->https://vite.dev/blog": {
+   "priority": 0.09545454545454546,
+   "raw": -0.3941874256371431,
+   "shap": [
+    {
+     "feature": "cosine",
+     "value": 0.714399603666903,
+     "contribution": 1.368626998914051
+    },
+    {
+     "feature": "ref",
+     "value": 0.2380313232945131,
+     "contribution": 1.1380280099594569
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0452337760200371,
+     "contribution": 0.3440932065450495
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite2->https://vite.dev/plugins": {
+   "priority": 0.36818181818181817,
+   "raw": 0.40744304789712693,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2212608401572734,
+     "contribution": 1.4452612631940036
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6642414878140072,
+     "contribution": 1.1402716971721367
+    },
+    {
+     "feature": "donor_out",
+     "value": 12.0,
+     "contribution": -0.5190007482891534
+    }
+   ]
+  },
+  "make-visible:https://vite.dev/blog/announcing-vite8->https://vite.dev/blog/announcing-vite8-beta": {
+   "priority": 0.6227272727272727,
+   "raw": 0.8950416538377074,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.4890459627295582,
+     "contribution": 2.0159630700579867
+    },
+    {
+     "feature": "cosine",
+     "value": 0.8716774796702241,
+     "contribution": 1.2724892652826019
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -1.088033353148823
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-plugin->https://vite.dev/guide/cli": {
+   "priority": 0.6136363636363636,
+   "raw": 0.8935760192999065,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2857162119275288,
+     "contribution": 1.4340368051460854
+    },
+    {
+     "feature": "cosine",
+     "value": 0.5163151831183731,
+     "contribution": 0.665065871634471
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0179159379489463,
+     "contribution": 0.4505971878182916
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-plugin->https://vite.dev/guide/api-environment-runtimes": {
+   "priority": 0.4863636363636364,
+   "raw": 0.6898106815516999,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2129708395580767,
+     "contribution": 1.2158066222487176
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0127630964041391,
+     "contribution": 0.5539722946188278
+    },
+    {
+     "feature": "cosine",
+     "value": 0.4838485648667716,
+     "contribution": 0.5437417248782602
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-plugin->https://vite.dev/guide/api-environment-instances": {
+   "priority": 0.4772727272727273,
+   "raw": 0.6783094460055515,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.22746322520933,
+     "contribution": 1.194596021644454
+    },
+    {
+     "feature": "cosine",
+     "value": 0.4737207424800821,
+     "contribution": 0.5384951152205051
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0128955685975714,
+     "contribution": 0.5248496964375348
+    }
+   ]
+  },
+  "add-link:https://vite.dev/config/build-options->https://vite.dev/config/dep-optimization-options": {
+   "priority": 0.8045454545454546,
+   "raw": 1.3416550469350839,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2194674355421008,
+     "contribution": 1.6393418846323011
+    },
+    {
+     "feature": "donor_type",
+     "value": "hub",
+     "contribution": 0.6919777972347272
+    },
+    {
+     "feature": "cosine",
+     "value": 0.4936005308373228,
+     "contribution": 0.5362586142156773
+    }
+   ]
+  },
+  "make-visible:https://vite.dev/blog/announcing-vite6->https://vite.dev/changes": {
+   "priority": 0.2318181818181818,
+   "raw": 0.027471963395745994,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2121166870704699,
+     "contribution": 1.6473590428278282
+    },
+    {
+     "feature": "cosine",
+     "value": 0.5584008708256695,
+     "contribution": 0.9547285906663426
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0176326687818208,
+     "contribution": 0.3932031853357594
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-environment-frameworks->https://vite.dev/guide/api-hmr": {
+   "priority": 0.38636363636363635,
+   "raw": 0.4259191527335579,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2104664441581092,
+     "contribution": 1.3577247740366536
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0157159902663618,
+     "contribution": 0.48568130547492017
+    },
+    {
+     "feature": "jaccard",
+     "value": 0.0589887640449438,
+     "contribution": 0.4090134577070085
+    }
+   ]
+  },
+  "add-link:https://vite.dev/config/shared-options->https://vite.dev/config/preview-options": {
+   "priority": 0.7318181818181818,
+   "raw": 1.1909269773654232,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2388276918683773,
+     "contribution": 1.6203939353818617
+    },
+    {
+     "feature": "donor_type",
+     "value": "hub",
+     "contribution": 0.7616999727687561
+    },
+    {
+     "feature": "cosine",
+     "value": 0.5415040194295689,
+     "contribution": 0.6733617308915394
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8->https://vite.dev/blog/cloudflare-supports-vite": {
+   "priority": 0.20454545454545456,
+   "raw": -0.019968613280594613,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2250351677582139,
+     "contribution": 1.6065692387190733
+    },
+    {
+     "feature": "cosine",
+     "value": 0.5589501746838519,
+     "contribution": 0.9052967497696914
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -0.5533130935797246
+    }
+   ]
+  },
+  "add-link:https://vite.dev/config/build-options->https://vite.dev/config/worker-options": {
+   "priority": 0.6318181818181818,
+   "raw": 0.9125320743052754,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.4684364626492022,
+     "contribution": 2.1749130772404675
+    },
+    {
+     "feature": "cosine",
+     "value": 0.4473659633217205,
+     "contribution": 0.49871627955717235
+    },
+    {
+     "feature": "donor_type",
+     "value": "hub",
+     "contribution": 0.41371899745408486
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/features->https://vite.dev/config": {
+   "priority": 0.29545454545454547,
+   "raw": 0.1909171296853711,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2572914382092092,
+     "contribution": 0.9520067702171807
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6809888063310698,
+     "contribution": 0.9201322595129142
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0611328251341015,
+     "contribution": 0.5196521715154516
+    }
+   ]
+  },
+  "add-link:https://vite.dev/config/server-options->https://vite.dev/config/worker-options": {
+   "priority": 0.4590909090909091,
+   "raw": 0.6543146480044716,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2108409038049501,
+     "contribution": 1.7354162488085707
+    },
+    {
+     "feature": "donor_type",
+     "value": "hub",
+     "contribution": 0.7379790709030168
+    },
+    {
+     "feature": "target_out",
+     "value": 14.0,
+     "contribution": 0.410658386419491
+    }
+   ]
+  },
+  "make-visible:https://vite.dev/guide/features->https://vite.dev/plugins": {
+   "priority": 0.16818181818181818,
+   "raw": -0.11033040241248636,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.374960634785517,
+     "contribution": 1.1301709705860365
+    },
+    {
+     "feature": "cosine",
+     "value": 0.655861113668523,
+     "contribution": 0.7343452481710533
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0451743738982422,
+     "contribution": 0.3778439567235146
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8->https://vite.dev/blog": {
+   "priority": 0.08636363636363636,
+   "raw": -0.44438190314711734,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2400239856807559,
+     "contribution": 1.3660880050518767
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6161947138200928,
+     "contribution": 0.9202917679061282
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0452337760200371,
+     "contribution": 0.3670688658767231
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-plugin->https://vite.dev/guide/api-environment-frameworks": {
+   "priority": 0.5227272727272727,
+   "raw": 0.7249973692020363,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2228473046425599,
+     "contribution": 1.1838394906474514
+    },
+    {
+     "feature": "jaccard",
+     "value": 0.0745131244707874,
+     "contribution": 0.6476016051476537
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0134210204847403,
+     "contribution": 0.4963499616252741
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/ssr->https://vite.dev/guide/env-and-mode": {
+   "priority": 0.4409090909090909,
+   "raw": 0.6444227346332834,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2090519571570645,
+     "contribution": 1.2599003640562327
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0186740975807297,
+     "contribution": 0.49242713269040667
+    },
+    {
+     "feature": "jaccard",
+     "value": 0.0544127405441274,
+     "contribution": 0.4233414266670405
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/features->https://vite.dev/guide/cli": {
+   "priority": 0.5772727272727273,
+   "raw": 0.8178189559718769,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2841308025213484,
+     "contribution": 1.3666935585699687
+    },
+    {
+     "feature": "cosine",
+     "value": 0.5862581836097687,
+     "contribution": 0.779092027390197
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0179159379489463,
+     "contribution": 0.4037667929433829
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/features->https://vite.dev/guide/backend-integration": {
+   "priority": 0.8136363636363636,
+   "raw": 1.3472201922988167,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.3797558846466877,
+     "contribution": 1.6534280248254887
+    },
+    {
+     "feature": "cosine",
+     "value": 0.5316038970520834,
+     "contribution": 0.7110657018859982
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0133538176713541,
+     "contribution": 0.4409987460343435
+    }
+   ]
+  },
+  "make-visible:https://vite.dev/blog/announcing-vite5->https://vite.dev/team": {
+   "priority": 0.5863636363636363,
+   "raw": 0.8203798099240454,
+   "shap": [
+    {
+     "feature": "cosine",
+     "value": 0.72727319820441,
+     "contribution": 1.5939367767057158
+    },
+    {
+     "feature": "ref",
+     "value": 0.2001786571347807,
+     "contribution": 1.2527433927166751
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0485099619344078,
+     "contribution": 0.3377273869905416
+    }
+   ]
+  },
+  "add-link:https://vite.dev/config/shared-options->https://vite.dev/config/worker-options": {
+   "priority": 0.6772727272727272,
+   "raw": 1.0113447732782936,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.36679480345954,
+     "contribution": 1.8249222195782169
+    },
+    {
+     "feature": "donor_type",
+     "value": "hub",
+     "contribution": 0.7667582957371915
+    },
+    {
+     "feature": "cosine",
+     "value": 0.414803759508401,
+     "contribution": 0.49502577936614683
+    }
+   ]
+  },
+  "add-link:https://vite.dev/config/shared-options->https://vite.dev/config": {
+   "priority": 0.6409090909090909,
+   "raw": 0.956096677597627,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2470452339382401,
+     "contribution": 1.5649571871620565
+    },
+    {
+     "feature": "cosine",
+     "value": 0.5208726250250527,
+     "contribution": 0.5773417291299662
+    },
+    {
+     "feature": "donor_type",
+     "value": "hub",
+     "contribution": 0.5600914764825804
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite5-1->https://vite.dev/blog/announcing-vite6": {
+   "priority": 0.1318181818181818,
+   "raw": -0.25289575142377607,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.231744202163587,
+     "contribution": 1.1684198372476104
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7513328170327473,
+     "contribution": 1.0756777338810113
+    },
+    {
+     "feature": "donor_out",
+     "value": 14.0,
+     "contribution": -1.03382724180607
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite3->https://vite.dev/blog/announcing-vite5": {
+   "priority": 0.5318181818181819,
+   "raw": 0.7390041326662653,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2704011386545061,
+     "contribution": 1.3442706104089286
+    },
+    {
+     "feature": "cosine",
+     "value": 0.8621067984843241,
+     "contribution": 1.3187000605100088
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -1.0721747187411068
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/features->https://vite.dev/guide/api-environment-frameworks": {
+   "priority": 0.37727272727272726,
+   "raw": 0.42026806116242205,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2137234128673195,
+     "contribution": 1.1396867376111202
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0134210204847403,
+     "contribution": 0.5537262664258014
+    },
+    {
+     "feature": "kappa",
+     "value": 59.0,
+     "contribution": -0.4728855322107365
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite3->https://vite.dev/blog/announcing-vite6": {
+   "priority": 0.32272727272727275,
+   "raw": 0.29087022517930616,
+   "shap": [
+    {
+     "feature": "cosine",
+     "value": 0.8507563578387008,
+     "contribution": 1.3939266478932577
+    },
+    {
+     "feature": "ref",
+     "value": 0.2463891132274945,
+     "contribution": 1.1946747147180887
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -1.0788363979491427
+    }
+   ]
+  },
+  "make-visible:https://vite.dev/guide/api-javascript->https://vite.dev/guide/env-and-mode": {
+   "priority": 0.6681818181818182,
+   "raw": 1.0106861787432084,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2318164661708075,
+     "contribution": 1.2329261596317282
+    },
+    {
+     "feature": "cosine",
+     "value": 0.5141656245453556,
+     "contribution": 0.4755581556168696
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0186740975807297,
+     "contribution": 0.46415784041552827
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-plugin->https://vite.dev/guide/env-and-mode": {
+   "priority": 0.3409090909090909,
+   "raw": 0.3354537318603683,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2737565070288178,
+     "contribution": 1.426169078318103
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0186740975807297,
+     "contribution": 0.5333553188020039
+    },
+    {
+     "feature": "kappa",
+     "value": 42.0,
+     "contribution": -0.5130543305435324
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite3->https://vite.dev/blog/announcing-vite2": {
+   "priority": 0.35,
+   "raw": 0.3358338281843008,
+   "shap": [
+    {
+     "feature": "cosine",
+     "value": 0.7972503786203589,
+     "contribution": 1.557735681351617
+    },
+    {
+     "feature": "ref",
+     "value": 0.2089007382921677,
+     "contribution": 1.3269932052148348
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -0.6280225485646831
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/troubleshooting->https://vite.dev/guide/dep-pre-bundling": {
+   "priority": 0.6590909090909091,
+   "raw": 0.9968180158656832,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2184265038679822,
+     "contribution": 1.1834991690154624
+    },
+    {
+     "feature": "cosine",
+     "value": 0.5385577254398484,
+     "contribution": 0.6591694709342805
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0137829713793802,
+     "contribution": 0.5559056199957688
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite4->https://vite.dev/plugins": {
+   "priority": 0.2409090909090909,
+   "raw": 0.07763460550737761,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2561470863199582,
+     "contribution": 1.5373986396074781
+    },
+    {
+     "feature": "cosine",
+     "value": 0.4981269816154518,
+     "contribution": 0.7397841609052158
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0451743738982422,
+     "contribution": 0.4483334691892554
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite3->https://vite.dev/blog/announcing-vite7": {
+   "priority": 0.22272727272727272,
+   "raw": 0.02567725800802465,
+   "shap": [
+    {
+     "feature": "cosine",
+     "value": 0.7831928593515161,
+     "contribution": 1.2745703365543115
+    },
+    {
+     "feature": "ref",
+     "value": 0.2339819466056986,
+     "contribution": 1.2700939393626143
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -0.725883838008286
+    }
+   ]
+  },
+  "make-visible:https://vite.dev/guide/features->https://vite.dev/guide/env-and-mode": {
+   "priority": 0.6863636363636364,
+   "raw": 1.0372988327198376,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.3046856547082068,
+     "contribution": 1.4871507283294148
+    },
+    {
+     "feature": "cosine",
+     "value": 0.4808067489017178,
+     "contribution": 0.581218043659731
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0186740975807297,
+     "contribution": 0.480820277129705
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite5-1->https://vite.dev/blog": {
+   "priority": 0.04090909090909091,
+   "raw": -0.7595049551070658,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2202276521980123,
+     "contribution": 1.2467007185229328
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6790548732375542,
+     "contribution": 1.0979770152632353
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0452337760200371,
+     "contribution": 0.3836210851713816
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite3->https://vite.dev/blog/announcing-vite5-1": {
+   "priority": 0.2681818181818182,
+   "raw": 0.1450280800126517,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2046131675027633,
+     "contribution": 1.2717804325280369
+    },
+    {
+     "feature": "cosine",
+     "value": 0.7283633784339242,
+     "contribution": 1.152821688072675
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -0.8663988306292929
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/troubleshooting->https://vite.dev/guide/cli": {
+   "priority": 0.65,
+   "raw": 0.9838514660959518,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.3093851124704059,
+     "contribution": 1.5086689701100773
+    },
+    {
+     "feature": "cosine",
+     "value": 0.4744831765684585,
+     "contribution": 0.5633181795091344
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0179159379489463,
+     "contribution": 0.4594956739920336
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite3->https://vite.dev/blog/announcing-vite8-1": {
+   "priority": 0.25,
+   "raw": 0.0972447620813831,
+   "shap": [
+    {
+     "feature": "cosine",
+     "value": 0.7172864214908053,
+     "contribution": 1.3379148365629228
+    },
+    {
+     "feature": "ref",
+     "value": 0.2084818807505664,
+     "contribution": 1.3350474664883354
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -0.683878314896997
+    }
+   ]
+  },
+  "add-link:https://vite.dev/config/shared-options->https://vite.dev/config/ssr-options": {
+   "priority": 0.6045454545454545,
+   "raw": 0.8298366593295837,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.4148097402138527,
+     "contribution": 2.0797319947512607
+    },
+    {
+     "feature": "donor_type",
+     "value": "hub",
+     "contribution": 0.5346236909162219
+    },
+    {
+     "feature": "kappa",
+     "value": 50.0,
+     "contribution": -0.4319081460459817
+    }
+   ]
+  },
+  "add-link:https://vite.dev/guide/api-plugin->https://vite.dev/guide/assets": {
+   "priority": 0.10454545454545454,
+   "raw": -0.38983126907427024,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.202057015119089,
+     "contribution": 1.1375099384151333
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0166040791364728,
+     "contribution": 0.5874505758391443
+    },
+    {
+     "feature": "kappa",
+     "value": 42.0,
+     "contribution": -0.3793654224099438
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite3->https://vite.dev/blog/cloudflare-supports-vite": {
+   "priority": 0.21363636363636362,
+   "raw": 0.004805568050336148,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2168497576818823,
+     "contribution": 1.5529634215061092
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6480856858162596,
+     "contribution": 1.082133042593017
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -0.6288015702007471
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite3->https://vite.dev/blog": {
+   "priority": 0.05,
+   "raw": -0.6598113325799189,
+   "shap": [
+    {
+     "feature": "cosine",
+     "value": 0.6816208728231336,
+     "contribution": 1.3093641205912192
+    },
+    {
+     "feature": "ref",
+     "value": 0.2212017252086948,
+     "contribution": 1.1174367846615374
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -0.4202697187708314
+    }
+   ]
+  },
+  "make-visible:https://vite.dev/config/shared-options->https://vite.dev/config/dep-optimization-options": {
+   "priority": 0.85,
+   "raw": 1.8067642591750195,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.3105889711515014,
+     "contribution": 1.865494080822824
+    },
+    {
+     "feature": "donor_type",
+     "value": "hub",
+     "contribution": 0.7657199666420821
+    },
+    {
+     "feature": "cosine",
+     "value": 0.4548352672570622,
+     "contribution": 0.6688330577920039
+    }
+   ]
+  },
+  "add-link:https://vite.dev/blog/announcing-vite3->https://vite.dev/plugins": {
+   "priority": 0.07727272727272727,
+   "raw": -0.4799827691571456,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2222541438714164,
+     "contribution": 1.4067707927344792
+    },
+    {
+     "feature": "cosine",
+     "value": 0.6096500346475174,
+     "contribution": 0.9349387607575085
+    },
+    {
+     "feature": "donor_out",
+     "value": 13.0,
+     "contribution": -0.45333996602903054
+    }
+   ]
+  },
+  "make-visible:https://vite.dev/guide/features->https://vite.dev/guide/assets": {
+   "priority": 0.8318181818181818,
+   "raw": 1.5327793348707792,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.4329539827742795,
+     "contribution": 2.075803614803608
+    },
+    {
+     "feature": "jaccard",
+     "value": 0.0689794271883824,
+     "contribution": 0.595747114310136
+    },
+    {
+     "feature": "kappa",
+     "value": 59.0,
+     "contribution": -0.47254669112753794
+    }
+   ]
+  },
+  "make-visible:https://vite.dev/guide/api-plugin->https://vite.dev/guide/api-hmr": {
+   "priority": 0.7227272727272728,
+   "raw": 1.1776875131051339,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.3163887051677685,
+     "contribution": 1.5251922056378466
+    },
+    {
+     "feature": "jaccard",
+     "value": 0.0642648490749756,
+     "contribution": 0.5327165728675125
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0157159902663618,
+     "contribution": 0.47171794364796793
+    }
+   ]
+  },
+  "make-visible:https://vite.dev/guide/features->https://vite.dev/guide/api-hmr": {
+   "priority": 0.17727272727272728,
+   "raw": -0.10545520589227847,
+   "shap": [
+    {
+     "feature": "ref",
+     "value": 0.2457624335073429,
+     "contribution": 1.1475643546016097
+    },
+    {
+     "feature": "target_pagerank",
+     "value": 0.0157159902663618,
+     "contribution": 0.5420653129718497
+    },
+    {
+     "feature": "kappa",
+     "value": 59.0,
+     "contribution": -0.47760707877878517
+    }
+   ]
+  }
+ },
+ "pool": {
+  "add-link:https://vite.dev/blog/announcing-vite3->https://vite.dev/blog/announcing-vite2": {
+   "priority": 0.2833333333333333,
+   "raw": 0.28050904460051984
+  },
+  "add-link:https://vite.dev/blog/announcing-vite6->https://vite.dev/blog/announcing-vite4": {
+   "priority": 0.6833333333333333,
+   "raw": 0.6898620494382957
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8->https://vite.dev/blog/announcing-vite4": {
+   "priority": 0.21666666666666667,
+   "raw": 0.16658018461888763
+  },
+  "add-link:https://vite.dev/blog/announcing-vite6->https://vite.dev/blog/announcing-vite5": {
+   "priority": 0.9833333333333333,
+   "raw": 1.2079722096394256
+  },
+  "add-link:https://vite.dev/blog/announcing-vite3->https://vite.dev/blog/announcing-vite5": {
+   "priority": 0.75,
+   "raw": 0.7390041326662653
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8->https://vite.dev/blog/announcing-vite5": {
+   "priority": 0.48333333333333334,
+   "raw": 0.5650143181069684
+  },
+  "add-link:https://vite.dev/blog/announcing-vite7->https://vite.dev/blog/announcing-vite5": {
+   "priority": 0.7166666666666667,
+   "raw": 0.720908303510607
+  },
+  "add-link:https://vite.dev/blog/announcing-vite5->https://vite.dev/blog/announcing-vite5-1": {
+   "priority": 0.31666666666666665,
+   "raw": 0.2875331426765446
+  },
+  "add-link:https://vite.dev/blog/announcing-vite3->https://vite.dev/blog/announcing-vite5-1": {
+   "priority": 0.18333333333333332,
+   "raw": 0.1450280800126517
+  },
+  "add-link:https://vite.dev/blog/announcing-vite5->https://vite.dev/blog/announcing-vite6": {
+   "priority": 0.95,
+   "raw": 1.2011854358882124
+  },
+  "make-visible:https://vite.dev/blog/announcing-vite7->https://vite.dev/blog/announcing-vite6": {
+   "priority": 0.85,
+   "raw": 0.823513348034785
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8->https://vite.dev/blog/announcing-vite6": {
+   "priority": 0.45,
+   "raw": 0.48405626665701607
+  },
+  "add-link:https://vite.dev/blog/announcing-vite4->https://vite.dev/blog/announcing-vite6": {
+   "priority": 0.8166666666666667,
+   "raw": 0.7581381043415029
+  },
+  "add-link:https://vite.dev/blog/announcing-vite3->https://vite.dev/blog/announcing-vite6": {
+   "priority": 0.35,
+   "raw": 0.29087022517930616
+  },
+  "add-link:https://vite.dev/blog/announcing-vite5-1->https://vite.dev/blog/announcing-vite6": {
+   "priority": 0.016666666666666666,
+   "raw": -0.25289575142377607
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8->https://vite.dev/blog/announcing-vite7": {
+   "priority": 0.7833333333333333,
+   "raw": 0.7461016080446018
+  },
+  "add-link:https://vite.dev/blog/announcing-vite6->https://vite.dev/blog/announcing-vite7": {
+   "priority": 0.9166666666666666,
+   "raw": 1.0374431319233473
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8-1->https://vite.dev/blog/announcing-vite7": {
+   "priority": 0.6166666666666667,
+   "raw": 0.6641146957430389
+  },
+  "add-link:https://vite.dev/blog/announcing-vite5->https://vite.dev/blog/announcing-vite7": {
+   "priority": 0.55,
+   "raw": 0.6477781285617611
+  },
+  "add-link:https://vite.dev/blog/announcing-vite3->https://vite.dev/blog/announcing-vite7": {
+   "priority": 0.11666666666666667,
+   "raw": 0.02567725800802465
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8->https://vite.dev/blog/announcing-vite8-1": {
+   "priority": 0.5833333333333334,
+   "raw": 0.658258884370943
+  },
+  "add-link:https://vite.dev/blog/announcing-vite6->https://vite.dev/blog/announcing-vite8-1": {
+   "priority": 0.25,
+   "raw": 0.2451964911124163
+  },
+  "add-link:https://vite.dev/blog/announcing-vite3->https://vite.dev/blog/announcing-vite8-1": {
+   "priority": 0.15,
+   "raw": 0.0972447620813831
+  },
+  "add-link:https://vite.dev/blog/announcing-vite7->https://vite.dev/blog/announcing-vite8-1": {
+   "priority": 0.38333333333333336,
+   "raw": 0.3726843821183996
+  },
+  "make-visible:https://vite.dev/blog/announcing-vite8->https://vite.dev/blog/announcing-vite8-beta": {
+   "priority": 0.8833333333333333,
+   "raw": 0.8950416538377074
+  },
+  "add-link:https://vite.dev/blog/announcing-vite7->https://vite.dev/blog/cloudflare-supports-vite": {
+   "priority": 0.4166666666666667,
+   "raw": 0.4580876237283637
+  },
+  "add-link:https://vite.dev/blog/announcing-vite8->https://vite.dev/blog/cloudflare-supports-vite": {
+   "priority": 0.05,
+   "raw": -0.019968613280594613
+  },
+  "add-link:https://vite.dev/blog/announcing-vite6->https://vite.dev/blog/cloudflare-supports-vite": {
+   "priority": 0.65,
+   "raw": 0.6688998526434395
+  },
+  "add-link:https://vite.dev/blog/announcing-vite3->https://vite.dev/blog/cloudflare-supports-vite": {
+   "priority": 0.08333333333333333,
+   "raw": 0.004805568050336148
+  },
+  "add-link:https://vite.dev/blog/announcing-vite5->https://vite.dev/blog/cloudflare-supports-vite": {
+   "priority": 0.5166666666666667,
+   "raw": 0.6171142654378414
+  }
+ }
+}

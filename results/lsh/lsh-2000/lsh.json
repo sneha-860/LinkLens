@@ -1,0 +1,1314 @@
+{
+  "experiment": "lsh-prefilter@1.0.0",
+  "refVersion": "ref@1.2.0",
+  "params": {
+    "numPerm": 128,
+    "partitions": 16,
+    "maxRows": 16,
+    "falsePositiveWeight": 0.5,
+    "falseNegativeWeight": 0.5,
+    "seed": 42
+  },
+  "threshold": 0.1,
+  "thresholds": [
+    0.05,
+    0.1,
+    0.2
+  ],
+  "caps": [
+    500,
+    1000,
+    2000
+  ],
+  "epsilon": 0.2,
+  "repeats": 3,
+  "git": {
+    "commit": "056c18933108aa6872efa9950db71b9c91dbde54",
+    "branch": "main",
+    "dirty": true,
+    "changes": [
+      " M CLAUDE.md",
+      " M analysis/README.md",
+      " M analysis/linklens_analysis/__main__.py",
+      " M analysis/linklens_analysis/corpus.py",
+      " M analysis/linklens_analysis/e3.py",
+      " M analysis/linklens_analysis/e4.py",
+      " M analysis/linklens_analysis/e5.py",
+      " M analysis/linklens_analysis/e6.py",
+      " M analysis/linklens_analysis/results.py",
+      " M analysis/linklens_analysis/style.py",
+      " M analysis/tests/fixtures/E7.json",
+      " M analysis/tests/test_corpus.py",
+      " M analysis/tests/test_e1.py",
+      " M analysis/tests/test_e2.py",
+      " M analysis/tests/test_e3.py",
+      " M analysis/tests/test_e4.py",
+      " M analysis/tests/test_e5.py",
+      " M analysis/tests/test_results.py",
+      " M packages/api/src/app.test.ts",
+      " M packages/api/src/app.ts",
+      " M packages/api/src/errors.ts",
+      " M packages/api/src/openapi.ts",
+      " M packages/api/src/schemas.ts",
+      " M packages/api/src/views.ts",
+      " M packages/api/test/api.int.test.ts",
+      " M packages/core/src/config.test.ts",
+      " M packages/core/src/config.ts",
+      " M packages/core/src/db/queries.ts",
+      " M packages/core/src/db/types.ts",
+      " M packages/core/src/diagnosis/diagnose.test.ts",
+      " M packages/core/src/fixes/__snapshots__/explain.test.ts.snap",
+      " M packages/core/src/fixes/candidates.test.ts",
+      " M packages/core/src/fixes/explain-run.ts",
+      " M packages/core/src/fixes/explain.test.ts",
+      " M packages/core/src/fixes/explain.ts",
+      " M packages/core/src/fixes/index.ts",
+      " M packages/core/src/index.ts",
+      " M packages/core/src/semantic/index.ts",
+      " M packages/core/src/semantic/ref.test.ts",
+      " M packages/core/src/semantic/ref.ts",
+      " M packages/core/src/text/model.ts",
+      " M packages/core/src/text/run.ts",
+      " M packages/core/src/text/tokenise.test.ts",
+      " M packages/core/src/text/tokenise.ts",
+      " M packages/crawler/src/robots/parse.ts",
+      " M packages/crawler/test/discovery.int.test.ts",
+      " M packages/db/test/schema.int.test.ts",
+      " M packages/eval/package.json",
+      " M packages/eval/src/cli.ts",
+      " M packages/eval/src/corpus/csv.test.ts",
+      " M packages/eval/src/corpus/csv.ts",
+      " M packages/eval/src/corpus/export.ts",
+      " M packages/eval/src/corpus/metrics.test.ts",
+      " M packages/eval/src/corpus/metrics.ts",
+      " M packages/eval/src/e3-baselines.ts",
+      " M packages/eval/src/e6-masking.test.ts",
+      " M packages/eval/src/e6-masking.ts",
+      " M packages/eval/src/experiments-pure.test.ts",
+      " M packages/eval/src/in-memory.ts",
+      " M packages/eval/src/index.ts",
+      " D packages/eval/src/recovery.ts",
+      " M packages/eval/src/run.ts",
+      " M packages/eval/test/eval.int.test.ts",
+      " M packages/web/src/api/queries.ts",
+      " M packages/web/src/api/types.ts",
+      " M packages/web/src/features/fixes/FixRow.tsx",
+      " M packages/web/src/features/tabs.test.tsx",
+      " M packages/web/src/pages/AuditPage.test.tsx",
+      " M packages/web/src/pages/AuditPage.tsx",
+      " M packages/web/src/router.tsx",
+      " M packages/web/src/styles/app.css",
+      " M pnpm-lock.yaml",
+      "?? analysis/linklens_analysis/e7.py",
+      "?? analysis/linklens_analysis/latex.py",
+      "?? analysis/linklens_analysis/lsh.py",
+      "?? analysis/linklens_analysis/make_all.py",
+      "?? analysis/make_all.py",
+      "?? analysis/tests/fixtures/corpus-export/e7.csv",
+      "?? analysis/tests/fixtures/corpus-export/e7_sigma_pairs.csv",
+      "?? analysis/tests/fixtures/lsh/",
+      "?? analysis/tests/test_e7.py",
+      "?? analysis/tests/test_lsh.py",
+      "?? analysis/tests/test_make_all.py",
+      "?? packages/core/src/fixes/anchor.test.ts",
+      "?? packages/core/src/fixes/anchor.ts",
+      "?? packages/core/src/rating/",
+      "?? packages/core/src/semantic/lsh-ensemble.test.ts",
+      "?? packages/core/src/semantic/lsh-ensemble.ts",
+      "?? packages/db/migrations/1790529196549_fix-ratings.sql",
+      "?? packages/eval/src/e7-ablation.test.ts",
+      "?? packages/eval/src/e7-ablation.ts",
+      "?? packages/eval/src/lsh-cli.ts",
+      "?? packages/eval/src/lsh-prefilter.test.ts",
+      "?? packages/eval/src/lsh-prefilter.ts",
+      "?? packages/eval/src/proxy-cli.ts",
+      "?? packages/eval/src/proxy-validation.test.ts",
+      "?? packages/eval/src/proxy-validation.ts",
+      "?? packages/web/src/features/rating/",
+      "?? results/"
+    ],
+    "diffSha256": "397b98a265f4ea31933d4785da57a2741dc0caf56da1bfef85a0453b70534c8d"
+  },
+  "host": {
+    "cpu": "12th Gen Intel(R) Core(TM) i5-12450HX",
+    "cpus": 12,
+    "memoryGb": 16,
+    "node": "v24.14.0",
+    "platform": "win32"
+  },
+  "results": [
+    {
+      "site": "css-tricks",
+      "runId": 1,
+      "admitted": 2000,
+      "caps": [
+        {
+          "cap": 500,
+          "documents": 467,
+          "pairs": 217622,
+          "meanDonorTerms": 423.65524625267665,
+          "meanTargetTerms": 387.6723768736617,
+          "ms": {
+            "textModel": 2239.4209999999994,
+            "prepare": 403.1296000000002,
+            "hash": 135.65000000000146,
+            "signatures": 435.7368999999999,
+            "index": 74.92250000000058
+          },
+          "variants": [
+            {
+              "variant": "weighted",
+              "truePairs": 33753,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 1159.618300000002,
+                "bruteForce": 7854.097999999998
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 92419,
+                  "candidateShare": 0.4246767330508864,
+                  "found": 29581,
+                  "recall": 0.8763961721921014,
+                  "massRecall": 0.8675312423695435,
+                  "topRecall": 0.8999609222352482,
+                  "precision": 0.3200748763782339,
+                  "ms": {
+                    "query": 370.0756000000001,
+                    "verify": 721.6810000000005,
+                    "total": 2141.1956000000027
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 70470,
+                  "candidateShare": 0.32381836395217395,
+                  "found": 29449,
+                  "recall": 0.8724854087044115,
+                  "massRecall": 0.8649413680512977,
+                  "topRecall": 0.8905822586948027,
+                  "precision": 0.417894139350078,
+                  "ms": {
+                    "query": 302.46769999999924,
+                    "verify": 721.8904000000002,
+                    "total": 2073.7971000000016
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 51093,
+                  "candidateShare": 0.23477865289354938,
+                  "found": 27908,
+                  "recall": 0.8268302076852428,
+                  "massRecall": 0.8303066390323739,
+                  "topRecall": 0.8274716686205549,
+                  "precision": 0.5462196386980605,
+                  "ms": {
+                    "query": 244.33519999999953,
+                    "verify": 619.1095999999998,
+                    "total": 1912.8838000000014
+                  }
+                }
+              ]
+            },
+            {
+              "variant": "unweighted",
+              "truePairs": 35489,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 1032.5628999999972,
+                "bruteForce": 7831.475899999998
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 92419,
+                  "candidateShare": 0.4246767330508864,
+                  "found": 30021,
+                  "recall": 0.8459240891543859,
+                  "massRecall": 0.830784468832144,
+                  "topRecall": 0.8061607813673929,
+                  "precision": 0.3248358021618931,
+                  "ms": {
+                    "query": 370.0756000000001,
+                    "verify": 657.6994999999952,
+                    "total": 2077.2140999999974
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 70470,
+                  "candidateShare": 0.32381836395217395,
+                  "found": 29976,
+                  "recall": 0.8446560906196287,
+                  "massRecall": 0.829924813677708,
+                  "topRecall": 0.8043764087152517,
+                  "precision": 0.4253724989357173,
+                  "ms": {
+                    "query": 302.46769999999924,
+                    "verify": 665.4519,
+                    "total": 2017.3586000000014
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 51093,
+                  "candidateShare": 0.23477865289354938,
+                  "found": 28984,
+                  "recall": 0.8167037673645355,
+                  "massRecall": 0.8080212152987086,
+                  "topRecall": 0.7803343350864012,
+                  "precision": 0.5672792750474625,
+                  "ms": {
+                    "query": 244.33519999999953,
+                    "verify": 562.1304000000018,
+                    "total": 1855.9046000000035
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "cap": 1000,
+          "documents": 945,
+          "pairs": 892080,
+          "meanDonorTerms": 426.0232804232804,
+          "meanTargetTerms": 400.994708994709,
+          "ms": {
+            "textModel": 4714.619400000003,
+            "prepare": 677.9994000000006,
+            "hash": 265.7327000000005,
+            "signatures": 801.808100000002,
+            "index": 133.55389999999898
+          },
+          "variants": [
+            {
+              "variant": "weighted",
+              "truePairs": 70857,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 3087.777399999999,
+                "bruteForce": 36252.750499999995
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 411785,
+                  "candidateShare": 0.461600977490808,
+                  "found": 62921,
+                  "recall": 0.8879997741930932,
+                  "massRecall": 0.8825821723989195,
+                  "topRecall": 0.936240780159398,
+                  "precision": 0.15280061196983863,
+                  "ms": {
+                    "query": 655.152900000001,
+                    "verify": 2830.7534000000014,
+                    "total": 5365.000400000004
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 306039,
+                  "candidateShare": 0.34306228140973904,
+                  "found": 62277,
+                  "recall": 0.8789110461916254,
+                  "massRecall": 0.8762678859268694,
+                  "topRecall": 0.9224790851938023,
+                  "precision": 0.20349367237508945,
+                  "ms": {
+                    "query": 568.3648999999932,
+                    "verify": 2675.927800000005,
+                    "total": 5123.3868
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 176439,
+                  "candidateShare": 0.1977838310465429,
+                  "found": 57420,
+                  "recall": 0.8103645370252762,
+                  "massRecall": 0.8251500086975911,
+                  "topRecall": 0.8226820454432949,
+                  "precision": 0.3254382534473671,
+                  "ms": {
+                    "query": 404.73359999999957,
+                    "verify": 2133.986499999999,
+                    "total": 4417.814200000001
+                  }
+                }
+              ]
+            },
+            {
+              "variant": "unweighted",
+              "truePairs": 79958,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 3317.606999999989,
+                "bruteForce": 34416.6697
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 411785,
+                  "candidateShare": 0.461600977490808,
+                  "found": 68693,
+                  "recall": 0.859113534605668,
+                  "massRecall": 0.8453619390875468,
+                  "topRecall": 0.869775376741541,
+                  "precision": 0.16681763541654018,
+                  "ms": {
+                    "query": 655.152900000001,
+                    "verify": 2762.4222999999765,
+                    "total": 5296.66929999998
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 306039,
+                  "candidateShare": 0.34306228140973904,
+                  "found": 68548,
+                  "recall": 0.8573000825433352,
+                  "massRecall": 0.8440854127868906,
+                  "topRecall": 0.8678798218178372,
+                  "precision": 0.22398452484814027,
+                  "ms": {
+                    "query": 568.3648999999932,
+                    "verify": 2577.3945999999996,
+                    "total": 5024.853599999995
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 176439,
+                  "candidateShare": 0.1977838310465429,
+                  "found": 66118,
+                  "recall": 0.8269091272918282,
+                  "massRecall": 0.8208758154438328,
+                  "topRecall": 0.8329068334755,
+                  "precision": 0.374735744364908,
+                  "ms": {
+                    "query": 404.73359999999957,
+                    "verify": 2495.8511,
+                    "total": 4779.6788000000015
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "cap": 2000,
+          "documents": 1884,
+          "pairs": 3547572,
+          "meanDonorTerms": 384.83545647558384,
+          "meanTargetTerms": 361.85138004246284,
+          "ms": {
+            "textModel": 9787.008499999996,
+            "prepare": 2136.9256999999925,
+            "hash": 452.6008000000147,
+            "signatures": 1614.4763000000094,
+            "index": 298.4226000000199
+          },
+          "variants": [
+            {
+              "variant": "weighted",
+              "truePairs": 216168,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 8869.976199999976,
+                "bruteForce": 141422.69900000002
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 1599871,
+                  "candidateShare": 0.4509763297263593,
+                  "found": 188526,
+                  "recall": 0.8721272343732652,
+                  "massRecall": 0.872035156482045,
+                  "topRecall": 0.9159062226968255,
+                  "precision": 0.11783825070896341,
+                  "ms": {
+                    "query": 2025.6534000000102,
+                    "verify": 6647.088799999969,
+                    "total": 13175.167600000015
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 1189430,
+                  "candidateShare": 0.33528001686787473,
+                  "found": 187102,
+                  "recall": 0.865539765367677,
+                  "massRecall": 0.8673661364298992,
+                  "topRecall": 0.9063197747791476,
+                  "precision": 0.15730391868373927,
+                  "ms": {
+                    "query": 1336.6958000000159,
+                    "verify": 6394.347200000018,
+                    "total": 12233.46840000007
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 672994,
+                  "candidateShare": 0.189705522537668,
+                  "found": 176609,
+                  "recall": 0.8169988157359092,
+                  "massRecall": 0.8298774253122113,
+                  "topRecall": 0.8320308707892438,
+                  "precision": 0.2624228447801912,
+                  "ms": {
+                    "query": 1059.0206999999937,
+                    "verify": 5298.841899999999,
+                    "total": 10860.28800000003
+                  }
+                }
+              ]
+            },
+            {
+              "variant": "unweighted",
+              "truePairs": 275873,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 10499.185499999992,
+                "bruteForce": 138602.729
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 1599871,
+                  "candidateShare": 0.4509763297263593,
+                  "found": 231343,
+                  "recall": 0.8385851460635873,
+                  "massRecall": 0.8210824076415874,
+                  "topRecall": 0.8479765290810956,
+                  "precision": 0.14460103345832256,
+                  "ms": {
+                    "query": 2025.6534000000102,
+                    "verify": 8287.418399999966,
+                    "total": 14815.497200000013
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 1189430,
+                  "candidateShare": 0.33528001686787473,
+                  "found": 230985,
+                  "recall": 0.8372874474848934,
+                  "massRecall": 0.8201483546266787,
+                  "topRecall": 0.8471926720566169,
+                  "precision": 0.19419806125623199,
+                  "ms": {
+                    "query": 1336.6958000000159,
+                    "verify": 8547.724600000074,
+                    "total": 14386.845800000126
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 672994,
+                  "candidateShare": 0.189705522537668,
+                  "found": 224398,
+                  "recall": 0.8134105186082001,
+                  "massRecall": 0.8015449342540397,
+                  "topRecall": 0.8277530178495442,
+                  "precision": 0.33343239315655115,
+                  "ms": {
+                    "query": 1059.0206999999937,
+                    "verify": 7616.06660000002,
+                    "total": 13177.51270000005
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site": "seths-blog",
+      "runId": 2,
+      "admitted": 2000,
+      "caps": [
+        {
+          "cap": 500,
+          "documents": 483,
+          "pairs": 232806,
+          "meanDonorTerms": 818.1407867494823,
+          "meanTargetTerms": 818.1304347826087,
+          "ms": {
+            "textModel": 4923.619900000049,
+            "prepare": 916.2878000000492,
+            "hash": 304.06380000000354,
+            "signatures": 896.3658999999752,
+            "index": 71.66689999995288
+          },
+          "variants": [
+            {
+              "variant": "weighted",
+              "truePairs": 919,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 1250.919200000004,
+                "bruteForce": 29044.270400000038
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 152842,
+                  "candidateShare": 0.6565208800460469,
+                  "found": 426,
+                  "recall": 0.46354733405875953,
+                  "massRecall": 0.5860811721180684,
+                  "topRecall": 0.5825242718446602,
+                  "precision": 0.0027871920021983487,
+                  "ms": {
+                    "query": 406.4700000000885,
+                    "verify": 347.0210000000661,
+                    "total": 2941.8754000001354
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 115394,
+                  "candidateShare": 0.4956659192632492,
+                  "found": 424,
+                  "recall": 0.4613710554951034,
+                  "massRecall": 0.5849354515264181,
+                  "topRecall": 0.579750346740638,
+                  "precision": 0.003674367818084129,
+                  "ms": {
+                    "query": 302.0893999999389,
+                    "verify": 377.49520000000484,
+                    "total": 2867.9689999999246
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 44550,
+                  "candidateShare": 0.19136104739568569,
+                  "found": 417,
+                  "recall": 0.45375408052230687,
+                  "massRecall": 0.5807620003511725,
+                  "topRecall": 0.5700416088765603,
+                  "precision": 0.00936026936026936,
+                  "ms": {
+                    "query": 312.5276999999769,
+                    "verify": 274.5503000000026,
+                    "total": 2775.4623999999603
+                  }
+                }
+              ]
+            },
+            {
+              "variant": "unweighted",
+              "truePairs": 4236,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 1419.8257999999914,
+                "bruteForce": 28158.100199999986
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 152842,
+                  "candidateShare": 0.6565208800460469,
+                  "found": 2483,
+                  "recall": 0.586166194523135,
+                  "massRecall": 0.5743089217056205,
+                  "topRecall": 0.7001757469244289,
+                  "precision": 0.016245534604362673,
+                  "ms": {
+                    "query": 406.4700000000885,
+                    "verify": 521.7796999999555,
+                    "total": 3116.634100000025
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 115394,
+                  "candidateShare": 0.4956659192632492,
+                  "found": 2471,
+                  "recall": 0.5833333333333334,
+                  "massRecall": 0.5721130827606131,
+                  "topRecall": 0.6959578207381371,
+                  "precision": 0.021413591694542176,
+                  "ms": {
+                    "query": 302.0893999999389,
+                    "verify": 552.7694999999367,
+                    "total": 3043.2432999998564
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 44550,
+                  "candidateShare": 0.19136104739568569,
+                  "found": 2384,
+                  "recall": 0.562795089707271,
+                  "massRecall": 0.5563502343266582,
+                  "topRecall": 0.6681898066783831,
+                  "precision": 0.05351290684624018,
+                  "ms": {
+                    "query": 312.5276999999769,
+                    "verify": 443.39379999996163,
+                    "total": 2944.3058999999193
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "cap": 1000,
+          "documents": 969,
+          "pairs": 937992,
+          "meanDonorTerms": 565.4767801857585,
+          "meanTargetTerms": 565.4664602683179,
+          "ms": {
+            "textModel": 6397.684100000071,
+            "prepare": 1454.9878000000026,
+            "hash": 370.4360000001034,
+            "signatures": 1196.4351000000024,
+            "index": 152.65339999995194
+          },
+          "variants": [
+            {
+              "variant": "weighted",
+              "truePairs": 10121,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 2677.4920000000857,
+                "bruteForce": 72336.17019999993
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 567945,
+                  "candidateShare": 0.6054902387227183,
+                  "found": 7220,
+                  "recall": 0.7133682442446398,
+                  "massRecall": 0.7441961697936189,
+                  "topRecall": 0.7715786019035117,
+                  "precision": 0.012712498569403728,
+                  "ms": {
+                    "query": 900.4313000000548,
+                    "verify": 1088.292199999909,
+                    "total": 5163.235800000024
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 416815,
+                  "candidateShare": 0.44436946157323304,
+                  "found": 7207,
+                  "recall": 0.7120837861871356,
+                  "massRecall": 0.743194980181584,
+                  "topRecall": 0.769937643583853,
+                  "precision": 0.017290644530547124,
+                  "ms": {
+                    "query": 663.9762000000337,
+                    "verify": 1075.5023999999976,
+                    "total": 4913.990900000092
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 239214,
+                  "candidateShare": 0.25502776143080114,
+                  "found": 7082,
+                  "recall": 0.699733227941903,
+                  "massRecall": 0.7333019791270609,
+                  "topRecall": 0.7546767312110272,
+                  "precision": 0.02960529066024564,
+                  "ms": {
+                    "query": 514.1043999999529,
+                    "verify": 1062.5956000000006,
+                    "total": 4751.212300000014
+                  }
+                }
+              ]
+            },
+            {
+              "variant": "unweighted",
+              "truePairs": 96062,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 5806.538500000024,
+                "bruteForce": 78866.89909999992
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 567945,
+                  "candidateShare": 0.6054902387227183,
+                  "found": 76654,
+                  "recall": 0.7979638150361225,
+                  "massRecall": 0.7907305705582426,
+                  "topRecall": 0.8522350805536646,
+                  "precision": 0.13496729436829272,
+                  "ms": {
+                    "query": 900.4313000000548,
+                    "verify": 4015.0307999999495,
+                    "total": 8089.974400000065
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 416815,
+                  "candidateShare": 0.44436946157323304,
+                  "found": 76403,
+                  "recall": 0.7953509191980179,
+                  "massRecall": 0.7885065001106489,
+                  "topRecall": 0.8486952575448151,
+                  "precision": 0.18330194450775525,
+                  "ms": {
+                    "query": 663.9762000000337,
+                    "verify": 4063.536400000099,
+                    "total": 7902.024900000193
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 239214,
+                  "candidateShare": 0.25502776143080114,
+                  "found": 72233,
+                  "recall": 0.7519414544773168,
+                  "massRecall": 0.7501593843633144,
+                  "topRecall": 0.8114363512593601,
+                  "precision": 0.3019597515195599,
+                  "ms": {
+                    "query": 514.1043999999529,
+                    "verify": 3738.7188000000315,
+                    "total": 7427.335500000045
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "cap": 2000,
+          "documents": 1959,
+          "pairs": 3835722,
+          "meanDonorTerms": 406.4992343032159,
+          "meanTargetTerms": 406.49412965798876,
+          "ms": {
+            "textModel": 8601.575500000035,
+            "prepare": 2110.357100000023,
+            "hash": 505.26639999996405,
+            "signatures": 1764.1045000000158,
+            "index": 369.016500000027
+          },
+          "variants": [
+            {
+              "variant": "weighted",
+              "truePairs": 57261,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 6170.607500000042,
+                "bruteForce": 200957.20610000007
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 2312764,
+                  "candidateShare": 0.6029540201297174,
+                  "found": 45210,
+                  "recall": 0.7895426206318437,
+                  "massRecall": 0.7997345749882083,
+                  "topRecall": 0.8316011902195006,
+                  "precision": 0.019548038623914934,
+                  "ms": {
+                    "query": 2566.33460000006,
+                    "verify": 3586.6788999999408,
+                    "total": 10901.75800000003
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 1628947,
+                  "candidateShare": 0.4246780658243741,
+                  "found": 45174,
+                  "recall": 0.7889139204694294,
+                  "massRecall": 0.7991542568183845,
+                  "topRecall": 0.8307387123204968,
+                  "precision": 0.027732025658293365,
+                  "ms": {
+                    "query": 1805.0213999999687,
+                    "verify": 3530.146199999843,
+                    "total": 10083.912099999841
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 952118,
+                  "candidateShare": 0.24822393280847777,
+                  "found": 44565,
+                  "recall": 0.778278409388589,
+                  "massRecall": 0.7899195334361817,
+                  "topRecall": 0.8167234464616844,
+                  "precision": 0.04680617318441622,
+                  "ms": {
+                    "query": 1299.998299999861,
+                    "verify": 3372.0185000000056,
+                    "total": 9420.761299999896
+                  }
+                }
+              ]
+            },
+            {
+              "variant": "unweighted",
+              "truePairs": 450735,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 20590.27529999998,
+                "bruteForce": 203420.05459999992
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 2312764,
+                  "candidateShare": 0.6029540201297174,
+                  "found": 385842,
+                  "recall": 0.8560284868048853,
+                  "massRecall": 0.8492994443351541,
+                  "topRecall": 0.874964861977849,
+                  "precision": 0.16683154874427308,
+                  "ms": {
+                    "query": 2566.33460000006,
+                    "verify": 17874.67470000009,
+                    "total": 25189.75380000018
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 1628947,
+                  "candidateShare": 0.4246780658243741,
+                  "found": 384924,
+                  "recall": 0.8539918133714932,
+                  "massRecall": 0.847598253643813,
+                  "topRecall": 0.8733531980285227,
+                  "precision": 0.236302347467413,
+                  "ms": {
+                    "query": 1805.0213999999687,
+                    "verify": 17148.14659999986,
+                    "total": 23701.91249999986
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 952118,
+                  "candidateShare": 0.24822393280847777,
+                  "found": 364661,
+                  "recall": 0.809036351736608,
+                  "massRecall": 0.8083660182532421,
+                  "topRecall": 0.845299001143157,
+                  "precision": 0.3829997962437429,
+                  "ms": {
+                    "query": 1299.998299999861,
+                    "verify": 15403.343800000148,
+                    "total": 21452.08660000004
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site": "pnpm",
+      "runId": 3,
+      "admitted": 2000,
+      "caps": [
+        {
+          "cap": 500,
+          "documents": 475,
+          "pairs": 225150,
+          "meanDonorTerms": 449.34526315789475,
+          "meanTargetTerms": 448.4021052631579,
+          "ms": {
+            "textModel": 2379.685099999886,
+            "prepare": 346.6211999999359,
+            "hash": 132.9823000000324,
+            "signatures": 449.9135000000242,
+            "index": 83.55490000010468
+          },
+          "variants": [
+            {
+              "variant": "weighted",
+              "truePairs": 12525,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 2470.898599999724,
+                "bruteForce": 9009.376299999887
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 166473,
+                  "candidateShare": 0.7393870752831446,
+                  "found": 12230,
+                  "recall": 0.9764471057884232,
+                  "massRecall": 0.9875957523680494,
+                  "topRecall": 0.975444364533032,
+                  "precision": 0.07346536675617067,
+                  "ms": {
+                    "query": 323.60880000004545,
+                    "verify": 2044.3053999999538,
+                    "total": 3380.9861000000965
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 119082,
+                  "candidateShare": 0.5289007328447701,
+                  "found": 12123,
+                  "recall": 0.9679041916167664,
+                  "massRecall": 0.983446393257517,
+                  "topRecall": 0.9673276482071304,
+                  "precision": 0.10180379906283066,
+                  "ms": {
+                    "query": 262.85129999998026,
+                    "verify": 1947.280700000003,
+                    "total": 3223.2039000000805
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 50772,
+                  "candidateShare": 0.22550299800133244,
+                  "found": 11393,
+                  "recall": 0.9096207584830339,
+                  "massRecall": 0.9558910338900236,
+                  "topRecall": 0.9275660125346759,
+                  "precision": 0.22439533601197512,
+                  "ms": {
+                    "query": 205.53220000001602,
+                    "verify": 2068.0408999999054,
+                    "total": 3286.6450000000186
+                  }
+                }
+              ]
+            },
+            {
+              "variant": "unweighted",
+              "truePairs": 12844,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 2417.587399999844,
+                "bruteForce": 8670.36670000013
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 166473,
+                  "candidateShare": 0.7393870752831446,
+                  "found": 12360,
+                  "recall": 0.9623170351915291,
+                  "massRecall": 0.9785286299309707,
+                  "topRecall": 0.9783549783549783,
+                  "precision": 0.07424627417058623,
+                  "ms": {
+                    "query": 323.60880000004545,
+                    "verify": 2058.342999999877,
+                    "total": 3395.0237000000197
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 119082,
+                  "candidateShare": 0.5289007328447701,
+                  "found": 12271,
+                  "recall": 0.9553877296792277,
+                  "massRecall": 0.9753915209099983,
+                  "topRecall": 0.971763085399449,
+                  "precision": 0.10304664013033037,
+                  "ms": {
+                    "query": 262.85129999998026,
+                    "verify": 1921.4139000000432,
+                    "total": 3197.3371000001207
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 50772,
+                  "candidateShare": 0.22550299800133244,
+                  "found": 11776,
+                  "recall": 0.9168483338523824,
+                  "massRecall": 0.9571076503996973,
+                  "topRecall": 0.9387052341597796,
+                  "precision": 0.23193886394075475,
+                  "ms": {
+                    "query": 205.53220000001602,
+                    "verify": 2103.068100000033,
+                    "total": 3321.6722000001464
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "cap": 1000,
+          "documents": 960,
+          "pairs": 920640,
+          "meanDonorTerms": 528.2770833333333,
+          "meanTargetTerms": 526.8958333333334,
+          "ms": {
+            "textModel": 5667.11080000014,
+            "prepare": 957.3525000000373,
+            "hash": 197.55789999989793,
+            "signatures": 1048.8684000000358,
+            "index": 109.7542999999132
+          },
+          "variants": [
+            {
+              "variant": "weighted",
+              "truePairs": 44739,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 8138.375200000126,
+                "bruteForce": 39852.507900000084
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 674657,
+                  "candidateShare": 0.7328130431004518,
+                  "found": 42795,
+                  "recall": 0.9565479782739892,
+                  "massRecall": 0.9736015745691475,
+                  "topRecall": 0.9785646952743965,
+                  "precision": 0.06343223297171748,
+                  "ms": {
+                    "query": 627.8699999998789,
+                    "verify": 6855.318100000033,
+                    "total": 9796.721199999796
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 493923,
+                  "candidateShare": 0.5364996089676747,
+                  "found": 42456,
+                  "recall": 0.9489706967075706,
+                  "massRecall": 0.9692261034951741,
+                  "topRecall": 0.9703266527316693,
+                  "precision": 0.08595671794996386,
+                  "ms": {
+                    "query": 480.6506999998819,
+                    "verify": 6857.587899999926,
+                    "total": 9651.771699999692
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 233368,
+                  "candidateShare": 0.25348453249913105,
+                  "found": 38110,
+                  "recall": 0.8518294999888241,
+                  "massRecall": 0.9143320733001746,
+                  "topRecall": 0.9165539571293906,
+                  "precision": 0.16330430907408042,
+                  "ms": {
+                    "query": 359.34679999994114,
+                    "verify": 6246.238200000022,
+                    "total": 8919.118099999847
+                  }
+                }
+              ]
+            },
+            {
+              "variant": "unweighted",
+              "truePairs": 49966,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 7699.430799999973,
+                "bruteForce": 35166.19049999979
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 674657,
+                  "candidateShare": 0.7328130431004518,
+                  "found": 47046,
+                  "recall": 0.9415602609774647,
+                  "massRecall": 0.959505585827989,
+                  "topRecall": 0.9809357343197431,
+                  "precision": 0.06973321258061504,
+                  "ms": {
+                    "query": 627.8699999998789,
+                    "verify": 6687.752899999963,
+                    "total": 9629.155999999726
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 493923,
+                  "candidateShare": 0.5364996089676747,
+                  "found": 46701,
+                  "recall": 0.9346555657847336,
+                  "massRecall": 0.9555974889029701,
+                  "topRecall": 0.9789439453680745,
+                  "precision": 0.09455117498071562,
+                  "ms": {
+                    "query": 480.6506999998819,
+                    "verify": 6708.237999999896,
+                    "total": 9502.421799999662
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 233368,
+                  "candidateShare": 0.25348453249913105,
+                  "found": 44047,
+                  "recall": 0.8815394468238402,
+                  "massRecall": 0.9240253083188318,
+                  "topRecall": 0.9353684809560587,
+                  "precision": 0.18874481505604881,
+                  "ms": {
+                    "query": 359.34679999994114,
+                    "verify": 6323.876799999969,
+                    "total": 8996.756699999794
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "cap": 2000,
+          "documents": 1947,
+          "pairs": 3788862,
+          "meanDonorTerms": 526.6610169491526,
+          "meanTargetTerms": 524.9337442218798,
+          "ms": {
+            "textModel": 9395.69200000004,
+            "prepare": 1473.1671000001952,
+            "hash": 414.58950000000186,
+            "signatures": 1989.2983999999706,
+            "index": 220.12760000000708
+          },
+          "variants": [
+            {
+              "variant": "weighted",
+              "truePairs": 157834,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 23079.313100000378,
+                "bruteForce": 152934.9583999999
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 2761306,
+                  "candidateShare": 0.7287956119805894,
+                  "found": 150594,
+                  "recall": 0.9541290216303204,
+                  "massRecall": 0.9653213841473668,
+                  "topRecall": 0.9779656578504359,
+                  "precision": 0.05453723708998568,
+                  "ms": {
+                    "query": 1720.904099999927,
+                    "verify": 21695.369999999646,
+                    "total": 27513.456699999748
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 2008740,
+                  "candidateShare": 0.5301697448996558,
+                  "found": 149630,
+                  "recall": 0.9480213388750206,
+                  "massRecall": 0.9613549602242403,
+                  "topRecall": 0.9761325801503872,
+                  "precision": 0.0744894809681691,
+                  "ms": {
+                    "query": 1221.4044000001159,
+                    "verify": 21874.859300000127,
+                    "total": 27193.446300000418
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 987681,
+                  "candidateShare": 0.26068011978266825,
+                  "found": 136320,
+                  "recall": 0.8636922336125297,
+                  "massRecall": 0.905656681798063,
+                  "topRecall": 0.9422206426994875,
+                  "precision": 0.13802027172740997,
+                  "ms": {
+                    "query": 819.5274000000209,
+                    "verify": 20168.872699999716,
+                    "total": 25085.58269999991
+                  }
+                }
+              ]
+            },
+            {
+              "variant": "unweighted",
+              "truePairs": 225860,
+              "bruteForceMatches": true,
+              "ms": {
+                "exact": 24996.250299999956,
+                "bruteForce": 154840.38550000032
+              },
+              "thresholds": [
+                {
+                  "threshold": 0.05,
+                  "candidates": 2761306,
+                  "candidateShare": 0.7287956119805894,
+                  "found": 211407,
+                  "recall": 0.9360090321438059,
+                  "massRecall": 0.9452062460836242,
+                  "topRecall": 0.9737143914169442,
+                  "precision": 0.07656051158401134,
+                  "ms": {
+                    "query": 1720.904099999927,
+                    "verify": 17550.170000000857,
+                    "total": 23368.25670000096
+                  }
+                },
+                {
+                  "threshold": 0.1,
+                  "candidates": 2008740,
+                  "candidateShare": 0.5301697448996558,
+                  "found": 210277,
+                  "recall": 0.9310059328787744,
+                  "massRecall": 0.9419148842833629,
+                  "topRecall": 0.9733259341472438,
+                  "precision": 0.10468104383842608,
+                  "ms": {
+                    "query": 1221.4044000001159,
+                    "verify": 15497.124400000088,
+                    "total": 20815.71140000038
+                  }
+                },
+                {
+                  "threshold": 0.2,
+                  "candidates": 987681,
+                  "candidateShare": 0.26068011978266825,
+                  "found": 195633,
+                  "recall": 0.8661693084211458,
+                  "massRecall": 0.8954761388336846,
+                  "topRecall": 0.9512948575656678,
+                  "precision": 0.19807306205141134,
+                  "ms": {
+                    "query": 819.5274000000209,
+                    "verify": 41513.23369999975,
+                    "total": 46429.943699999945
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+site,architecture_class,nodes,body_edges,training_graphs,export_ms,train_ms,score_ms
+css-tricks,cms-blog,468,4157,35,223349.0,180240,10967
+simon-willison,cms-blog,485,24005,35,613602.0,105929,7536
+julia-evans,cms-blog,499,1825,35,41897.0,199150,3637544
+books-toscrape,ecommerce-catalogue,500,3109,35,14280.0,73405,766
+scrapeme-live,ecommerce-catalogue,218,889,35,6090.0,145072,3631
+webscraper-test,ecommerce-catalogue,341,2196,35,82598.0,287275,4478
+vite,documentation,56,247,35,9444.0,419037,311
+flask,documentation,76,284,35,11198.0,411925,462

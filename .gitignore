@@ -18,3 +18,10 @@ __pycache__/
 
 # model and embedding caches
 .cache/
+
+# Large, regenerable experiment data (GitHub refuses files over 100 MB). Back these up elsewhere.
+results/l13/**/dataset/
+results/l13/**/graphs/
+results/l13/**/gnn/scores/
+# An earlier batch, superseded by results/corpus/main-2026-10-19
+results/corpus/main/
