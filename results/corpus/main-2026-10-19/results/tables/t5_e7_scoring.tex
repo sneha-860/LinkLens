@@ -1,0 +1,16 @@
+\begin{table}[t]
+\centering
+\small
+\caption{S against importance-weighted S\_imp. Each $\sigma$ at the default $\varepsilon$ and $\alpha$ under S and under S\_imp = S $\times$ importance(target) (L12, heuristic weights): E3 gain over random for the top-k, the difference, and S\_imp's top-k overlap with the default; mean over sites [bootstrap 95\% CI].}
+\label{tab:t5_e7_scoring}
+\begin{tabular}{lrllll}
+\toprule
+$\sigma$ & sites & E3 gain@10 (S) & E3 gain@10 (S\_imp) & S\_imp $-$ S & S\_imp top-k overlap with default \\
+\midrule
+Hybrid (REF-gated cosine) & 28 & 0.00372 [-0.00554, 0.0134] & 0.00366 [-0.00553, 0.0133] & -5.45e-05 [-0.000268, 0.000131] & 0.744 [0.662, 0.821] \\
+Cosine only & 28 & 0.00372 [-0.00554, 0.0134] & 0.00366 [-0.00553, 0.0133] & -5.45e-05 [-0.000268, 0.000131] & 0.744 [0.662, 0.821] \\
+REF only & 28 & 0.00368 [-0.00561, 0.0137] & 0.00354 [-0.00571, 0.0135] & -0.000146 [-0.000597, 0.000271] & 0.463 [0.349, 0.578] \\
+Blended & 28 & 0.0039 [-0.00541, 0.0139] & 0.00391 [-0.00533, 0.0139] & 8.29e-06 [-0.000285, 0.000315] & 0.625 [0.525, 0.719] \\
+\bottomrule
+\end{tabular}
+\end{table}

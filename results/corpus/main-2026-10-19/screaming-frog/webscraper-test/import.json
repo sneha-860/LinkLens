@@ -1,0 +1,18 @@
+{
+  "site": "webscraper-test",
+  "importedAt": "2026-10-19T23:04:40.164Z",
+  "screamingFrogVersion": "24.3",
+  "orphans": "skipped",
+  "files": [
+    {
+      "name": "internal_all.csv",
+      "rows": 354,
+      "sha256": "c32c10c741472fa60f233c8798cf4f66ab7131a8cf245ce8fc49774044fa0dcc"
+    },
+    {
+      "name": "all_inlinks.csv",
+      "rows": 28099,
+      "sha256": "f5dab26d499f3415c6ce17386bc74cbdb5a4fdc55df9d46f00415d33d306f9a3"
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+# Experiment output is evidence: SHA-256 fingerprints are recorded for these files
+# (import.json, manifest.json), so git must store and check them out byte for byte.
+results/** -text

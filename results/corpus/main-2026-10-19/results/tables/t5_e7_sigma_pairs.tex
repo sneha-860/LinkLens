@@ -1,0 +1,16 @@
+\begin{table}[t]
+\centering
+\small
+\caption{Top-k overlap between $\sigma$ variants. The $\sigma$ variants' pairwise top-k Jaccard at the default $\varepsilon$ and $\alpha$, mean over sites.}
+\label{tab:t5_e7_sigma_pairs}
+\begin{tabular}{lrrrr}
+\toprule
+level\_0 & Hybrid (REF-gated cosine) & Cosine only & REF only & Blended \\
+\midrule
+Hybrid (REF-gated cosine) & 1 & 1 & 0.478 & 0.683 \\
+Cosine only & 1 & 1 & 0.478 & 0.683 \\
+REF only & 0.478 & 0.478 & 1 & 0.674 \\
+Blended & 0.683 & 0.683 & 0.674 & 1 \\
+\bottomrule
+\end{tabular}
+\end{table}

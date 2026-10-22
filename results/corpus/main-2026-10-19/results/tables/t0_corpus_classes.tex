@@ -1,0 +1,25 @@
+\begin{table}[t]
+\centering
+\small
+\caption{Architecture classes compared. Structural metrics under the audit's policy compared across the three classes: Kruskal--Wallis H, p, $\varepsilon$$^2$ (rank effect size) and Holm-corrected p.}
+\label{tab:t0_corpus_classes}
+\begin{tabular}{lrrrrrr}
+\toprule
+metric & sites & classes & H & p & epsilon\_sq & p\_holm \\
+\midrule
+graph.crawled\_pages & 28 & 3 & 7.8 & 0.0202 & 0.289 & 0.223 \\
+graph.edges\_per\_crawled\_page & 26 & 3 & 1.15 & 0.561 & 0.0462 & 1 \\
+graph.reachable\_share & 28 & 3 & 3.14 & 0.208 & 0.116 & 1 \\
+graph.mean\_depth & 28 & 3 & 3.07 & 0.215 & 0.114 & 1 \\
+graph.max\_depth & 28 & 3 & 2.58 & 0.275 & 0.0956 & 1 \\
+graph.largest\_scc\_share & 28 & 3 & 11.3 & 0.00344 & 0.42 & 0.0413 \\
+graph.pagerank\_gini & 28 & 3 & 3.44 & 0.18 & 0.127 & 1 \\
+discovery.orphans & 28 & 3 & 12 & 0.00242 & 0.446 & 0.0315 \\
+discovery.orphan\_share & 28 & 3 & 7.71 & 0.0212 & 0.286 & 0.223 \\
+audit.nodes\_with\_issues\_share & 26 & 3 & 6.39 & 0.041 & 0.255 & 0.369 \\
+diagnosis.v4\_share & 26 & 3 & 0.765 & 0.682 & 0.0306 & 1 \\
+diagnosis.v3\_share & 26 & 3 & 2.38 & 0.304 & 0.0954 & 1 \\
+diagnosis.v1\_share & 26 & 3 & 0.778 & 0.678 & 0.0311 & 1 \\
+\bottomrule
+\end{tabular}
+\end{table}

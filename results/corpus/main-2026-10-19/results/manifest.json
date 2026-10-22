@@ -1,0 +1,369 @@
+{
+  "generatedAt": "2026-10-21T18:26:59.168674+00:00",
+  "batch": "..\\results\\corpus\\main-2026-10-19",
+  "options": {
+    "k": 10,
+    "alpha": 0.05
+  },
+  "inputs": {
+    "channels.csv": "a23e43d4dd528e5134991d15ea961b65061c5b181bf4dac6304e9f9a5c962526",
+    "e3.csv": "d007b17a9b95c2c236385ccf8b1ce1cdea636265fd743a988491a9fd8a0e5e43",
+    "e4.csv": "576cf590c7adb08c18095e7ca16d1f93e1fc682c257c2b07bb260eefd8ed252a",
+    "e4_pages.csv": "b2ca3c3526f5e887788170ff35958c303ea04fdddc36642db330346603205d7a",
+    "e5.csv": "8e1fcd66079569e25541e13124a2a191ee107dd41065cc18612362f57bea1308",
+    "e5_categories.csv": "547a1cd501b33612232dad3a970c1aff00d9f8e4cec3d77e4a2db227141d58be",
+    "e5_disagreements.csv": "f80d2a50d1d8f232bf311f1b162f13ceac7732fe4dd9130303b4ce36875125cf",
+    "e6.csv": "c26c262f03151742becf53c59277fd6b5787a13e2258b8ea8decf641705d4fe3",
+    "e7.csv": "ba14cd3ed22bb8cd6585b6c76d598cc3d3225ea164d7d13075f59085ff53b673",
+    "e7_sigma_pairs.csv": "d615b057ff3f50d3c1c114344fbb7e686c5109af51c03fa1de9f72723db51310",
+    "metrics.csv": "b9c28d727d3ed29cfd80daaa75a45efbf6039b03db43f9e59b4477969eacdda6",
+    "policy_pairs.csv": "5f5d42276e8338199dd80c7fd244ef6da3e347c24c36da4d37b8da30a1bba8cb",
+    "sites.csv": "3c9bb3cfcec8075fafd9aa31614c6cb73b4cc3841182c8246341ecabfb8b84b5",
+    "stages.csv": "a5edc0a27d8023141ecc9bf368de2bae765cc94b59e9dc9524214992c76f79ad"
+  },
+  "artifacts": [
+    {
+      "id": "t0_corpus_sites",
+      "rq": "RQ0",
+      "experiment": "corpus",
+      "kind": "table",
+      "files": [
+        "tables/t0_corpus_sites.csv",
+        "tables/t0_corpus_sites.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "t0_corpus_classes",
+      "rq": "RQ0",
+      "experiment": "corpus",
+      "kind": "table",
+      "files": [
+        "tables/t0_corpus_classes.csv",
+        "tables/t0_corpus_classes.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "t1_e1_summary",
+      "rq": "RQ1",
+      "experiment": "E1",
+      "kind": "table",
+      "files": [
+        "tables/t1_e1_summary.csv",
+        "tables/t1_e1_summary.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "t1_e1_least_agreeing",
+      "rq": "RQ1",
+      "experiment": "E1",
+      "kind": "table",
+      "files": [
+        "tables/t1_e1_least_agreeing.csv",
+        "tables/t1_e1_least_agreeing.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "f1_e1_node_count_ratio",
+      "rq": "RQ1",
+      "experiment": "E1",
+      "kind": "figure",
+      "files": [
+        "figures/f1_e1_node_count_ratio.pdf",
+        "figures/f1_e1_node_count_ratio.png",
+        "figures/f1_e1_node_count_ratio.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "f1_e1_orphan_jaccard",
+      "rq": "RQ1",
+      "experiment": "E1",
+      "kind": "figure",
+      "files": [
+        "figures/f1_e1_orphan_jaccard.pdf",
+        "figures/f1_e1_orphan_jaccard.png",
+        "figures/f1_e1_orphan_jaccard.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "f1_e1_pagerank_spearman",
+      "rq": "RQ1",
+      "experiment": "E1",
+      "kind": "figure",
+      "files": [
+        "figures/f1_e1_pagerank_spearman.pdf",
+        "figures/f1_e1_pagerank_spearman.png",
+        "figures/f1_e1_pagerank_spearman.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "f1_e1_mean_depth_shift",
+      "rq": "RQ1",
+      "experiment": "E1",
+      "kind": "figure",
+      "files": [
+        "figures/f1_e1_mean_depth_shift.pdf",
+        "figures/f1_e1_mean_depth_shift.png",
+        "figures/f1_e1_mean_depth_shift.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "f1_e1_max_abs_depth_shift",
+      "rq": "RQ1",
+      "experiment": "E1",
+      "kind": "figure",
+      "files": [
+        "figures/f1_e1_max_abs_depth_shift.pdf",
+        "figures/f1_e1_max_abs_depth_shift.png",
+        "figures/f1_e1_max_abs_depth_shift.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "f1_e1_top_fixes_jaccard",
+      "rq": "RQ1",
+      "experiment": "E1",
+      "kind": "figure",
+      "files": [
+        "figures/f1_e1_top_fixes_jaccard.pdf",
+        "figures/f1_e1_top_fixes_jaccard.png",
+        "figures/f1_e1_top_fixes_jaccard.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "t2_e2_channels",
+      "rq": "RQ2",
+      "experiment": "E2",
+      "kind": "table",
+      "files": [
+        "tables/t2_e2_channels.csv",
+        "tables/t2_e2_channels.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "t2_e2_composition",
+      "rq": "RQ2",
+      "experiment": "E2",
+      "kind": "table",
+      "files": [
+        "tables/t2_e2_composition.csv",
+        "tables/t2_e2_composition.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "f2_e2_composition",
+      "rq": "RQ2",
+      "experiment": "E2",
+      "kind": "figure",
+      "files": [
+        "figures/f2_e2_composition.pdf",
+        "figures/f2_e2_composition.png",
+        "figures/f2_e2_composition.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "t3_e3_paired_raw",
+      "rq": "RQ3",
+      "experiment": "E3",
+      "kind": "table",
+      "files": [
+        "tables/t3_e3_paired_raw.csv",
+        "tables/t3_e3_paired_raw.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "t3_e3_paired_relative",
+      "rq": "RQ3",
+      "experiment": "E3",
+      "kind": "table",
+      "files": [
+        "tables/t3_e3_paired_relative.csv",
+        "tables/t3_e3_paired_relative.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "t3_e3_by_class",
+      "rq": "RQ3",
+      "experiment": "E3",
+      "kind": "table",
+      "files": [
+        "tables/t3_e3_by_class.csv",
+        "tables/t3_e3_by_class.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "f3_e3_paired",
+      "rq": "RQ3",
+      "experiment": "E3",
+      "kind": "figure",
+      "files": [
+        "figures/f3_e3_paired.pdf",
+        "figures/f3_e3_paired.png",
+        "figures/f3_e3_paired.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "t4_e4_summary",
+      "rq": "RQ4",
+      "experiment": "E4",
+      "kind": "table",
+      "files": [],
+      "skipped": "no re-crawl comparisons (E4) in the export (run `corpus recrawl` (14 days after the first run), then `corpus export`)"
+    },
+    {
+      "id": "t4_e4_attribution",
+      "rq": "RQ4",
+      "experiment": "E4",
+      "kind": "table",
+      "files": [],
+      "skipped": "no re-crawl comparisons (E4) in the export (run `corpus recrawl` (14 days after the first run), then `corpus export`)"
+    },
+    {
+      "id": "f4_e4_attribution",
+      "rq": "RQ4",
+      "experiment": "E4",
+      "kind": "figure",
+      "files": [],
+      "skipped": "no re-crawl comparisons (E4) in the export (run `corpus recrawl` (14 days after the first run), then `corpus export`)"
+    },
+    {
+      "id": "t4_e5_calibration",
+      "rq": "RQ4",
+      "experiment": "E5",
+      "kind": "table",
+      "files": [
+        "tables/t4_e5_calibration.csv",
+        "tables/t4_e5_calibration.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "t4_e5_large_categories",
+      "rq": "RQ4",
+      "experiment": "E5",
+      "kind": "table",
+      "files": [
+        "tables/t4_e5_large_categories.csv",
+        "tables/t4_e5_large_categories.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "t5_e6_results",
+      "rq": "RQ5",
+      "experiment": "E6",
+      "kind": "table",
+      "files": [
+        "tables/t5_e6_results.csv",
+        "tables/t5_e6_results.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "t5_e6_c5",
+      "rq": "RQ5",
+      "experiment": "E6",
+      "kind": "table",
+      "files": [
+        "tables/t5_e6_c5.csv",
+        "tables/t5_e6_c5.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "t5_e6_c5_by_class",
+      "rq": "RQ5",
+      "experiment": "E6",
+      "kind": "table",
+      "files": [
+        "tables/t5_e6_c5_by_class.csv",
+        "tables/t5_e6_c5_by_class.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "f5_e6_methods",
+      "rq": "RQ5",
+      "experiment": "E6",
+      "kind": "figure",
+      "files": [
+        "figures/f5_e6_methods.pdf",
+        "figures/f5_e6_methods.png",
+        "figures/f5_e6_methods.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "t5_e7_ablation",
+      "rq": "RQ5",
+      "experiment": "E7",
+      "kind": "table",
+      "files": [
+        "tables/t5_e7_ablation.csv",
+        "tables/t5_e7_ablation.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "t5_e7_sigma_pairs",
+      "rq": "RQ5",
+      "experiment": "E7",
+      "kind": "table",
+      "files": [
+        "tables/t5_e7_sigma_pairs.csv",
+        "tables/t5_e7_sigma_pairs.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "t5_e7_scoring",
+      "rq": "RQ5",
+      "experiment": "E7",
+      "kind": "table",
+      "files": [
+        "tables/t5_e7_scoring.csv",
+        "tables/t5_e7_scoring.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "f5_e7_epsilon",
+      "rq": "RQ5",
+      "experiment": "E7",
+      "kind": "figure",
+      "files": [
+        "figures/f5_e7_epsilon.pdf",
+        "figures/f5_e7_epsilon.png",
+        "figures/f5_e7_epsilon.tex"
+      ],
+      "skipped": null
+    },
+    {
+      "id": "f5_e7_alpha",
+      "rq": "RQ5",
+      "experiment": "E7",
+      "kind": "figure",
+      "files": [
+        "figures/f5_e7_alpha.pdf",
+        "figures/f5_e7_alpha.png",
+        "figures/f5_e7_alpha.tex"
+      ],
+      "skipped": null
+    }
+  ]
+}

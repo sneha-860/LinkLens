@@ -1,0 +1,25 @@
+architecture_class,metric,worst_pair,worst_value
+cms-blog,Node count ratio (min / max),P0–P5,0.5068611861781973
+cms-blog,Orphan set Jaccard,P0–P5,0.9955309976387441
+cms-blog,PageRank Spearman (shared pages),P0–P3,0.9268840047168398
+cms-blog,Mean depth shift (row − column),P0–P1,0.0
+cms-blog,Max |depth shift|,P0–P1,0.0
+cms-blog,Top-k fix list Jaccard,P0–P1,0.30252100840336127
+ecommerce-catalogue,Node count ratio (min / max),P0–P5,0.3190721649484536
+ecommerce-catalogue,Orphan set Jaccard,P0–P1,1.0
+ecommerce-catalogue,PageRank Spearman (shared pages),P0–P5,0.9184065319917448
+ecommerce-catalogue,Mean depth shift (row − column),P0–P1,0.0
+ecommerce-catalogue,Max |depth shift|,P0–P1,0.0
+ecommerce-catalogue,Top-k fix list Jaccard,P0–P3,0.6666666666666666
+documentation,Node count ratio (min / max),P0–P5,0.07326478149100257
+documentation,Orphan set Jaccard,P0–P1,1.0
+documentation,PageRank Spearman (shared pages),P0–P5,0.5083207938803846
+documentation,Mean depth shift (row − column),P0–P1,0.0
+documentation,Max |depth shift|,P0–P1,0.0
+documentation,Top-k fix list Jaccard,P0–P5,0.25
+all sites,Node count ratio (min / max),P0–P4,0.3126225759923881
+all sites,Orphan set Jaccard,P0–P5,0.9987721707768173
+all sites,PageRank Spearman (shared pages),P0–P5,0.9066109811492892
+all sites,Mean depth shift (row − column),P0–P1,0.0
+all sites,Max |depth shift|,P0–P1,0.0
+all sites,Top-k fix list Jaccard,P0–P3,0.4285714285714285

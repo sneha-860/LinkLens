@@ -1,0 +1,18 @@
+{
+  "site": "books-toscrape",
+  "importedAt": "2026-10-19T23:04:20.872Z",
+  "screamingFrogVersion": "24.3",
+  "orphans": "skipped",
+  "files": [
+    {
+      "name": "internal_all.csv",
+      "rows": 499,
+      "sha256": "ffb036cd372ab011f826df4abfb1e3ad1a9eb77ac4f046c38b83f4e1ebaf559e"
+    },
+    {
+      "name": "all_inlinks.csv",
+      "rows": 10234,
+      "sha256": "e178f042dbdc92d598664fe45c2f446e37abf0502f7f6d002c4a2174255082e1"
+    }
+  ]
+}

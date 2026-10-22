@@ -1,0 +1,18 @@
+{
+  "site": "simon-willison",
+  "importedAt": "2026-10-19T23:04:01.171Z",
+  "screamingFrogVersion": "24.3",
+  "orphans": "skipped",
+  "files": [
+    {
+      "name": "internal_all.csv",
+      "rows": 293,
+      "sha256": "2f0f8b414d5492e3adf08b9ab61dd782cc487ab751a33e8293b5cb881e2dd527"
+    },
+    {
+      "name": "all_inlinks.csv",
+      "rows": 30090,
+      "sha256": "7377df04e4731c1a411e46cccf0bd1f25d0bfd96e49a7fc6e575d5dc5aeff712"
+    }
+  ]
+}

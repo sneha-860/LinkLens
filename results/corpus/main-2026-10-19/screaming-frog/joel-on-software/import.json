@@ -1,0 +1,18 @@
+{
+  "site": "joel-on-software",
+  "importedAt": "2026-10-19T23:03:51.097Z",
+  "screamingFrogVersion": "24.3",
+  "orphans": "skipped",
+  "files": [
+    {
+      "name": "internal_all.csv",
+      "rows": 365,
+      "sha256": "e83d1220e4c5d6c5718d7bbdbaa4ddfb739f38589444ff76348a5c8fedab9332"
+    },
+    {
+      "name": "all_inlinks.csv",
+      "rows": 34334,
+      "sha256": "ff3f25ed431ca4f76df72f05b1df4965141cc2f5ab518e4484415e0b4b96c499"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "site": "css-tricks",
+  "importedAt": "2026-10-19T23:03:38.560Z",
+  "screamingFrogVersion": "24.3",
+  "orphans": "skipped",
+  "files": [
+    {
+      "name": "internal_all.csv",
+      "rows": 428,
+      "sha256": "b1be5a78e46d41d69493e49742778a9781bc9eb149de8a191bedf5522813be59"
+    },
+    {
+      "name": "all_inlinks.csv",
+      "rows": 93953,
+      "sha256": "9cbc6a4d1c07555098bde649711dca7bbdac5aa313822642f9fba3e709d45e23"
+    }
+  ]
+}

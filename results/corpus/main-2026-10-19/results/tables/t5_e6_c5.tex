@@ -1,0 +1,16 @@
+\begin{table}[t]
+\centering
+\small
+\caption{C5: hybrid against cosine. The refutation test for C5: the REF-gated hybrid against cosine across sites, Wilcoxon signed-rank one-sided (hybrid better) and two-sided, rank-biserial r, Holm over MRR (primary), R@10 and AUC.}
+\label{tab:t5_e6_c5}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrrrrlrrrrrr}
+\toprule
+metric & sites & mean a & mean b & mean difference & median difference & wins/ties/losses & W & p (a \textgreater{} b) & p (two-sided) & r (rank-biserial) & p\_holm (a \textgreater{} b) & p\_holm (two-sided) \\
+\midrule
+mrr & 28 & 0.319 & 0.298 & 0.0204 & 0 & 12/5/11 & 114 & 0.241 & 0.482 & 0.174 & 0.723 & 0.964 \\
+recall@10 & 28 & 0.436 & 0.396 & 0.0408 & 0 & 12/5/11 & 127 & 0.377 & 0.754 & 0.0797 & 0.754 & 0.964 \\
+auc & 23 & 0.655 & 0.735 & -0.08 & -0.0793 & 7/0/16 & 60 & 0.993 & 0.0163 & -0.565 & 0.993 & 0.0489 \\
+\bottomrule
+\end{tabular}}
+\end{table}

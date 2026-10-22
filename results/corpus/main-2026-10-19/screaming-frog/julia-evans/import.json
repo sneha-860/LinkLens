@@ -1,0 +1,18 @@
+{
+  "site": "julia-evans",
+  "importedAt": "2026-10-19T23:04:11.208Z",
+  "screamingFrogVersion": "24.3",
+  "orphans": "skipped",
+  "files": [
+    {
+      "name": "internal_all.csv",
+      "rows": 500,
+      "sha256": "dee359581cd81a5deb122b8a7d1719e4740ba5eaf347d40118be3b10e0598c6a"
+    },
+    {
+      "name": "all_inlinks.csv",
+      "rows": 10327,
+      "sha256": "a1db9e99a8723b52f046f81684b7007dc41d3600038f37c40d3a61cfd6fccca4"
+    }
+  ]
+}

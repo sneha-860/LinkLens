@@ -1,0 +1,18 @@
+{
+  "site": "mkdocs",
+  "importedAt": "2026-10-19T23:04:59.983Z",
+  "screamingFrogVersion": "24.3",
+  "orphans": "skipped",
+  "files": [
+    {
+      "name": "internal_all.csv",
+      "rows": 39,
+      "sha256": "4d4b87d2920418ff6bb945859c04db4d968595bb31573ec8a427b3cd35447b9c"
+    },
+    {
+      "name": "all_inlinks.csv",
+      "rows": 2415,
+      "sha256": "267e2c6b41aa8815725f2b4b75ba262fb093fe600fb26ad2c83de5ece73c5022"
+    }
+  ]
+}

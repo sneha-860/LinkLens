@@ -1,0 +1,18 @@
+{
+  "site": "scrapeme-live",
+  "importedAt": "2026-10-19T23:04:30.597Z",
+  "screamingFrogVersion": "24.3",
+  "orphans": "skipped",
+  "files": [
+    {
+      "name": "internal_all.csv",
+      "rows": 495,
+      "sha256": "602aa399cc1bdd6a5fec0b6c3ef26715d22c364355aec10243ba67366542428a"
+    },
+    {
+      "name": "all_inlinks.csv",
+      "rows": 14222,
+      "sha256": "a2b225f3ec9009665edd35d2a322868eaa3d72a2e74f103fc38bae21297c5f83"
+    }
+  ]
+}

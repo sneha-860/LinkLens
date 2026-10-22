@@ -1,0 +1,18 @@
+{
+  "site": "vite",
+  "importedAt": "2026-10-19T23:04:50.649Z",
+  "screamingFrogVersion": "24.3",
+  "orphans": "skipped",
+  "files": [
+    {
+      "name": "internal_all.csv",
+      "rows": 81,
+      "sha256": "4a6a8b17cee26651338cdaeb27d19e15920511117bb65bb45a07c91899ef2162"
+    },
+    {
+      "name": "all_inlinks.csv",
+      "rows": 5430,
+      "sha256": "1bcba06f183cbafc4a8ba6305e0d27810bd10d436a83fe9d9f83395f196fd253"
+    }
+  ]
+}
